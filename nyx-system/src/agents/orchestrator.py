@@ -4,7 +4,7 @@ Orchestrator
 Coordinates the 4 fractal agents and makes final decision.
 """
 
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 import pandas as pd
 from src.agents.contracts import AgentResult, OrchestratorDecision
 from src.agents.context_agent import ContextAgent
@@ -12,6 +12,7 @@ from src.agents.regime_agent import RegimeAgent
 from src.agents.setup_agent import SetupAgent
 from src.agents.entry_agent import EntryAgent
 from src.core.risk_manager_mtf import RiskManagerMTF
+from src.macro.real_macro_engine import RealMacroEngine
 
 
 class Orchestrator:
@@ -35,15 +36,26 @@ class Orchestrator:
             config: Configuration dict
         """
         self.config = config
-        
+
         # Initialize agents
         self.context_agent = ContextAgent(config)
         self.regime_agent = RegimeAgent(config)
         self.setup_agent = SetupAgent(config)
         self.entry_agent = EntryAgent(config)
-        
+
         # Initialize risk manager
         self.risk_manager = RiskManagerMTF(config)
+
+        # Macro engine (P3) — optional, controlled by config
+        macro_cfg = config.get('macro', {})
+        self._macro_enabled = macro_cfg.get('enabled', False)
+        self._macro_block_threshold = macro_cfg.get('block_threshold', 0.50)
+        self._macro_pair = macro_cfg.get('pair', 'BTC')
+        if self._macro_enabled:
+            events_file = macro_cfg.get('events_file', 'data/macro_events.json')
+            self.macro_engine = RealMacroEngine(events_file)
+        else:
+            self.macro_engine = None
     
     def decide(self, mtf_data: Dict[str, pd.DataFrame], current_price: float = None) -> OrchestratorDecision:
         """
@@ -150,17 +162,44 @@ class Orchestrator:
                 components=components
             )
         
-        # Step 7: All agents passed - check risk
+        # Step 7a: Macro block check (P3) — before risk, after logic gate
+        macro_signal = None
+        if self._macro_enabled and self.macro_engine is not None:
+            # Extract current date from lowest TF
+            current_date = self._extract_current_date(mtf_data)
+            macro_signal = self.macro_engine.get_macro_signal(
+                self._macro_pair, current_date
+            )
+            macro_block = (
+                macro_signal['signal'] != 'NEUTRAL'
+                and macro_signal['strength'] > self._macro_block_threshold
+            )
+            if macro_block:
+                return OrchestratorDecision(
+                    action='WAIT',
+                    score=self._calculate_aggregate_score(components),
+                    reason=(
+                        f'Macro block ON: {macro_signal["signal"]} '
+                        f'strength={macro_signal["strength"]:.2f}'
+                    ),
+                    blocked_by=['macro_block'],
+                    components=components,
+                    risk_analysis={'macro_signal': macro_signal}
+                )
+
+        # Step 7b: Risk check (P2: pass emission_params for Monte Carlo hitting probs)
         risk_conditions = self.risk_manager.check_risk_conditions(
             entry_price=current_price,
             fractal_states=self._extract_fractal_states(regime_result),
             smc_patterns=setup_result.metadata.get('patterns', {}),
             intent_daily=context_result.state,
-            transition_matrix=self.regime_agent.hsmm.transition_matrix
+            transition_matrix=self.regime_agent.hsmm.transition_matrix,
+            emission_params=self.regime_agent.hsmm.emission_params,
+            hsmm_states_list=self.regime_agent.hsmm.states,
         )
-        
+
         risk_passed = risk_conditions['rr_ratio'] and risk_conditions['risk_hit']
-        
+
         if not risk_passed:
             blocked_by.append('risk')
             return OrchestratorDecision(
@@ -171,8 +210,8 @@ class Orchestrator:
                 components=components,
                 risk_analysis=risk_conditions
             )
-        
-        # Step 7: All passed - determine action from Context
+
+        # Step 8: All passed - determine action from Context
         if context_result.state == 'bullish':
             action = 'BUY'
         elif context_result.state == 'bearish':
@@ -245,17 +284,19 @@ class Orchestrator:
                 components=components
             )
         
-        # Step 3: Check risk
+        # Step 3: Risk check (P2: pass emission_params for Monte Carlo hitting probs)
         risk_conditions = self.risk_manager.check_risk_conditions(
             entry_price=current_price,
             fractal_states=self._extract_fractal_states(regime_result),
             smc_patterns=setup_result.metadata.get('patterns', {}),
             intent_daily=context_result.state,
-            transition_matrix=self.regime_agent.hsmm.transition_matrix
+            transition_matrix=self.regime_agent.hsmm.transition_matrix,
+            emission_params=self.regime_agent.hsmm.emission_params,
+            hsmm_states_list=self.regime_agent.hsmm.states,
         )
-        
+
         risk_passed = risk_conditions['rr_ratio'] and risk_conditions['risk_hit']
-        
+
         if not risk_passed:
             blocked_by.append('risk')
             return OrchestratorDecision(
@@ -266,7 +307,7 @@ class Orchestrator:
                 components=components,
                 risk_analysis=risk_conditions
             )
-        
+
         # Step 4: All passed - determine action
         if context_result.state == 'bullish':
             action = 'BUY'
@@ -327,6 +368,17 @@ class Orchestrator:
             '4h': hsmm_states
         }
     
+    def _extract_current_date(self, mtf_data: Dict[str, pd.DataFrame]) -> str:
+        """Extract the latest timestamp from the lowest available timeframe."""
+        lowest_tf = min(mtf_data.keys(), key=lambda x: self._tf_to_minutes(x))
+        df = mtf_data[lowest_tf]
+        if not df.empty and hasattr(df.index, 'max'):
+            ts = df.index.max()
+            if hasattr(ts, 'strftime'):
+                return ts.strftime('%Y-%m-%d')
+        import datetime
+        return datetime.date.today().isoformat()
+
     def _tf_to_minutes(self, tf: str) -> int:
         """Convert timeframe string to minutes"""
         mapping = {
