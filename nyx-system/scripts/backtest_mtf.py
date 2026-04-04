@@ -41,9 +41,12 @@ BASE_CONFIG = {
     },
     'strategy': {
         'mtf_conditions': {
-            'sdc_min':           5.0,
-            'stability_4h_min':  0.60,
-            'alignment_min':     0.40,
+            'sdc_min':            5.0,
+            'stability_4h_min':   0.60,
+            # alignment_15m_min: threshold for HSMM P(Trend+/Trend-) on 15M.
+            # 5-state model dilutes per-state probability (base ~1/5=0.20) vs
+            # 3-state (base ~1/3=0.33). Calibrated accordingly.
+            'alignment_15m_min':  0.35,
         },
         'intent_daily_projection_steps': 2,
     },

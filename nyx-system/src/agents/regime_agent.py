@@ -117,11 +117,13 @@ class RegimeAgent:
             state_prob = hsmm_states[state_name]
             
             # Compute SdC (Score de Confiance)
-            sdc = 10 * state_prob
-            
+            sdc = float(10 * state_prob)
+
             # Compute stability (persistence probability)
-            current_state_idx = np.argmax(current_probs)
-            stability = self.hsmm.transition_matrix[current_state_idx, current_state_idx]
+            # Cast to Python float — numpy.float64 propagates to numpy.bool_ in comparisons,
+            # which breaks AgentResult's isinstance(passed, bool) contract.
+            current_state_idx = int(np.argmax(current_probs))
+            stability = float(self.hsmm.transition_matrix[current_state_idx, current_state_idx])
             
             # Map to standardized state names (P4a: 5-state)
             state_mapping = {
@@ -136,7 +138,17 @@ class RegimeAgent:
             
             # Check conditions
             sdc_passed = sdc > self.sdc_min
-            stability_passed = stability >= self.stability_min
+
+            # State-specific stability thresholds (P4a: 5-state model)
+            # Squeeze and Distribution are TRANSIENT by design — their prior
+            # self-transitions (0.42 / 0.18) are lower than the 3-state threshold.
+            # Squeeze is a pre-breakout state → do not require high persistence.
+            # Distribution is bearish → block for LONG (no stability relaxation needed).
+            if state == 'squeeze':
+                stability_min_effective = 0.35
+            else:
+                stability_min_effective = self.stability_min
+            stability_passed = stability >= stability_min_effective
             
             # Context alignment (if provided)
             # P4a: Squeeze/Distribution are ambiguous — don't hard-block on context

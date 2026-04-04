@@ -46,10 +46,16 @@ class AgentResult:
     
     def __post_init__(self):
         """Validate contract"""
-        
+
         if self.timestamp is None:
             self.timestamp = datetime.now()
-        
+
+        # Coerce numpy scalar types → Python native (agents use numpy ops internally)
+        self.score                = float(self.score)
+        self.passed               = bool(self.passed)
+        self.ready                = bool(self.ready)
+        self.blocked_by_readiness = bool(self.blocked_by_readiness)
+
         # Validation
         assert self.agent in ['context', 'regime', 'setup', 'entry'], \
             f"Agent must be one of: context, regime, setup, entry. Got: {self.agent}"
