@@ -48,12 +48,18 @@ class SetupAgent:
             liquidity_lookback=smc_config.get('liquidity_lookback', 20)
         )
 
-        # HSMM for real alignment probability
-        self.hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-'])
+        # HSMM for real alignment probability — P4a: 5-state (matches RegimeAgent)
+        # Squeeze on 15M = pre-breakout compression → partially bullish
+        # Distribution on 15M = bearish exhaustion → blocks bullish setups
+        self.hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution'])
 
-        # Threshold
+        # Threshold — calibrated for 5-state model:
+        #   3-state base P ≈ 0.33 → was 0.60 (1.8× base)
+        #   5-state base P ≈ 0.20 → new default 0.28 (~1.4× base)
+        # Combined formula (P(Trend+) + 0.5×P(Squeeze) for bullish) raises
+        # effective probability, so threshold can stay modest.
         mtf_conditions = config.get('strategy', {}).get('mtf_conditions', {})
-        self.alignment_min = mtf_conditions.get('alignment_15m_min', 0.60)
+        self.alignment_min = mtf_conditions.get('alignment_15m_min', 0.28)
 
     def _prepare_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -87,6 +93,14 @@ class SetupAgent:
         if 'sma_50' not in df_prepared.columns:
             df_prepared['sma_50'] = df_prepared['close'].rolling(window=50).mean()
 
+        # Required for 5-state Squeeze detection (ATR compression)
+        if 'atr_50' not in df_prepared.columns and 'atr_14' in df_prepared.columns:
+            df_prepared['atr_50'] = df_prepared['atr_14'].rolling(window=50).mean()
+
+        # Required for 5-state Distribution detection (high volume + range-bound)
+        if 'volume_ma20' not in df_prepared.columns and 'volume' in df_prepared.columns:
+            df_prepared['volume_ma20'] = df_prepared['volume'].rolling(window=20).mean()
+
         return df_prepared
 
     def pretrain(self, df: pd.DataFrame, n_iter: int = 30, tol: float = 1e-4) -> list:
@@ -112,18 +126,27 @@ class SetupAgent:
         """
         Run HSMM Forward-Backward on 15M data and return alignment probability.
 
-        alignment = P(Trend+) for bullish context, P(Trend-) for bearish context.
-        This is the real probability from the HSMM, replacing hardcoded constants.
+        5-state alignment formula:
+          Bullish: P(Trend+) + 0.5×P(Squeeze)
+            Squeeze = ATR compression before breakout → partially bullish
+          Bearish:  P(Trend-) + P(Distribution)
+            Distribution = high-vol bearish exhaustion → reinforces bearish
+          Neutral:  max(bullish_score, bearish_score)
+
+        State index lookup uses self.hsmm.state_to_idx — safe for any n-state model.
 
         Returns:
             dict with keys: alignment (float), p_trend_plus (float),
-                            p_trend_minus (float), p_range (float), hsmm_ok (bool)
+                            p_trend_minus (float), p_range (float),
+                            p_squeeze (float), p_distribution (float), hsmm_ok (bool)
         """
         fallback = {
             'alignment': 0.0,
             'p_trend_plus': 0.0,
             'p_trend_minus': 0.0,
             'p_range': 1.0,
+            'p_squeeze': 0.0,
+            'p_distribution': 0.0,
             'hsmm_ok': False
         }
         try:
@@ -152,24 +175,35 @@ class SetupAgent:
                 return fallback
 
             latest = state_probs[-1]
-            # HSMM states: ['Trend+', 'Range', 'Trend-'] → indices 0, 1, 2
-            p_trend_plus = float(latest[0])
-            p_range = float(latest[1])
-            p_trend_minus = float(latest[2])
+
+            # Index lookup by state name — robust for 3, 5, or 6-state models
+            s2i = self.hsmm.state_to_idx
+            p_trend_plus  = float(latest[s2i['Trend+']])
+            p_range       = float(latest[s2i['Range']])
+            p_trend_minus = float(latest[s2i['Trend-']])
+            p_squeeze     = float(latest[s2i['Squeeze']])     if 'Squeeze'      in s2i else 0.0
+            p_distribution = float(latest[s2i['Distribution']]) if 'Distribution' in s2i else 0.0
+
+            # Nuanced alignment: Squeeze partially supports bullish (pre-breakout)
+            # Distribution reinforces bearish (exhaustion → continuation down)
+            bullish_score = p_trend_plus  + 0.5 * p_squeeze
+            bearish_score = p_trend_minus + p_distribution
 
             if context_state == 'bullish':
-                alignment = p_trend_plus
+                alignment = bullish_score
             elif context_state == 'bearish':
-                alignment = p_trend_minus
+                alignment = bearish_score
             else:
-                alignment = max(p_trend_plus, p_trend_minus)
+                alignment = max(bullish_score, bearish_score)
 
             return {
-                'alignment': alignment,
-                'p_trend_plus': p_trend_plus,
-                'p_trend_minus': p_trend_minus,
-                'p_range': p_range,
-                'hsmm_ok': True
+                'alignment':      alignment,
+                'p_trend_plus':   p_trend_plus,
+                'p_trend_minus':  p_trend_minus,
+                'p_range':        p_range,
+                'p_squeeze':      p_squeeze,
+                'p_distribution': p_distribution,
+                'hsmm_ok':        True
             }
 
         except Exception:
@@ -307,10 +341,12 @@ class SetupAgent:
         }
         if context_state in ('bullish', 'bearish'):
             meta.update({
-                'hsmm_p_trend_plus': hsmm_result['p_trend_plus'],
-                'hsmm_p_trend_minus': hsmm_result['p_trend_minus'],
-                'hsmm_p_range': hsmm_result['p_range'],
-                'hsmm_ok': hsmm_result['hsmm_ok']
+                'hsmm_p_trend_plus':   hsmm_result['p_trend_plus'],
+                'hsmm_p_trend_minus':  hsmm_result['p_trend_minus'],
+                'hsmm_p_range':        hsmm_result['p_range'],
+                'hsmm_p_squeeze':      hsmm_result.get('p_squeeze', 0.0),
+                'hsmm_p_distribution': hsmm_result.get('p_distribution', 0.0),
+                'hsmm_ok':             hsmm_result['hsmm_ok']
             })
 
         return AgentResult(
@@ -345,7 +381,7 @@ if __name__ == "__main__":
 
     config = {
         'mtf': {'timeframes': {'setup': '15m'}},
-        'strategy': {'mtf_conditions': {'alignment_15m_min': 0.60}}
+        'strategy': {'mtf_conditions': {'alignment_15m_min': 0.28}}
     }
 
     agent = SetupAgent(config)
@@ -356,6 +392,9 @@ if __name__ == "__main__":
     print(f"  Score: {result.score:.4f}")
     print(f"  Passed: {result.passed}")
     print(f"  Reason: {result.reason}")
-    print(f"  HSMM P(Trend+): {result.metadata.get('hsmm_p_trend_plus', 'n/a'):.4f}")
-    print(f"  HSMM P(Trend-): {result.metadata.get('hsmm_p_trend_minus', 'n/a'):.4f}")
-    print(f"  HSMM P(Range):  {result.metadata.get('hsmm_p_range', 'n/a'):.4f}")
+    m = result.metadata
+    print(f"  HSMM P(Trend+):      {m.get('hsmm_p_trend_plus', 'n/a'):.4f}")
+    print(f"  HSMM P(Trend-):      {m.get('hsmm_p_trend_minus', 'n/a'):.4f}")
+    print(f"  HSMM P(Range):       {m.get('hsmm_p_range', 'n/a'):.4f}")
+    print(f"  HSMM P(Squeeze):     {m.get('hsmm_p_squeeze', 'n/a'):.4f}")
+    print(f"  HSMM P(Distribution):{m.get('hsmm_p_distribution', 'n/a'):.4f}")

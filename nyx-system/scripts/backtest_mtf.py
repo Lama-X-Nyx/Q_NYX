@@ -44,10 +44,11 @@ BASE_CONFIG = {
         'mtf_conditions': {
             'sdc_min':            5.0,
             'stability_4h_min':   0.60,
-            # alignment_15m_min: threshold for HSMM P(Trend+/Trend-) on 15M.
-            # 5-state model dilutes per-state probability (base ~1/5=0.20) vs
-            # 3-state (base ~1/3=0.33). Calibrated accordingly.
-            'alignment_15m_min':  0.35,
+            # alignment_15m_min: threshold for SetupAgent 5-state HSMM alignment.
+            # Formula: P(Trend+) + 0.5×P(Squeeze) for bullish context.
+            # Base P ≈ 0.20 per state (5-state). With Squeeze bonus, effective
+            # range is ~0.20–0.60 on trending bars. Threshold at 0.28 (~1.4× base).
+            'alignment_15m_min':  0.28,
         },
         'intent_daily_projection_steps': 2,
     },

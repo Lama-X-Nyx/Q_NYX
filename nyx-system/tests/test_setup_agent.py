@@ -130,33 +130,41 @@ class TestSetupAgent:
                 )
 
     def test_hsmm_metadata_present(self, agent, sample_data):
-        """HSMM state probabilities must appear in metadata for directional context"""
+        """HSMM state probabilities (all 5 states) must appear in metadata."""
         for ctx in ('bullish', 'bearish'):
             result = agent.analyze(sample_data, context_state=ctx)
             if result.ready:
-                assert 'hsmm_p_trend_plus' in result.metadata, \
-                    f"Missing hsmm_p_trend_plus for context={ctx}"
-                assert 'hsmm_p_trend_minus' in result.metadata, \
-                    f"Missing hsmm_p_trend_minus for context={ctx}"
-                assert 'hsmm_p_range' in result.metadata, \
-                    f"Missing hsmm_p_range for context={ctx}"
-                # Probabilities must sum to ~1
+                for key in ('hsmm_p_trend_plus', 'hsmm_p_trend_minus', 'hsmm_p_range',
+                            'hsmm_p_squeeze', 'hsmm_p_distribution'):
+                    assert key in result.metadata, \
+                        f"Missing {key} for context={ctx}"
+                # All 5 state probabilities must sum to ~1
                 p_sum = (
                     result.metadata['hsmm_p_trend_plus']
                     + result.metadata['hsmm_p_trend_minus']
                     + result.metadata['hsmm_p_range']
+                    + result.metadata['hsmm_p_squeeze']
+                    + result.metadata['hsmm_p_distribution']
                 )
                 assert abs(p_sum - 1.0) < 0.01, \
-                    f"HSMM probabilities do not sum to 1: {p_sum:.4f}"
+                    f"HSMM 5-state probabilities do not sum to 1: {p_sum:.4f}"
 
     def test_hsmm_alignment_is_directional(self, agent, sample_data):
-        """Alignment score must equal P(Trend+) for bullish and P(Trend-) for bearish"""
-        for ctx, key in (('bullish', 'hsmm_p_trend_plus'), ('bearish', 'hsmm_p_trend_minus')):
+        """Alignment score uses 5-state formula:
+           bullish = P(Trend+) + 0.5×P(Squeeze)
+           bearish = P(Trend-) + P(Distribution)
+        """
+        for ctx in ('bullish', 'bearish'):
             result = agent.analyze(sample_data, context_state=ctx)
             if result.ready and result.metadata.get('hsmm_ok', False):
-                assert abs(result.score - result.metadata[key]) < 1e-9, (
+                m = result.metadata
+                if ctx == 'bullish':
+                    expected = m['hsmm_p_trend_plus'] + 0.5 * m['hsmm_p_squeeze']
+                else:
+                    expected = m['hsmm_p_trend_minus'] + m['hsmm_p_distribution']
+                assert abs(result.score - expected) < 1e-9, (
                     f"For context={ctx}, score {result.score:.6f} != "
-                    f"{key} {result.metadata[key]:.6f}"
+                    f"formula {expected:.6f}"
                 )
 
 
