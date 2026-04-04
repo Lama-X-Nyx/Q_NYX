@@ -1,6 +1,9 @@
 """
 Semi-Markov Hidden Markov Model (HSMM)
 Advanced state detection with duration modeling
+
+P4a: 5-state support — Trend+, Range, Trend-, Squeeze, Distribution
+P4b: Liquidation as a nearly-absorbing 6th state
 """
 
 import numpy as np
@@ -9,421 +12,432 @@ from scipy import stats
 from scipy.special import logsumexp
 from typing import List, Dict, Optional, Tuple
 
+
+# State sets recognised by the smart-prior logic
+_STATES_3 = ['Trend+', 'Range', 'Trend-']
+_STATES_5 = ['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution']
+_STATES_6 = ['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution', 'Liquidation']
+
+
 class SemiMarkovHMM:
     """
-    Semi-Markov Hidden Markov Model for market regime detection
-    
-    Features:
-    - State detection (Trend+, Range, Trend-)
-    - Duration modeling
-    - Transition probabilities
-    - Emission parameters (multi-variate)
-    - Viterbi & Forward-Backward algorithms
-    
+    Semi-Markov Hidden Markov Model for market regime detection.
+
+    Supports 3, 5, or 6 states:
+      3-state: Trend+, Range, Trend-
+      5-state: + Squeeze, Distribution          (P4a)
+      6-state: + Liquidation (nearly absorbing) (P4b)
+
     Usage:
-        hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-'])
+        hsmm = SemiMarkovHMM(states=['Trend+','Range','Trend-','Squeeze','Distribution'])
         hsmm.initialize_parameters(data)
         probs = hsmm.forward_backward(observations)
-        confidence = max(probs[-1]) * 10  # SdC score
     """
-    
+
     def __init__(self, states: List[str] = None):
-        """
-        Initialize HSMM
-        
-        Args:
-            states: List of state names (default: ['Trend+', 'Range', 'Trend-'])
-        """
         self.states = states or ['Trend+', 'Range', 'Trend-']
         self.n_states = len(self.states)
         self.state_to_idx = {s: i for i, s in enumerate(self.states)}
-        
-        # Model parameters (learned from data)
+
         self.initial_probs = None
         self.transition_matrix = None
         self.emission_params = None
         self.duration_params = None
-    
+
+    # ------------------------------------------------------------------
+    # Initialisation
+    # ------------------------------------------------------------------
+
     def initialize_parameters(self, data: pd.DataFrame):
         """
-        Initialize/learn model parameters from data
-        
-        Args:
-            data: DataFrame with OHLCV + indicators
+        Initialise / learn model parameters from OHLCV data.
+
+        Builds:
+        - initial_probs (uniform)
+        - transition_matrix (domain-informed prior, per known state sets)
+        - emission_params (learned from heuristic labels)
+        - duration_params (geometric, learned from run-lengths)
         """
-        # Initial state probabilities (uniform)
         self.initial_probs = np.ones(self.n_states) / self.n_states
-        
-        # Transition matrix (with persistence bias)
-        self.transition_matrix = np.zeros((self.n_states, self.n_states))
-        for i in range(self.n_states):
-            for j in range(self.n_states):
-                if i == j:
-                    self.transition_matrix[i, j] = 0.75  # Persistence
-                else:
-                    self.transition_matrix[i, j] = 0.25 / (self.n_states - 1)
-        
-        # Label states using simple heuristic
+        self.transition_matrix = self._build_transition_prior()
+
         labeled_states = self._label_states_heuristic(data)
-        
-        # Learn emission parameters (per state)
+
+        # Emission parameters per state
         self.emission_params = {}
         for state in self.states:
             state_data = data[labeled_states == state]
-            
-            if len(state_data) > 10:
+            if len(state_data) > 10 and 'returns' in state_data.columns:
                 returns = state_data['returns'].dropna()
-                
                 self.emission_params[state] = {
-                    'price_mu': returns.mean(),
-                    'price_sigma': max(returns.std(), 0.001),
-                    'atr_mu': state_data['atr_14'].mean() if 'atr_14' in state_data else 100,
-                    'atr_sigma': max(state_data['atr_14'].std() if 'atr_14' in state_data else 50, 0.001)
+                    'price_mu':    float(returns.mean()),
+                    'price_sigma': float(max(returns.std(), 0.001)),
+                    'atr_mu':    float(state_data['atr_14'].mean()) if 'atr_14' in state_data else 100.0,
+                    'atr_sigma': float(max(state_data['atr_14'].std(), 0.001)) if 'atr_14' in state_data else 50.0,
                 }
             else:
-                # Default parameters
-                self.emission_params[state] = {
-                    'price_mu': 0.0,
-                    'price_sigma': 0.01,
-                    'atr_mu': 100,
-                    'atr_sigma': 50
-                }
-        
-        # Learn duration parameters (geometric distribution)
+                self.emission_params[state] = self._default_emission(state)
+
+        # Duration parameters (geometric)
         self.duration_params = {}
         for state in self.states:
-            state_mask = (labeled_states == state).values
-            durations = self._extract_durations(state_mask)
-            
+            mask = (labeled_states == state).values
+            durations = self._extract_durations(mask)
             if durations:
-                avg_duration = np.mean(durations)
-                p = 1.0 / max(avg_duration, 2.0)  # Geometric param
-                self.duration_params[state] = {
-                    'p': p,
-                    'mean': avg_duration
-                }
+                avg = float(np.mean(durations))
+                self.duration_params[state] = {'p': 1.0 / max(avg, 2.0), 'mean': avg}
             else:
-                self.duration_params[state] = {
-                    'p': 0.2,
-                    'mean': 5.0
-                }
-    
+                self.duration_params[state] = {'p': 0.2, 'mean': 5.0}
+
+    def _build_transition_prior(self) -> np.ndarray:
+        """
+        Domain-informed transition prior.
+
+        For known state sets (3, 5, 6) we use hand-crafted priors that
+        encode market knowledge.  Unknown configurations fall back to the
+        uniform prior (diagonal 0.75, off-diagonal equal).
+        """
+        n = self.n_states
+        states = self.states
+
+        # ---- 3-state (original) ----
+        if states == _STATES_3:
+            # [Trend+, Range, Trend-]
+            A = np.array([
+                [0.75, 0.15, 0.10],
+                [0.15, 0.70, 0.15],
+                [0.10, 0.15, 0.75],
+            ])
+            return A
+
+        # ---- 5-state (P4a) ----
+        if states == _STATES_5:
+            # rows: Trend+, Range, Trend-, Squeeze, Distribution
+            # Squeeze exits to Trend+/Trend- (breakout); Distribution leads to Trend-
+            A = np.array([
+                # T+     Rng    T-     Sqz    Dist
+                [0.75,  0.06,  0.05,  0.04,  0.10],  # Trend+  → often goes to Distribution
+                [0.10,  0.68,  0.10,  0.06,  0.06],  # Range
+                [0.05,  0.08,  0.75,  0.06,  0.06],  # Trend-
+                [0.22,  0.10,  0.22,  0.42,  0.04],  # Squeeze → breaks out to Trend+ or Trend-
+                [0.05,  0.08,  0.65,  0.04,  0.18],  # Distribution → leads to Trend-
+            ])
+            # Normalise rows (safety)
+            return A / A.sum(axis=1, keepdims=True)
+
+        # ---- 6-state (P4b: + Liquidation) ----
+        if states == _STATES_6:
+            # rows: Trend+, Range, Trend-, Squeeze, Distribution, Liquidation
+            A = np.array([
+                # T+     Rng    T-     Sqz    Dist   Liq
+                [0.74,  0.06,  0.05,  0.04,  0.09,  0.02],  # Trend+
+                [0.10,  0.66,  0.10,  0.06,  0.06,  0.02],  # Range
+                [0.04,  0.07,  0.73,  0.06,  0.06,  0.04],  # Trend-  (higher Liq risk)
+                [0.21,  0.09,  0.21,  0.41,  0.04,  0.04],  # Squeeze
+                [0.04,  0.07,  0.62,  0.04,  0.17,  0.06],  # Distribution (highest Liq)
+                [0.01,  0.01,  0.01,  0.01,  0.01,  0.95],  # Liquidation — nearly absorbing
+            ])
+            return A / A.sum(axis=1, keepdims=True)
+
+        # ---- Generic fallback ----
+        A = np.full((n, n), 0.25 / max(n - 1, 1))
+        np.fill_diagonal(A, 0.75)
+        return A / A.sum(axis=1, keepdims=True)
+
+    def _default_emission(self, state: str) -> Dict:
+        """Default emission parameters when insufficient data for a state."""
+        defaults = {
+            'Trend+':       {'price_mu':  0.0015, 'price_sigma': 0.010, 'atr_mu': 90,  'atr_sigma': 30},
+            'Trend-':       {'price_mu': -0.0015, 'price_sigma': 0.010, 'atr_mu': 110, 'atr_sigma': 35},
+            'Range':        {'price_mu':  0.0000, 'price_sigma': 0.005, 'atr_mu': 80,  'atr_sigma': 25},
+            'Squeeze':      {'price_mu':  0.0000, 'price_sigma': 0.003, 'atr_mu': 50,  'atr_sigma': 15},
+            'Distribution': {'price_mu': -0.0005, 'price_sigma': 0.008, 'atr_mu': 100, 'atr_sigma': 30},
+            'Liquidation':  {'price_mu': -0.0100, 'price_sigma': 0.030, 'atr_mu': 300, 'atr_sigma': 100},
+        }
+        return defaults.get(state, {'price_mu': 0.0, 'price_sigma': 0.01, 'atr_mu': 100, 'atr_sigma': 50})
+
+    # ------------------------------------------------------------------
+    # Heuristic labeling (supports 3, 5, 6 states)
+    # ------------------------------------------------------------------
+
     def _label_states_heuristic(self, df: pd.DataFrame) -> pd.Series:
         """
-        Simple heuristic state labeling for initialization
-        
-        Args:
-            df: DataFrame with price data and moving averages
-        
-        Returns:
-            Series with state labels
-            
-        Raises:
-            ValueError: If required features (sma_20, sma_50) are missing
+        Label each bar with the most likely regime state.
+
+        Required: sma_20, sma_50
+        Optional (for new states):
+          - atr_14, atr_50          → Squeeze detection (ATR compression)
+          - volume, volume_ma20     → Distribution detection (high vol + range)
+          - drawdown_20             → Liquidation detection (rolling -10% drawdown)
+
+        Priority (highest first):
+          Liquidation > Squeeze > Distribution > Trend+ / Trend- > Range
         """
-        
-        # CRITICAL: Check for required features
-        required_features = ['sma_20', 'sma_50']
-        missing_features = [f for f in required_features if f not in df.columns]
-        
-        if missing_features:
+        required = ['sma_20', 'sma_50']
+        missing = [f for f in required if f not in df.columns]
+        if missing:
             raise ValueError(
-                f"HSMM heuristic labeling requires {required_features}. "
-                f"Missing: {missing_features}. "
-                f"Ensure RegimeAgent._prepare_data() provides these features. "
-                f"Without them, initialization defaults to Range state, "
-                f"causing structural bias in regime detection."
+                f"HSMM heuristic labeling requires {required}. "
+                f"Missing: {missing}. "
+                f"Ensure _prepare_data() provides these features."
             )
-        
+
+        has_squeeze      = 'Squeeze' in self.states
+        has_distribution = 'Distribution' in self.states
+        has_liquidation  = 'Liquidation' in self.states
+
+        # Pre-compute optional features (vectorised for speed)
+        squeeze_mask      = self._compute_squeeze_mask(df) if has_squeeze else None
+        distribution_mask = self._compute_distribution_mask(df) if has_distribution else None
+        liquidation_mask  = self._compute_liquidation_mask(df) if has_liquidation else None
+
         labels = []
-        
-        for idx, row in df.iterrows():
-            # Check for NaN values (still possible during warm-up period)
+        for i, (idx, row) in enumerate(df.iterrows()):
+            # NaN guard for SMA warm-up
             if pd.isna(row.get('sma_20')) or pd.isna(row.get('sma_50')):
                 labels.append('Range')
                 continue
-            
-            # Trend detection
-            trend_up = (row['sma_20'] > row['sma_50'] and 
-                       row['close'] > row['sma_20'])
-            trend_down = (row['sma_20'] < row['sma_50'] and 
-                         row['close'] < row['sma_20'])
-            
+
+            # 1. Liquidation (highest priority)
+            if has_liquidation and liquidation_mask is not None and liquidation_mask.iloc[i]:
+                labels.append('Liquidation')
+                continue
+
+            # 2. Squeeze
+            if has_squeeze and squeeze_mask is not None and squeeze_mask.iloc[i]:
+                labels.append('Squeeze')
+                continue
+
+            # 3. Distribution
+            if has_distribution and distribution_mask is not None and distribution_mask.iloc[i]:
+                labels.append('Distribution')
+                continue
+
+            # 4-6. Standard trend detection
+            trend_up   = row['sma_20'] > row['sma_50'] and row['close'] > row['sma_20']
+            trend_down = row['sma_20'] < row['sma_50'] and row['close'] < row['sma_20']
+
             if trend_up:
                 labels.append('Trend+')
             elif trend_down:
                 labels.append('Trend-')
             else:
                 labels.append('Range')
-        
+
         return pd.Series(labels, index=df.index)
-    
+
+    def _compute_squeeze_mask(self, df: pd.DataFrame) -> Optional[pd.Series]:
+        """
+        Squeeze: ATR(14) < 0.8 × ATR(50) — volatility compression.
+        Returns boolean Series or None if features unavailable.
+        """
+        if 'atr_14' not in df.columns or 'atr_50' not in df.columns:
+            return None
+        with np.errstate(invalid='ignore', divide='ignore'):
+            ratio = df['atr_14'] / df['atr_50'].replace(0, np.nan)
+        return ratio < 0.8
+
+    def _compute_distribution_mask(self, df: pd.DataFrame) -> Optional[pd.Series]:
+        """
+        Distribution: volume > 1.2 × MA20(volume) AND price range-bound
+        (|sma_20 − sma_50| / sma_50 < 2%).
+        Returns boolean Series or None if features unavailable.
+        """
+        if 'volume' not in df.columns or 'volume_ma20' not in df.columns:
+            return None
+        if 'sma_20' not in df.columns or 'sma_50' not in df.columns:
+            return None
+        high_vol = df['volume'] > df['volume_ma20'].replace(0, np.nan) * 1.2
+        with np.errstate(invalid='ignore', divide='ignore'):
+            sma_diff_pct = (df['sma_20'] - df['sma_50']).abs() / df['sma_50'].replace(0, np.nan)
+        in_range = sma_diff_pct < 0.02
+        return high_vol & in_range
+
+    def _compute_liquidation_mask(self, df: pd.DataFrame) -> Optional[pd.Series]:
+        """
+        Liquidation: rolling 20-bar drawdown from peak ≤ −10%.
+        """
+        if 'close' not in df.columns:
+            return None
+        rolling_peak = df['close'].rolling(20, min_periods=1).max()
+        with np.errstate(invalid='ignore', divide='ignore'):
+            drawdown = (df['close'] - rolling_peak) / rolling_peak.replace(0, np.nan)
+        return drawdown <= -0.10
+
+    # ------------------------------------------------------------------
+    # Duration extraction
+    # ------------------------------------------------------------------
+
     def _extract_durations(self, state_mask: np.ndarray) -> List[int]:
-        """
-        Extract state durations from binary mask
-        
-        Args:
-            state_mask: Boolean array indicating state presence
-        
-        Returns:
-            List of duration lengths
-        """
-        durations = []
-        current_duration = 0
-        
+        """Extract consecutive run-lengths from a boolean mask."""
+        durations, cur = [], 0
         for is_state in state_mask:
             if is_state:
-                current_duration += 1
+                cur += 1
             else:
-                if current_duration > 0:
-                    durations.append(current_duration)
-                current_duration = 0
-        
-        if current_duration > 0:
-            durations.append(current_duration)
-        
+                if cur > 0:
+                    durations.append(cur)
+                cur = 0
+        if cur > 0:
+            durations.append(cur)
         return durations
-    
+
+    # ------------------------------------------------------------------
+    # Inference
+    # ------------------------------------------------------------------
+
     def emission_probability(self, observation: Dict, state: str) -> float:
-        """
-        Compute log-probability of observation given state
-        
-        Args:
-            observation: Dict with 'price' (return), 'atr', etc.
-            state: State name
-        
-        Returns:
-            Log-probability
-        """
+        """Log-probability of observation given state."""
         params = self.emission_params[state]
         log_prob = 0.0
-        
-        # Price return (Normal distribution)
+
         if 'price' in observation and not np.isnan(observation['price']):
             log_prob += stats.norm.logpdf(
                 observation['price'],
                 loc=params['price_mu'],
                 scale=params['price_sigma']
             )
-        
-        # ATR (Normal distribution)
+
         if 'atr' in observation and not np.isnan(observation['atr']):
             log_prob += stats.norm.logpdf(
                 observation['atr'],
                 loc=params['atr_mu'],
                 scale=params['atr_sigma']
             )
-        
+
         return log_prob
-    
+
     def forward_backward(self, observations: List[Dict]) -> np.ndarray:
         """
-        Forward-Backward algorithm for state probability inference
-        
-        Args:
-            observations: List of observation dicts with keys 'price' and 'atr'
-        
-        Returns:
-            Array of shape (T, n_states) with smoothed probabilities
+        Forward-Backward algorithm — works for any number of states.
+
+        Returns array (T, n_states) with smoothed posteriors.
         """
-        # Defensive assertion
         if not isinstance(observations, list):
             raise TypeError(
-                f"HSMM expects List[Dict] observations, got {type(observations)}. "
-                f"Each observation must be a dict with 'price' and 'atr' keys."
+                f"HSMM expects List[Dict], got {type(observations)}."
             )
-        
         if len(observations) > 0 and not isinstance(observations[0], dict):
             raise TypeError(
-                f"HSMM expects observations as List[Dict], got list of {type(observations[0])}. "
-                f"Each observation must be a dict with 'price' and 'atr' keys."
+                f"HSMM expects List[Dict], got list of {type(observations[0])}."
             )
-        
+
         T = len(observations)
-        
-        # Handle empty observations
         if T == 0:
             return np.array([])
-        
+
         # Forward pass
         log_alpha = np.full((T, self.n_states), -np.inf)
-        
-        # Initialize
         for s in range(self.n_states):
             log_alpha[0, s] = (
-                np.log(self.initial_probs[s] + 1e-10) +
-                self.emission_probability(observations[0], self.states[s])
+                np.log(self.initial_probs[s] + 1e-10)
+                + self.emission_probability(observations[0], self.states[s])
             )
-        
-        # Forward recursion
+
         for t in range(1, T):
             for s in range(self.n_states):
-                log_probs = []
-                for s_prev in range(self.n_states):
-                    log_prob = (
-                        log_alpha[t-1, s_prev] +
-                        np.log(self.transition_matrix[s_prev, s] + 1e-10)
-                    )
-                    log_probs.append(log_prob)
-                
-                log_alpha[t, s] = (
-                    logsumexp(log_probs) +
-                    self.emission_probability(observations[t], self.states[s])
-                )
-        
+                lp = [
+                    log_alpha[t-1, sp] + np.log(self.transition_matrix[sp, s] + 1e-10)
+                    for sp in range(self.n_states)
+                ]
+                log_alpha[t, s] = logsumexp(lp) + self.emission_probability(observations[t], self.states[s])
+
         # Backward pass
         log_beta = np.full((T, self.n_states), -np.inf)
-        log_beta[-1, :] = 0  # Terminal
-        
-        # Backward recursion
-        for t in range(T-2, -1, -1):
+        log_beta[-1, :] = 0.0
+
+        for t in range(T - 2, -1, -1):
             for s in range(self.n_states):
-                log_probs = []
-                for s_next in range(self.n_states):
-                    log_prob = (
-                        log_beta[t+1, s_next] +
-                        np.log(self.transition_matrix[s, s_next] + 1e-10) +
-                        self.emission_probability(observations[t+1], self.states[s_next])
-                    )
-                    log_probs.append(log_prob)
-                
-                log_beta[t, s] = logsumexp(log_probs)
-        
-        # Combine forward-backward
+                lp = [
+                    log_beta[t+1, sn]
+                    + np.log(self.transition_matrix[s, sn] + 1e-10)
+                    + self.emission_probability(observations[t+1], self.states[sn])
+                    for sn in range(self.n_states)
+                ]
+                log_beta[t, s] = logsumexp(lp)
+
         log_gamma = log_alpha + log_beta
-        
-        # Normalize to probabilities
         gamma = np.exp(log_gamma - logsumexp(log_gamma, axis=1, keepdims=True))
-        
         return gamma
-    
+
     def viterbi(self, observations: List[Dict]) -> List[str]:
-        """
-        Viterbi algorithm for most likely state sequence
-        
-        Args:
-            observations: List of observation dicts
-        
-        Returns:
-            List of most likely states
-        """
+        """Viterbi algorithm — works for any number of states."""
         T = len(observations)
-        
-        # Initialize
         log_delta = np.full((T, self.n_states), -np.inf)
         psi = np.zeros((T, self.n_states), dtype=int)
-        
-        # t=0
+
         for s in range(self.n_states):
             log_delta[0, s] = (
-                np.log(self.initial_probs[s] + 1e-10) +
-                self.emission_probability(observations[0], self.states[s])
+                np.log(self.initial_probs[s] + 1e-10)
+                + self.emission_probability(observations[0], self.states[s])
             )
-        
-        # Forward
+
         for t in range(1, T):
             for s in range(self.n_states):
-                log_probs = []
-                for s_prev in range(self.n_states):
-                    log_prob = (
-                        log_delta[t-1, s_prev] +
-                        np.log(self.transition_matrix[s_prev, s] + 1e-10)
-                    )
-                    log_probs.append(log_prob)
-                
-                psi[t, s] = np.argmax(log_probs)
-                log_delta[t, s] = (
-                    log_probs[psi[t, s]] +
-                    self.emission_probability(observations[t], self.states[s])
-                )
-        
-        # Backtrack
-        states = []
-        states.append(np.argmax(log_delta[-1]))
-        
-        for t in range(T-1, 0, -1):
-            states.append(psi[t, states[-1]])
-        
-        states.reverse()
-        
-        return [self.states[s] for s in states]
-    
+                lp = [
+                    log_delta[t-1, sp] + np.log(self.transition_matrix[sp, s] + 1e-10)
+                    for sp in range(self.n_states)
+                ]
+                psi[t, s] = int(np.argmax(lp))
+                log_delta[t, s] = lp[psi[t, s]] + self.emission_probability(observations[t], self.states[s])
+
+        path = [int(np.argmax(log_delta[-1]))]
+        for t in range(T - 1, 0, -1):
+            path.append(psi[t, path[-1]])
+        path.reverse()
+        return [self.states[s] for s in path]
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
     def get_confidence_score(self, state_probs: np.ndarray) -> float:
-        """
-        Convert state probabilities to confidence score (SdC)
-        
-        Args:
-            state_probs: Array of state probabilities (last timestep)
-        
-        Returns:
-            Confidence score 0-10
-        """
-        max_prob = np.max(state_probs)
-        return max_prob * 10
-    
+        """SdC = 10 × max P(s | O)."""
+        return float(np.max(state_probs)) * 10
+
     def get_dominant_state(self, state_probs: np.ndarray) -> Tuple[str, float]:
-        """
-        Get dominant state and its probability
-        
-        Args:
-            state_probs: Array of state probabilities
-        
-        Returns:
-            (state_name, probability)
-        """
-        idx = np.argmax(state_probs)
-        return self.states[idx], state_probs[idx]
+        """Return (state_name, probability) for the dominant state."""
+        idx = int(np.argmax(state_probs))
+        return self.states[idx], float(state_probs[idx])
 
 
 if __name__ == "__main__":
-    # Example usage
-    print("="*80)
-    print("HSMM Module - Example Usage")
-    print("="*80)
-    
-    # Create synthetic data
-    dates = pd.date_range('2020-01-01', periods=1000, freq='1h')
+    print("=" * 70)
+    print("HSMM — P4 5-state + Liquidation demo")
+    print("=" * 70)
+
+    np.random.seed(42)
+    n = 500
+    dates = pd.date_range('2021-01-01', periods=n, freq='1h')
+    close = 40000 + np.cumsum(np.random.randn(n) * 200)
+    tr = np.abs(np.random.randn(n) * 150) + 50
+
     data = pd.DataFrame({
-        'close': 10000 + np.cumsum(np.random.randn(1000) * 100),
-        'returns': np.random.randn(1000) * 0.02,
-        'atr_14': 100 + np.random.randn(1000) * 20,
-        'sma_20': 10000 + np.cumsum(np.random.randn(1000) * 50),
-        'sma_50': 10000 + np.cumsum(np.random.randn(1000) * 30)
+        'close':      close,
+        'high':       close + np.abs(np.random.randn(n) * 100),
+        'low':        close - np.abs(np.random.randn(n) * 100),
+        'volume':     np.abs(np.random.randn(n) * 500) + 100,
+        'returns':    np.concatenate([[0], np.diff(close) / close[:-1]]),
+        'atr_14':     pd.Series(tr).rolling(14).mean().values,
+        'atr_50':     pd.Series(tr).rolling(50).mean().values,
+        'sma_20':     pd.Series(close).rolling(20).mean().values,
+        'sma_50':     pd.Series(close).rolling(50).mean().values,
+        'volume_ma20': pd.Series(np.abs(np.random.randn(n) * 500) + 100).rolling(20).mean().values,
     }, index=dates)
-    
-    # Initialize HSMM
-    hsmm = SemiMarkovHMM()
-    print(f"\n✓ Initialized HSMM with states: {hsmm.states}")
-    
-    # Learn parameters
-    hsmm.initialize_parameters(data)
-    print(f"✓ Learned parameters from {len(data)} observations")
-    
-    # Prepare observations
-    observations = []
-    for idx, row in data.tail(100).iterrows():
-        obs = {
-            'price': row['returns'],
-            'atr': row['atr_14']
-        }
-        observations.append(obs)
-    
-    # Run Forward-Backward
-    state_probs = hsmm.forward_backward(observations)
-    print(f"\n✓ Computed state probabilities: shape {state_probs.shape}")
-    
-    # Get latest confidence
-    latest_probs = state_probs[-1]
-    confidence = hsmm.get_confidence_score(latest_probs)
-    dominant_state, prob = hsmm.get_dominant_state(latest_probs)
-    
-    print(f"\nLatest State Analysis:")
-    print(f"  Trend+: {latest_probs[0]*100:.1f}%")
-    print(f"  Range:  {latest_probs[1]*100:.1f}%")
-    print(f"  Trend-: {latest_probs[2]*100:.1f}%")
-    print(f"  Dominant: {dominant_state} ({prob*100:.1f}%)")
-    print(f"  Confidence (SdC): {confidence:.2f}/10")
-    
-    print("\n" + "="*80)
-    print("✅ HSMM Module Working")
-    print("="*80)
+
+    for state_set, label in [
+        (['Trend+', 'Range', 'Trend-'], '3-state'),
+        (['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution'], '5-state'),
+        (['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution', 'Liquidation'], '6-state'),
+    ]:
+        hsmm = SemiMarkovHMM(states=state_set)
+        hsmm.initialize_parameters(data)
+
+        obs = [{'price': data['returns'].iloc[i], 'atr': data['atr_14'].iloc[i]}
+               for i in range(50)]
+        probs = hsmm.forward_backward(obs)
+        dom, p = hsmm.get_dominant_state(probs[-1])
+        print(f"\n{label}: dominant={dom} ({p:.2%})  A shape={hsmm.transition_matrix.shape}")
+        print(f"  Liquidation row: {hsmm.transition_matrix[-1] if 'Liquidation' in state_set else 'N/A'}")
+
+    print("\n✅ P4 HSMM Working")

@@ -301,5 +301,163 @@ class TestHSMMIntegration:
         print(f"  Confidence (SdC): {confidence:.2f}/10")
 
 
+# ------------------------------------------------------------------
+# P4 — 5-state and 6-state HSMM tests
+# ------------------------------------------------------------------
+
+@pytest.fixture
+def sample_data_5state():
+    """Sample data with extra features needed for 5-state HSMM."""
+    np.random.seed(42)
+    n = 1000
+    dates = pd.date_range('2020-01-01', periods=n, freq='1h')
+    close = 10000 + np.cumsum(np.random.randn(n) * 100)
+    atr_14 = np.abs(100 + np.random.randn(n) * 20)
+    # atr_50 is smoothed version of atr_14
+    atr_50 = pd.Series(atr_14).rolling(50, min_periods=1).mean().values
+    volume = np.abs(1000 + np.random.randn(n) * 200)
+    volume_ma20 = pd.Series(volume).rolling(20, min_periods=1).mean().values
+    sma_20 = pd.Series(close).rolling(20, min_periods=1).mean().values
+    sma_50 = pd.Series(close).rolling(50, min_periods=1).mean().values
+
+    return pd.DataFrame({
+        'close':       close,
+        'returns':     np.concatenate([[0], np.diff(close) / close[:-1]]),
+        'atr_14':      atr_14,
+        'atr_50':      atr_50,
+        'volume':      volume,
+        'volume_ma20': volume_ma20,
+        'sma_20':      sma_20,
+        'sma_50':      sma_50,
+    }, index=dates)
+
+
+class TestHSMMP4FiveState:
+    """P4a — 5-state HSMM tests (Squeeze + Distribution)."""
+
+    def test_5state_init(self):
+        """SemiMarkovHMM accepts 5-state list."""
+        hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution'])
+        assert hsmm.n_states == 5
+        assert 'Squeeze' in hsmm.states
+        assert 'Distribution' in hsmm.states
+
+    def test_5state_transition_matrix_shape(self, sample_data_5state):
+        """Transition matrix is 5×5 for 5-state model."""
+        hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution'])
+        hsmm.initialize_parameters(sample_data_5state)
+        assert hsmm.transition_matrix.shape == (5, 5)
+
+    def test_5state_transition_rows_sum_to_one(self, sample_data_5state):
+        """Every row of the 5-state transition matrix sums to 1."""
+        hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution'])
+        hsmm.initialize_parameters(sample_data_5state)
+        row_sums = hsmm.transition_matrix.sum(axis=1)
+        assert np.allclose(row_sums, 1.0, atol=1e-6)
+
+    def test_5state_forward_backward_shape(self, sample_data_5state):
+        """Forward-Backward returns (T, 5) for 5-state model."""
+        hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution'])
+        hsmm.initialize_parameters(sample_data_5state)
+        observations = [
+            {'price': sample_data_5state['returns'].iloc[i],
+             'atr':   sample_data_5state['atr_14'].iloc[i]}
+            for i in range(50)
+        ]
+        gamma = hsmm.forward_backward(observations)
+        assert gamma.shape == (50, 5)
+
+    def test_5state_posteriors_sum_to_one(self, sample_data_5state):
+        """Each timestep posterior sums to 1 in 5-state model."""
+        hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution'])
+        hsmm.initialize_parameters(sample_data_5state)
+        observations = [
+            {'price': sample_data_5state['returns'].iloc[i],
+             'atr':   sample_data_5state['atr_14'].iloc[i]}
+            for i in range(50)
+        ]
+        gamma = hsmm.forward_backward(observations)
+        assert np.allclose(gamma.sum(axis=1), 1.0, atol=0.01)
+
+    def test_5state_emission_params_present(self, sample_data_5state):
+        """All 5 states have emission params after init."""
+        hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution'])
+        hsmm.initialize_parameters(sample_data_5state)
+        for state in hsmm.states:
+            assert state in hsmm.emission_params
+            assert 'price_mu' in hsmm.emission_params[state]
+            assert 'price_sigma' in hsmm.emission_params[state]
+
+    def test_squeeze_prior_row_sums_to_one(self):
+        """Squeeze row in 5-state prior sums to 1."""
+        hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution'])
+        A = hsmm._build_transition_prior()
+        squeeze_idx = hsmm.state_to_idx['Squeeze']
+        assert np.isclose(A[squeeze_idx].sum(), 1.0, atol=1e-6)
+
+    def test_distribution_leads_to_trend_minus(self):
+        """Prior: P(Trend- | Distribution) > P(Trend+ | Distribution)."""
+        hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution'])
+        A = hsmm._build_transition_prior()
+        dist_idx  = hsmm.state_to_idx['Distribution']
+        tp_idx    = hsmm.state_to_idx['Trend+']
+        tm_idx    = hsmm.state_to_idx['Trend-']
+        assert A[dist_idx, tm_idx] > A[dist_idx, tp_idx]
+
+    def test_squeeze_exits_to_both_trends(self):
+        """Prior: Squeeze exits to Trend+ and Trend- with equal probability."""
+        hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution'])
+        A = hsmm._build_transition_prior()
+        sqz_idx = hsmm.state_to_idx['Squeeze']
+        tp_idx  = hsmm.state_to_idx['Trend+']
+        tm_idx  = hsmm.state_to_idx['Trend-']
+        # Both exit probabilities should be substantial (> 15%)
+        assert A[sqz_idx, tp_idx] > 0.15
+        assert A[sqz_idx, tm_idx] > 0.15
+
+
+class TestHSMMP4SixState:
+    """P4b — 6-state HSMM tests (Liquidation)."""
+
+    def test_6state_init(self):
+        """SemiMarkovHMM accepts 6-state list."""
+        hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution', 'Liquidation'])
+        assert hsmm.n_states == 6
+        assert 'Liquidation' in hsmm.states
+
+    def test_liquidation_nearly_absorbing(self):
+        """Liquidation self-transition ≥ 0.90 (nearly absorbing)."""
+        hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution', 'Liquidation'])
+        A = hsmm._build_transition_prior()
+        liq_idx = hsmm.state_to_idx['Liquidation']
+        assert A[liq_idx, liq_idx] >= 0.90, \
+            f"Liquidation self-transition {A[liq_idx, liq_idx]:.3f} < 0.90"
+
+    def test_6state_rows_sum_to_one(self):
+        """All rows of 6-state prior sum to 1."""
+        hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution', 'Liquidation'])
+        A = hsmm._build_transition_prior()
+        assert np.allclose(A.sum(axis=1), 1.0, atol=1e-6)
+
+    def test_liquidation_default_emission_negative_mu(self):
+        """Liquidation default emission has negative price_mu."""
+        hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution', 'Liquidation'])
+        em = hsmm._default_emission('Liquidation')
+        assert em['price_mu'] < 0, "Liquidation should have negative expected return"
+
+    def test_6state_forward_backward_shape(self, sample_data_5state):
+        """Forward-Backward returns (T, 6) for 6-state model."""
+        hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution', 'Liquidation'])
+        hsmm.initialize_parameters(sample_data_5state)
+        observations = [
+            {'price': sample_data_5state['returns'].iloc[i],
+             'atr':   sample_data_5state['atr_14'].iloc[i]}
+            for i in range(30)
+        ]
+        gamma = hsmm.forward_backward(observations)
+        assert gamma.shape == (30, 6)
+        assert np.allclose(gamma.sum(axis=1), 1.0, atol=0.01)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])

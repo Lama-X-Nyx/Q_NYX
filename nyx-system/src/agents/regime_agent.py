@@ -36,8 +36,8 @@ class RegimeAgent:
         timeframes = mtf_config.get('timeframes', {})
         self.timeframe = timeframes.get('regime', '4h')
         
-        # Initialize HSMM
-        self.hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-'])
+        # Initialize HSMM — P4a: 5-state (Trend+, Range, Trend-, Squeeze, Distribution)
+        self.hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution'])
         
         # Thresholds from config
         mtf_conditions = config.get('strategy', {}).get('mtf_conditions', {})
@@ -106,13 +106,12 @@ class RegimeAgent:
             # Current state probabilities
             current_probs = state_probs[-1]
             
-            # Map to states
+            # Map to states (all active states in model)
             hsmm_states = {
-                'Trend+': current_probs[0],
-                'Range': current_probs[1],
-                'Trend-': current_probs[2]
+                s: float(current_probs[i])
+                for i, s in enumerate(self.hsmm.states)
             }
-            
+
             # Get most likely state
             state_name = max(hsmm_states.items(), key=lambda x: x[1])[0]
             state_prob = hsmm_states[state_name]
@@ -124,26 +123,30 @@ class RegimeAgent:
             current_state_idx = np.argmax(current_probs)
             stability = self.hsmm.transition_matrix[current_state_idx, current_state_idx]
             
-            # Map to standardized state names
+            # Map to standardized state names (P4a: 5-state)
             state_mapping = {
-                'Trend+': 'trend_plus',
-                'Range': 'range',
-                'Trend-': 'trend_minus'
+                'Trend+':       'trend_plus',
+                'Range':        'range',
+                'Trend-':       'trend_minus',
+                'Squeeze':      'squeeze',
+                'Distribution': 'distribution',
+                'Liquidation':  'liquidation',
             }
-            state = state_mapping[state_name]
+            state = state_mapping.get(state_name, 'range')
             
             # Check conditions
             sdc_passed = sdc > self.sdc_min
             stability_passed = stability >= self.stability_min
             
             # Context alignment (if provided)
+            # P4a: Squeeze/Distribution are ambiguous — don't hard-block on context
             context_aligned = True
             if context_state:
-                if context_state == 'bullish' and state == 'trend_minus':
+                if context_state == 'bullish' and state in ('trend_minus', 'distribution', 'liquidation'):
                     context_aligned = False
-                elif context_state == 'bearish' and state == 'trend_plus':
+                elif context_state == 'bearish' and state in ('trend_plus',):
                     context_aligned = False
-                elif context_state == 'neutral' and state != 'range':
+                elif context_state == 'neutral' and state not in ('range', 'squeeze'):
                     context_aligned = False
             
             # Overall pass
@@ -235,7 +238,15 @@ class RegimeAgent:
         # Add SMA_50 (required by HSMM heuristic labeling)
         if 'sma_50' not in df_prepared.columns:
             df_prepared['sma_50'] = df_prepared['close'].rolling(window=50).mean()
-        
+
+        # Add ATR_50 — needed for Squeeze detection (P4a)
+        if 'atr_50' not in df_prepared.columns and 'atr_14' in df_prepared.columns:
+            df_prepared['atr_50'] = df_prepared['atr_14'].rolling(window=50).mean()
+
+        # Add volume_ma20 — needed for Distribution detection (P4a)
+        if 'volume_ma20' not in df_prepared.columns and 'volume' in df_prepared.columns:
+            df_prepared['volume_ma20'] = df_prepared['volume'].rolling(window=20).mean()
+
         return df_prepared
 
 
