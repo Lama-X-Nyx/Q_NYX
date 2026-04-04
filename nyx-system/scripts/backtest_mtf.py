@@ -14,6 +14,7 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 from datetime import datetime
+from dateutil.relativedelta import relativedelta
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -133,6 +134,51 @@ def pct_str(v: float) -> str:
 # ---------------------------------------------------------------------------
 # Backtest engine
 # ---------------------------------------------------------------------------
+
+def pretrain_agents(orchestrator: Orchestrator, mtf_all: dict,
+                    pretrain_end: str, pretrain_months: int,
+                    em_iters: int = 20) -> None:
+    """
+    Pre-train HSMM agents via Baum-Welch EM on historical data that
+    precedes the backtest period.
+
+    Args:
+        orchestrator:    Orchestrator instance (exposes .regime_agent, .setup_agent)
+        mtf_all:         Full MTF data dict
+        pretrain_end:    ISO date string — last day of pre-training window
+        pretrain_months: Number of months to look back for training data
+        em_iters:        EM iterations per agent (default 20)
+    """
+    end_ts    = pd.Timestamp(pretrain_end)
+    start_ts  = end_ts - relativedelta(months=pretrain_months)
+
+    print(f"\n  [EM PRE-TRAIN]  {start_ts.date()} → {end_ts.date()}  "
+          f"({pretrain_months}M, {em_iters} iters)")
+
+    # Regime agent — 4H data (or regime timeframe)
+    regime_tf = '4h' if '4h' in mtf_all else '1h'
+    df_regime = mtf_all[regime_tf]
+    regime_window = df_regime[(df_regime.index >= start_ts) & (df_regime.index < end_ts)]
+    if len(regime_window) >= 100:
+        ll = orchestrator.regime_agent.pretrain(regime_window, n_iter=em_iters)
+        print(f"    RegimeAgent  ({regime_tf})  {len(regime_window)} bars  "
+              f"{len(ll)} EM iters  LL={ll[-1]:.0f}" if ll else
+              f"    RegimeAgent  ({regime_tf})  {len(regime_window)} bars  EM skipped")
+    else:
+        print(f"    RegimeAgent  SKIP (only {len(regime_window)} bars in pretrain window)")
+
+    # Setup agent — 15M data
+    setup_tf = '15m' if '15m' in mtf_all else '1h'
+    df_setup = mtf_all[setup_tf]
+    setup_window = df_setup[(df_setup.index >= start_ts) & (df_setup.index < end_ts)]
+    if len(setup_window) >= 100:
+        ll = orchestrator.setup_agent.pretrain(setup_window, n_iter=em_iters)
+        print(f"    SetupAgent   ({setup_tf})  {len(setup_window)} bars  "
+              f"{len(ll)} EM iters  LL={ll[-1]:.0f}" if ll else
+              f"    SetupAgent   ({setup_tf})  {len(setup_window)} bars  EM skipped")
+    else:
+        print(f"    SetupAgent   SKIP (only {len(setup_window)} bars in pretrain window)")
+
 
 class MTFBacktest:
     def __init__(self, config: dict, initial_capital: float = 10_000.0):
@@ -419,17 +465,33 @@ def pct_str(v: float) -> str:
 
 def main():
     parser = argparse.ArgumentParser(description='NYX v0.9 MTF Backtest')
-    parser.add_argument('--pair',    default='BTCUSDT')
-    parser.add_argument('--start',   default='2023-02-01')
-    parser.add_argument('--end',     default='2023-02-15')
-    parser.add_argument('--capital', type=float, default=10_000.0)
+    parser.add_argument('--pair',     default='BTCUSDT')
+    parser.add_argument('--start',    default='2023-02-01')
+    parser.add_argument('--end',      default='2023-02-15')
+    parser.add_argument('--capital',  type=float, default=10_000.0)
     parser.add_argument('--data-dir', default='data/raw/mtf')
+    parser.add_argument('--pretrain-months', type=int, default=0,
+                        help='Months of history before --start to pre-train HSMM via EM '
+                             '(0 = disabled, uses heuristic init only)')
+    parser.add_argument('--em-iters', type=int, default=20,
+                        help='EM iterations for pre-training (default: 20)')
     args = parser.parse_args()
 
     import time as _time
     mtf_all = load_mtf(args.pair, args.data_dir)
 
     bt = MTFBacktest(BASE_CONFIG, args.capital)
+
+    # Optional EM pre-training on data before the backtest window
+    if args.pretrain_months > 0:
+        pretrain_agents(
+            bt.orchestrator,
+            mtf_all,
+            pretrain_end=args.start,
+            pretrain_months=args.pretrain_months,
+            em_iters=args.em_iters,
+        )
+
     t0 = _time.time()
     results = bt.run(mtf_all, args.start, args.end)
     elapsed = _time.time() - t0

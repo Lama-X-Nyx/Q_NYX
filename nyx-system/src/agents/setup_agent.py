@@ -89,6 +89,25 @@ class SetupAgent:
 
         return df_prepared
 
+    def pretrain(self, df: pd.DataFrame, n_iter: int = 30, tol: float = 1e-4) -> list:
+        """
+        Train the alignment HSMM via Baum-Welch EM on historical 15M data.
+
+        Call once on a training period before running backtests/live.
+        Afterwards, _compute_hsmm_alignment() uses the learned parameters
+        and skips re-initialization (fingerprint cache hit).
+
+        Args:
+            df: Historical OHLCV DataFrame (15M timeframe)
+            n_iter: Maximum EM iterations
+            tol: Convergence tolerance on log-likelihood
+
+        Returns:
+            List of log-likelihoods per EM iteration
+        """
+        df_prepared = self._prepare_data(df)
+        return self.hsmm.initialize_parameters_with_em(df_prepared, n_iter=n_iter, tol=tol)
+
     def _compute_hsmm_alignment(self, df: pd.DataFrame, context_state: str) -> Dict:
         """
         Run HSMM Forward-Backward on 15M data and return alignment probability.
