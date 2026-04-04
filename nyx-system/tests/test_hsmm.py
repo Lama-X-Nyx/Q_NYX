@@ -14,7 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.core.hsmm import SemiMarkovHMM
+from src.core.hsmm import SemiMarkovHMM, _logsumexp
 
 
 @pytest.fixture
@@ -457,6 +457,128 @@ class TestHSMMP4SixState:
         gamma = hsmm.forward_backward(observations)
         assert gamma.shape == (30, 6)
         assert np.allclose(gamma.sum(axis=1), 1.0, atol=0.01)
+
+
+# ------------------------------------------------------------------
+# Baum-Welch EM tests
+# ------------------------------------------------------------------
+
+class TestBaumWelchEM:
+    """Tests for the Baum-Welch EM implementation."""
+
+    def test_fit_returns_ll_history(self, sample_data_5state):
+        """fit() returns a non-empty list of log-likelihoods."""
+        hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution'])
+        hsmm.initialize_parameters(sample_data_5state)
+        observations = [
+            {'price': sample_data_5state['returns'].iloc[i],
+             'atr':   sample_data_5state['atr_14'].iloc[i]}
+            for i in range(200)
+        ]
+        ll_hist = hsmm.fit(observations, n_iter=5)
+        assert isinstance(ll_hist, list)
+        assert len(ll_hist) > 0
+
+    def test_fit_ll_non_decreasing(self, sample_data_5state):
+        """EM should not decrease log-likelihood (up to floating-point noise)."""
+        hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution'])
+        hsmm.initialize_parameters(sample_data_5state)
+        observations = [
+            {'price': sample_data_5state['returns'].iloc[i],
+             'atr':   sample_data_5state['atr_14'].iloc[i]}
+            for i in range(300)
+        ]
+        ll_hist = hsmm.fit(observations, n_iter=20, tol=1e-6)
+        # Each step should not drop by more than a tiny numerical tolerance
+        for prev, curr in zip(ll_hist[:-1], ll_hist[1:]):
+            assert curr >= prev - 0.5, f"LL decreased: {prev:.2f} → {curr:.2f}"
+
+    def test_transition_matrix_rows_sum_after_em(self, sample_data_5state):
+        """After EM, transition matrix rows still sum to 1."""
+        hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution'])
+        hsmm.initialize_parameters(sample_data_5state)
+        observations = [
+            {'price': sample_data_5state['returns'].iloc[i],
+             'atr':   sample_data_5state['atr_14'].iloc[i]}
+            for i in range(200)
+        ]
+        hsmm.fit(observations, n_iter=10)
+        row_sums = hsmm.transition_matrix.sum(axis=1)
+        assert np.allclose(row_sums, 1.0, atol=1e-6)
+
+    def test_emission_sigma_positive_after_em(self, sample_data_5state):
+        """After EM, all emission sigmas are strictly positive."""
+        hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution'])
+        hsmm.initialize_parameters(sample_data_5state)
+        observations = [
+            {'price': sample_data_5state['returns'].iloc[i],
+             'atr':   sample_data_5state['atr_14'].iloc[i]}
+            for i in range(200)
+        ]
+        hsmm.fit(observations, n_iter=10)
+        for state, params in hsmm.emission_params.items():
+            assert params['price_sigma'] > 0, f"{state} price_sigma not positive"
+            assert params['atr_sigma']   > 0, f"{state} atr_sigma not positive"
+
+    def test_initialize_with_em_public_api(self, sample_data_5state):
+        """initialize_parameters_with_em() runs warm-start + EM and returns LL history."""
+        hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution'])
+        ll_hist = hsmm.initialize_parameters_with_em(sample_data_5state, n_iter=5)
+        assert isinstance(ll_hist, list)
+        assert len(ll_hist) > 0
+        # Model should be usable after EM
+        observations = [
+            {'price': sample_data_5state['returns'].iloc[i],
+             'atr':   sample_data_5state['atr_14'].iloc[i]}
+            for i in range(30)
+        ]
+        gamma = hsmm.forward_backward(observations)
+        assert gamma.shape == (30, 5)
+
+    def test_compute_xi_shape(self, sample_data_5state):
+        """_compute_xi() returns (T-1, n, n) tensor."""
+        hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution'])
+        hsmm.initialize_parameters(sample_data_5state)
+        T, n = 40, hsmm.n_states
+        observations = [
+            {'price': sample_data_5state['returns'].iloc[i],
+             'atr':   sample_data_5state['atr_14'].iloc[i]}
+            for i in range(T)
+        ]
+        log_B = hsmm._compute_log_B(observations)
+        log_alpha = np.full((T, n), -np.inf)
+        log_A     = np.log(hsmm.transition_matrix + 1e-10)
+        log_alpha[0] = np.log(hsmm.initial_probs + 1e-10) + log_B[0]
+        for t in range(1, T):
+            log_alpha[t] = _logsumexp(log_alpha[t-1, :, np.newaxis] + log_A, axis=0) + log_B[t]
+        log_beta = np.zeros((T, n))
+        for t in range(T - 2, -1, -1):
+            log_beta[t] = _logsumexp(log_A + log_B[t+1] + log_beta[t+1], axis=1)
+        xi = hsmm._compute_xi(log_alpha, log_beta, log_B)
+        assert xi.shape == (T - 1, n, n)
+
+    def test_compute_xi_sums_to_one(self, sample_data_5state):
+        """Each ξ(t) slice should sum to 1 over (i, j)."""
+        hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution'])
+        hsmm.initialize_parameters(sample_data_5state)
+        T, n = 40, hsmm.n_states
+        observations = [
+            {'price': sample_data_5state['returns'].iloc[i],
+             'atr':   sample_data_5state['atr_14'].iloc[i]}
+            for i in range(T)
+        ]
+        log_B    = hsmm._compute_log_B(observations)
+        log_A    = np.log(hsmm.transition_matrix + 1e-10)
+        log_alpha = np.full((T, n), -np.inf)
+        log_alpha[0] = np.log(hsmm.initial_probs + 1e-10) + log_B[0]
+        for t in range(1, T):
+            log_alpha[t] = _logsumexp(log_alpha[t-1, :, np.newaxis] + log_A, axis=0) + log_B[t]
+        log_beta = np.zeros((T, n))
+        for t in range(T - 2, -1, -1):
+            log_beta[t] = _logsumexp(log_A + log_B[t+1] + log_beta[t+1], axis=1)
+        xi = hsmm._compute_xi(log_alpha, log_beta, log_B)
+        slice_sums = xi.sum(axis=(1, 2))
+        assert np.allclose(slice_sums, 1.0, atol=1e-5)
 
 
 if __name__ == "__main__":

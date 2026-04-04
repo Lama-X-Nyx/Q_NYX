@@ -44,6 +44,24 @@ class RegimeAgent:
         self.sdc_min = mtf_conditions.get('sdc_min', 5.0)
         self.stability_min = mtf_conditions.get('stability_4h_min', 0.60)
     
+    def pretrain(self, df: pd.DataFrame, n_iter: int = 30, tol: float = 1e-4) -> list:
+        """
+        Train HSMM via Baum-Welch EM on historical data.
+
+        Call once on a training period before running backtests/live.
+        Afterwards, forward_backward() uses the learned parameters.
+
+        Args:
+            df: Historical OHLCV DataFrame (at regime timeframe)
+            n_iter: Maximum EM iterations
+            tol: Convergence tolerance on log-likelihood
+
+        Returns:
+            List of log-likelihoods per EM iteration
+        """
+        df_prepared = self._prepare_data(df)
+        return self.hsmm.initialize_parameters_with_em(df_prepared, n_iter=n_iter, tol=tol)
+
     def analyze(self, df: pd.DataFrame, context_state: str = None) -> AgentResult:
         """
         Analyze market regime using HSMM

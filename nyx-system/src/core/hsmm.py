@@ -461,6 +461,210 @@ class SemiMarkovHMM:
         return [self.states[s] for s in path]
 
     # ------------------------------------------------------------------
+    # Baum-Welch EM
+    # ------------------------------------------------------------------
+
+    def _df_to_observations(self, data: pd.DataFrame) -> List[Dict]:
+        """Convert a prepared DataFrame to the List[Dict] format used by F-B."""
+        obs = []
+        returns_col = data['returns'].values if 'returns' in data.columns else np.full(len(data), np.nan)
+        atr_col     = data['atr_14'].values  if 'atr_14'   in data.columns else np.full(len(data), np.nan)
+        for r, a in zip(returns_col, atr_col):
+            obs.append({
+                'price': float(r) if not np.isnan(r) else np.nan,
+                'atr':   float(a) if not np.isnan(a) else np.nan,
+            })
+        return obs
+
+    def _compute_xi(
+        self,
+        log_alpha: np.ndarray,
+        log_beta:  np.ndarray,
+        log_B:     np.ndarray,
+    ) -> np.ndarray:
+        """
+        ξ(t, i, j) = P(q_t=i, q_{t+1}=j | O)   shape (T-1, n, n)
+
+        Fully vectorised — no Python loops.
+        """
+        T = log_alpha.shape[0]
+        log_A = np.log(self.transition_matrix + 1e-10)
+
+        # (T-1, n, 1) + (1, n, n) + (T-1, 1, n) + (T-1, 1, n)  → (T-1, n, n)
+        log_xi = (
+            log_alpha[:-1, :, np.newaxis]
+            + log_A[np.newaxis, :, :]
+            + log_B[1:, np.newaxis, :]
+            + log_beta[1:, np.newaxis, :]
+        )
+        # Normalise each timestep slice
+        log_Z = _logsumexp(log_xi.reshape(T - 1, -1), axis=1)          # (T-1,)
+        xi = np.exp(log_xi - log_Z[:, np.newaxis, np.newaxis])          # (T-1, n, n)
+        return xi
+
+    def _m_step(
+        self,
+        gamma:    np.ndarray,
+        xi:       np.ndarray,
+        prices:   np.ndarray,
+        atrs:     np.ndarray,
+    ) -> None:
+        """
+        M-step: update π, A, and Gaussian emission params.
+
+        gamma  : (T, n)     — smoothed state posteriors
+        xi     : (T-1, n, n) — joint transition posteriors
+        prices : (T,)        — return observations (may contain NaN)
+        atrs   : (T,)        — ATR observations   (may contain NaN)
+        """
+        EPS = 1e-8
+
+        # ---- Initial distribution ----
+        self.initial_probs = gamma[0] / (gamma[0].sum() + EPS)
+
+        # ---- Transition matrix ----
+        A_num = xi.sum(axis=0)                                  # (n, n)
+        A_den = A_num.sum(axis=1, keepdims=True) + EPS          # (n, 1)
+        A_new = A_num / A_den
+        # Floor at 1e-4 to prevent degenerate absorbing states
+        A_new = np.clip(A_new, 1e-4, None)
+        self.transition_matrix = A_new / A_new.sum(axis=1, keepdims=True)
+
+        # ---- Emission params (Gaussian, per state) ----
+        for i, state in enumerate(self.states):
+            w = gamma[:, i]                                     # (T,)
+
+            # Price
+            vp = ~np.isnan(prices)
+            w_p = w[vp]; p = prices[vp]
+            if w_p.sum() > EPS:
+                mu_p  = np.dot(w_p, p) / w_p.sum()
+                sig_p = np.sqrt(np.dot(w_p, (p - mu_p) ** 2) / w_p.sum())
+            else:
+                mu_p  = self.emission_params[state]['price_mu']
+                sig_p = self.emission_params[state]['price_sigma']
+
+            # ATR
+            va = ~np.isnan(atrs)
+            w_a = w[va]; a = atrs[va]
+            if w_a.sum() > EPS:
+                mu_a  = np.dot(w_a, a) / w_a.sum()
+                sig_a = np.sqrt(np.dot(w_a, (a - mu_a) ** 2) / w_a.sum())
+            else:
+                mu_a  = self.emission_params[state]['atr_mu']
+                sig_a = self.emission_params[state]['atr_sigma']
+
+            self.emission_params[state] = {
+                'price_mu':    float(mu_p),
+                'price_sigma': float(max(sig_p, 1e-4)),
+                'atr_mu':      float(mu_a),
+                'atr_sigma':   float(max(sig_a, 0.01)),
+            }
+
+    def fit(
+        self,
+        observations: List[Dict],
+        n_iter: int = 30,
+        tol:    float = 1e-4,
+    ) -> List[float]:
+        """
+        Baum-Welch EM — learn A, B, π from observations.
+
+        Requires initialize_parameters() to have been called first
+        (heuristic warm-start avoids bad local optima).
+
+        Returns list of log-likelihoods per iteration.
+        """
+        if self.emission_params is None:
+            raise RuntimeError("Call initialize_parameters() before fit().")
+
+        T = len(observations)
+        if T < 2 * self.n_states:
+            return []
+
+        prices = np.array([o.get('price', np.nan) for o in observations])
+        atrs   = np.array([o.get('atr',   np.nan) for o in observations])
+
+        log_A  = np.log(self.transition_matrix + 1e-10)
+        ll_history: List[float] = []
+        prev_ll = -np.inf
+
+        for iteration in range(n_iter):
+            # ---- E-step ----
+            log_B = self._compute_log_B(observations)
+
+            # Forward
+            log_alpha = np.full((T, self.n_states), -np.inf)
+            log_alpha[0] = np.log(self.initial_probs + 1e-10) + log_B[0]
+            for t in range(1, T):
+                log_alpha[t] = _logsumexp(
+                    log_alpha[t - 1, :, np.newaxis] + log_A, axis=0
+                ) + log_B[t]
+
+            # Backward
+            log_beta = np.zeros((T, self.n_states))
+            for t in range(T - 2, -1, -1):
+                log_beta[t] = _logsumexp(
+                    log_A + log_B[t + 1] + log_beta[t + 1], axis=1
+                )
+
+            # Log-likelihood
+            ll = float(_logsumexp(log_alpha[-1]))
+            ll_history.append(ll)
+
+            # γ
+            log_gamma = log_alpha + log_beta
+            gamma = np.exp(
+                log_gamma - _logsumexp(log_gamma, axis=1, keepdims=True)
+            )
+
+            # ξ
+            xi = self._compute_xi(log_alpha, log_beta, log_B)
+
+            # ---- M-step ----
+            self._m_step(gamma, xi, prices, atrs)
+
+            # Refresh log_A with updated matrix
+            log_A = np.log(self.transition_matrix + 1e-10)
+
+            # Convergence check
+            if abs(ll - prev_ll) < tol:
+                break
+            prev_ll = ll
+
+        # Invalidate speed caches — parameters changed
+        self._init_fingerprint = None
+        self._fb_fingerprint   = None
+        self._fb_cache         = None
+
+        return ll_history
+
+    def initialize_parameters_with_em(
+        self,
+        data:   pd.DataFrame,
+        n_iter: int = 30,
+        tol:    float = 1e-4,
+    ) -> List[float]:
+        """
+        Full training: heuristic warm-start → Baum-Welch EM.
+
+        Call once on historical training data (e.g., 6-12 months).
+        Afterwards, use forward_backward() for online inference without
+        calling initialize_parameters() again.
+
+        Returns EM log-likelihood history.
+        """
+        # Warm-start: heuristic labels + prior transition
+        self.initialize_parameters(data)
+
+        # Build observations from prepared data
+        observations = self._df_to_observations(data)
+        if len(observations) < 2 * self.n_states:
+            return []
+
+        return self.fit(observations, n_iter=n_iter, tol=tol)
+
+    # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
 
