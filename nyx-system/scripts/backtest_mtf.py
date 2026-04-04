@@ -46,11 +46,14 @@ BASE_CONFIG = {
             'stability_4h_min':   0.60,
             # alignment_15m_min: threshold for SetupAgent 5-state HSMM alignment.
             # Formula: P(Trend+) + 0.5×P(Squeeze) for bullish context.
-            # Base P ≈ 0.20 per state (5-state). With Squeeze bonus, effective
-            # range is ~0.20–0.60 on trending bars. Threshold at 0.28 (~1.4× base).
-            'alignment_15m_min':  0.28,
+            # Base P ≈ 0.20 per state (5-state). Threshold 0.32 (~1.6× base):
+            # filters weak signals while keeping quality setups.
+            'alignment_15m_min':  0.32,
         },
         'intent_daily_projection_steps': 2,
+        # Minimum aggregate score to enter a trade (0 = disabled)
+        # Filters weak setups where agents barely agree
+        'min_entry_score': 0.70,
     },
     'fractal_readiness': {
         'context_min_bars': 50,
@@ -198,6 +201,9 @@ class MTFBacktest:
         self.equity_curve: list = []
         self.decision_log: list = []
 
+        # Cooldown: index of last close bar; no new entry allowed on same bar
+        self._last_close_bar: int = -1
+
     # -----------------------------------------------------------------------
     # Core loop
     # -----------------------------------------------------------------------
@@ -245,8 +251,10 @@ class MTFBacktest:
             if self.position == 'LONG':
                 if current_price <= self.stop_loss:
                     self._close('Stop-Loss', ts, current_price)
+                    self._last_close_bar = bar_i   # record close bar for cooldown
                 elif current_price >= self.take_profit:
                     self._close('Take-Profit', ts, current_price)
+                    self._last_close_bar = bar_i
 
             # --- 2. Skip orchestrator when in position (exits are SL/TP only) ---
             if self.position == 'LONG':
@@ -254,6 +262,14 @@ class MTFBacktest:
                 self.equity_curve.append({'ts': ts, 'price': current_price, 'equity': equity})
                 self.decision_log.append({'ts': ts, 'price': current_price,
                                           'action': 'HOLD', 'reason': 'in position', 'equity': equity})
+                continue
+
+            # --- 2b. Cooldown: skip entry on the same bar a position was closed ---
+            if bar_i == self._last_close_bar:
+                equity = self._equity(current_price)
+                self.equity_curve.append({'ts': ts, 'price': current_price, 'equity': equity})
+                self.decision_log.append({'ts': ts, 'price': current_price,
+                                          'action': 'WAIT', 'reason': 'cooldown (same bar as close)', 'equity': equity})
                 continue
 
             # --- 3. Build look-ahead-free MTF slices (O(1) via pre-built index) ---
@@ -272,14 +288,19 @@ class MTFBacktest:
                 action = decision.action
                 reason = decision.reason
 
-            # --- 5. Entry ---
+            # --- 5. Entry (with minimum quality score filter) ---
+            min_score = self.config.get('strategy', {}).get('min_entry_score', 0.0)
             if self.position is None and action == 'BUY':
-                self.entry_price   = current_price
-                self.stop_loss     = current_price * (1 - sl_pct)
-                self.take_profit   = current_price * (1 + sl_pct * tp_ratio)
-                self.position_size = size_pct
-                self.position      = 'LONG'
-                self._log_entry(ts, current_price, decision)
+                if decision and decision.score < min_score:
+                    action = 'WAIT'
+                    reason = f'Score {decision.score:.2f} < min_entry_score {min_score:.2f}'
+                else:
+                    self.entry_price   = current_price
+                    self.stop_loss     = current_price * (1 - sl_pct)
+                    self.take_profit   = current_price * (1 + sl_pct * tp_ratio)
+                    self.position_size = size_pct
+                    self.position      = 'LONG'
+                    self._log_entry(ts, current_price, decision)
 
             # --- 6. Equity snapshot ---
             equity = self._equity(current_price)
