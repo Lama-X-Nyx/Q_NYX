@@ -307,9 +307,38 @@ class SemiMarkovHMM:
 
         return log_prob
 
+    def _compute_log_B(self, observations: List[Dict]) -> np.ndarray:
+        """
+        Pre-compute full emission matrix log_B (T × n_states) in one pass.
+        Vectorised over states — eliminates inner Python loop in F-B / Viterbi.
+        """
+        T = len(observations)
+        log_B = np.zeros((T, self.n_states))
+
+        # Build param arrays once (shape: n_states)
+        price_mu    = np.array([self.emission_params[s]['price_mu']    for s in self.states])
+        price_sigma = np.array([self.emission_params[s]['price_sigma'] for s in self.states])
+        atr_mu      = np.array([self.emission_params[s]['atr_mu']      for s in self.states])
+        atr_sigma   = np.array([self.emission_params[s]['atr_sigma']   for s in self.states])
+
+        for t, obs in enumerate(observations):
+            lp = np.zeros(self.n_states)
+            price = obs.get('price', np.nan)
+            atr   = obs.get('atr',   np.nan)
+            if not np.isnan(price):
+                lp += stats.norm.logpdf(price, loc=price_mu, scale=price_sigma)
+            if not np.isnan(atr):
+                lp += stats.norm.logpdf(atr,   loc=atr_mu,   scale=atr_sigma)
+            log_B[t] = lp
+
+        return log_B
+
     def forward_backward(self, observations: List[Dict]) -> np.ndarray:
         """
-        Forward-Backward algorithm — works for any number of states.
+        Vectorised Forward-Backward algorithm — works for any number of states.
+
+        Replaces the original O(T × n²) Python-loop version with pure numpy
+        broadcasting: the inner per-state logsumexp becomes a single matrix op.
 
         Returns array (T, n_states) with smoothed posteriors.
         """
@@ -326,35 +355,30 @@ class SemiMarkovHMM:
         if T == 0:
             return np.array([])
 
-        # Forward pass
+        # Pre-compute emission matrix and log-transition matrix once
+        log_B = self._compute_log_B(observations)                  # (T, n)
+        log_A = np.log(self.transition_matrix + 1e-10)             # (n, n)  A[sp, s]
+
+        # Forward pass — vectorised over states
         log_alpha = np.full((T, self.n_states), -np.inf)
-        for s in range(self.n_states):
-            log_alpha[0, s] = (
-                np.log(self.initial_probs[s] + 1e-10)
-                + self.emission_probability(observations[0], self.states[s])
-            )
+        log_alpha[0] = np.log(self.initial_probs + 1e-10) + log_B[0]
 
         for t in range(1, T):
-            for s in range(self.n_states):
-                lp = [
-                    log_alpha[t-1, sp] + np.log(self.transition_matrix[sp, s] + 1e-10)
-                    for sp in range(self.n_states)
-                ]
-                log_alpha[t, s] = logsumexp(lp) + self.emission_probability(observations[t], self.states[s])
+            # log_alpha[t, s] = logsumexp_sp( log_alpha[t-1, sp] + log_A[sp, s] ) + log_B[t, s]
+            # log_alpha[t-1, :, None] + log_A  has shape (n, n); logsumexp over axis=0
+            log_alpha[t] = logsumexp(
+                log_alpha[t-1, :, np.newaxis] + log_A, axis=0
+            ) + log_B[t]
 
-        # Backward pass
-        log_beta = np.full((T, self.n_states), -np.inf)
-        log_beta[-1, :] = 0.0
+        # Backward pass — vectorised over states
+        log_beta = np.zeros((T, self.n_states))   # log(1) = 0 at T-1
 
         for t in range(T - 2, -1, -1):
-            for s in range(self.n_states):
-                lp = [
-                    log_beta[t+1, sn]
-                    + np.log(self.transition_matrix[s, sn] + 1e-10)
-                    + self.emission_probability(observations[t+1], self.states[sn])
-                    for sn in range(self.n_states)
-                ]
-                log_beta[t, s] = logsumexp(lp)
+            # log_beta[t, s] = logsumexp_sn( log_A[s, sn] + log_B[t+1, sn] + log_beta[t+1, sn] )
+            # log_A + log_B[t+1] + log_beta[t+1]  has shape (n, n); logsumexp over axis=1
+            log_beta[t] = logsumexp(
+                log_A + log_B[t+1] + log_beta[t+1], axis=1
+            )
 
         log_gamma = log_alpha + log_beta
         gamma = np.exp(log_gamma - logsumexp(log_gamma, axis=1, keepdims=True))
