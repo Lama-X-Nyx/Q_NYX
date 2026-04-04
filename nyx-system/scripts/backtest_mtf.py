@@ -92,6 +92,37 @@ def slice_mtf(mtf_all: dict, ts: pd.Timestamp, warmup: int = 200) -> dict:
     return slices
 
 
+def build_aligned_index(mtf_all: dict, bar_index: pd.DatetimeIndex,
+                         warmup: int = 200) -> list:
+    """
+    Pre-compute, for every 15m bar timestamp, the iloc positions in each
+    TF that correspond to the last closed bar strictly before that timestamp.
+
+    Returns a list of dicts: [{tf: (start_iloc, end_iloc), ...}, ...]
+    Using iloc ranges avoids repeated boolean index scans at runtime.
+    """
+    tf_indices = {tf: df.index for tf, df in mtf_all.items()}
+    aligned = []
+    # Use searchsorted (vectorised) for each TF
+    tf_sorted = {tf: np.array(idx.astype(np.int64)) for tf, idx in tf_indices.items()}
+    bar_ns = bar_index.astype(np.int64)
+
+    for ts_ns in bar_ns:
+        pos = {}
+        for tf, arr in tf_sorted.items():
+            # last bar strictly before ts
+            end = int(np.searchsorted(arr, ts_ns, side='left'))
+            start = max(0, end - warmup)
+            pos[tf] = (start, end)
+        aligned.append(pos)
+    return aligned
+
+
+def slice_from_pos(mtf_all: dict, pos: dict) -> dict:
+    """Fast iloc-based slice using pre-computed positions."""
+    return {tf: mtf_all[tf].iloc[s:e] for tf, (s, e) in pos.items()}
+
+
 def pct_str(v: float) -> str:
     return f'{v:+.2f}%'
 
@@ -139,13 +170,26 @@ class MTFBacktest:
         print(f"  Levier  : ×{leverage}  |  SL : {sl_pct*100:.1f}%  |  TP : {sl_pct*tp_ratio*100:.1f}%")
         print(f"{'═'*70}\n")
 
+        # Pre-build aligned index (replaces per-bar boolean index scan)
+        print("  Pré-calcul de l'index aligné MTF...", end='', flush=True)
+        import time as _time
+        t_idx = _time.time()
+        aligned_idx = build_aligned_index(mtf_all, bars_in_period.index)
+        print(f" {_time.time()-t_idx:.1f}s")
+
+        # Convert to numpy for fast row access
+        bar_closes  = bars_in_period['close'].values.astype(float)
+        bar_index   = bars_in_period.index
+
         total = len(bars_in_period)
-        for bar_i, (ts, row) in enumerate(bars_in_period.iterrows()):
-            if bar_i % 144 == 0:  # ~1 day of 15m bars
+        for bar_i in range(total):
+            ts            = bar_index[bar_i]
+            current_price = float(bar_closes[bar_i])
+
+            if bar_i % 144 == 0:  # ~1 day
                 pct = bar_i / total * 100
                 print(f"  [{pct:5.1f}%]  {ts.strftime('%Y-%m-%d %H:%M')}  "
-                      f"price=${float(row['close']):,.0f}  trades={len(self.trades)}")
-            current_price = float(row['close'])
+                      f"price=${current_price:,.0f}  trades={len(self.trades)}")
 
             # --- 1. Manage open position (SL/TP check before new signal) ---
             if self.position == 'LONG':
@@ -154,12 +198,20 @@ class MTFBacktest:
                 elif current_price >= self.take_profit:
                     self._close('Take-Profit', ts, current_price)
 
-            # --- 2. Build look-ahead-free MTF slices ---
-            slices = slice_mtf(mtf_all, ts)
+            # --- 2. Skip orchestrator when in position (exits are SL/TP only) ---
+            if self.position == 'LONG':
+                equity = self._equity(current_price)
+                self.equity_curve.append({'ts': ts, 'price': current_price, 'equity': equity})
+                self.decision_log.append({'ts': ts, 'price': current_price,
+                                          'action': 'HOLD', 'reason': 'in position', 'equity': equity})
+                continue
+
+            # --- 3. Build look-ahead-free MTF slices (O(1) via pre-built index) ---
+            slices = slice_from_pos(mtf_all, aligned_idx[bar_i])
             if any(len(v) == 0 for v in slices.values()):
                 continue  # Not enough history yet
 
-            # --- 3. Orchestrator decision ---
+            # --- 4. Orchestrator decision ---
             try:
                 decision = self.orchestrator.decide(slices, current_price=current_price)
             except Exception as exc:
@@ -170,7 +222,7 @@ class MTFBacktest:
                 action = decision.action
                 reason = decision.reason
 
-            # --- 4. Entry ---
+            # --- 5. Entry ---
             if self.position is None and action == 'BUY':
                 self.entry_price   = current_price
                 self.stop_loss     = current_price * (1 - sl_pct)
@@ -179,11 +231,11 @@ class MTFBacktest:
                 self.position      = 'LONG'
                 self._log_entry(ts, current_price, decision)
 
-            # --- 5. Equity snapshot ---
+            # --- 6. Equity snapshot ---
             equity = self._equity(current_price)
             self.equity_curve.append({'ts': ts, 'price': current_price, 'equity': equity})
 
-            # --- 6. Decision log (every bar) ---
+            # --- 7. Decision log (every bar) ---
             self.decision_log.append({
                 'ts':     ts,
                 'price':  current_price,
@@ -371,10 +423,14 @@ def main():
     parser.add_argument('--data-dir', default='data/raw/mtf')
     args = parser.parse_args()
 
+    import time as _time
     mtf_all = load_mtf(args.pair, args.data_dir)
 
     bt = MTFBacktest(BASE_CONFIG, args.capital)
+    t0 = _time.time()
     results = bt.run(mtf_all, args.start, args.end)
+    elapsed = _time.time() - t0
+    print(f"\n  Durée backtest : {elapsed:.1f}s  ({elapsed/60:.1f} min)")
     print_report(results, args.start, args.end)
 
 

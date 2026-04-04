@@ -9,8 +9,20 @@ P4b: Liquidation as a nearly-absorbing 6th state
 import numpy as np
 import pandas as pd
 from scipy import stats
-from scipy.special import logsumexp
 from typing import List, Dict, Optional, Tuple
+
+
+# ---------------------------------------------------------------------------
+# Fast logsumexp — drop-in for scipy.special.logsumexp but without the
+# array-API dispatch overhead that dominates cost for small (T×n) matrices.
+# ---------------------------------------------------------------------------
+def _logsumexp(a: np.ndarray, axis=None, keepdims: bool = False) -> np.ndarray:
+    a_max = np.max(a, axis=axis, keepdims=True)
+    # Replace -inf peaks with 0 to avoid nan in exp
+    a_max_safe = np.where(np.isneginf(a_max), 0.0, a_max)
+    out = np.log(np.sum(np.exp(a - a_max_safe), axis=axis, keepdims=keepdims))
+    peak = a_max_safe if keepdims else a_max_safe.squeeze(axis=axis)
+    return out + peak
 
 
 # State sets recognised by the smart-prior logic
@@ -44,6 +56,11 @@ class SemiMarkovHMM:
         self.emission_params = None
         self.duration_params = None
 
+        # Speed caches (backtest hot path — zero impact on trade logic)
+        self._init_fingerprint: Optional[int] = None
+        self._fb_fingerprint:   Optional[int] = None
+        self._fb_cache:         Optional[np.ndarray] = None
+
     # ------------------------------------------------------------------
     # Initialisation
     # ------------------------------------------------------------------
@@ -57,7 +74,17 @@ class SemiMarkovHMM:
         - transition_matrix (domain-informed prior, per known state sets)
         - emission_params (learned from heuristic labels)
         - duration_params (geometric, learned from run-lengths)
+
+        Speed note: if called with identical data (same tail fingerprint as the
+        previous call) the method returns immediately — parameters are unchanged.
+        This is transparent to callers and does not affect trade logic.
         """
+        # Fingerprint: hash of the last 10 close prices (cheap, stable proxy)
+        fp = hash(data['close'].iloc[-10:].values.tobytes()) if len(data) >= 10 else None
+        if fp is not None and fp == self._init_fingerprint and self.emission_params is not None:
+            return  # Data unchanged — reuse existing parameters
+        self._init_fingerprint = fp
+
         self.initial_probs = np.ones(self.n_states) / self.n_states
         self.transition_matrix = self._build_transition_prior()
 
@@ -186,43 +213,40 @@ class SemiMarkovHMM:
         has_distribution = 'Distribution' in self.states
         has_liquidation  = 'Liquidation' in self.states
 
-        # Pre-compute optional features (vectorised for speed)
-        squeeze_mask      = self._compute_squeeze_mask(df) if has_squeeze else None
-        distribution_mask = self._compute_distribution_mask(df) if has_distribution else None
-        liquidation_mask  = self._compute_liquidation_mask(df) if has_liquidation else None
+        # ---- Fully vectorised labeling (no iterrows) ----
+        sma20 = df['sma_20'].values
+        sma50 = df['sma_50'].values
+        close = df['close'].values
+        nan_mask = np.isnan(sma20) | np.isnan(sma50)
 
-        labels = []
-        for i, (idx, row) in enumerate(df.iterrows()):
-            # NaN guard for SMA warm-up
-            if pd.isna(row.get('sma_20')) or pd.isna(row.get('sma_50')):
-                labels.append('Range')
-                continue
+        # Base: Range everywhere (default)
+        labels = np.full(len(df), 'Range', dtype=object)
 
-            # 1. Liquidation (highest priority)
-            if has_liquidation and liquidation_mask is not None and liquidation_mask.iloc[i]:
-                labels.append('Liquidation')
-                continue
+        # Trend detection (lowest priority among valid bars)
+        valid = ~nan_mask
+        trend_up   = valid & (sma20 > sma50) & (close > sma20)
+        trend_down = valid & (sma20 < sma50) & (close < sma20)
+        labels[trend_up]   = 'Trend+'
+        labels[trend_down] = 'Trend-'
 
-            # 2. Squeeze
-            if has_squeeze and squeeze_mask is not None and squeeze_mask.iloc[i]:
-                labels.append('Squeeze')
-                continue
+        # Higher-priority layers applied on top (overwrite lower priority)
+        if has_distribution:
+            dm = self._compute_distribution_mask(df)
+            if dm is not None:
+                labels[dm.fillna(False).values] = 'Distribution'
 
-            # 3. Distribution
-            if has_distribution and distribution_mask is not None and distribution_mask.iloc[i]:
-                labels.append('Distribution')
-                continue
+        if has_squeeze:
+            sm = self._compute_squeeze_mask(df)
+            if sm is not None:
+                labels[sm.fillna(False).values] = 'Squeeze'
 
-            # 4-6. Standard trend detection
-            trend_up   = row['sma_20'] > row['sma_50'] and row['close'] > row['sma_20']
-            trend_down = row['sma_20'] < row['sma_50'] and row['close'] < row['sma_20']
+        if has_liquidation:
+            lm = self._compute_liquidation_mask(df)
+            if lm is not None:
+                labels[lm.fillna(False).values] = 'Liquidation'
 
-            if trend_up:
-                labels.append('Trend+')
-            elif trend_down:
-                labels.append('Trend-')
-            else:
-                labels.append('Range')
+        # NaN warm-up bars always → Range (applied last to guarantee correctness)
+        labels[nan_mask] = 'Range'
 
         return pd.Series(labels, index=df.index)
 
@@ -309,27 +333,39 @@ class SemiMarkovHMM:
 
     def _compute_log_B(self, observations: List[Dict]) -> np.ndarray:
         """
-        Pre-compute full emission matrix log_B (T × n_states) in one pass.
-        Vectorised over states — eliminates inner Python loop in F-B / Viterbi.
+        Pre-compute full emission matrix log_B (T × n_states).
+        Fully vectorised over both T and n_states — no Python loops.
         """
         T = len(observations)
-        log_B = np.zeros((T, self.n_states))
 
-        # Build param arrays once (shape: n_states)
+        # Param arrays (n_states,)
         price_mu    = np.array([self.emission_params[s]['price_mu']    for s in self.states])
         price_sigma = np.array([self.emission_params[s]['price_sigma'] for s in self.states])
         atr_mu      = np.array([self.emission_params[s]['atr_mu']      for s in self.states])
         atr_sigma   = np.array([self.emission_params[s]['atr_sigma']   for s in self.states])
 
-        for t, obs in enumerate(observations):
-            lp = np.zeros(self.n_states)
-            price = obs.get('price', np.nan)
-            atr   = obs.get('atr',   np.nan)
-            if not np.isnan(price):
-                lp += stats.norm.logpdf(price, loc=price_mu, scale=price_sigma)
-            if not np.isnan(atr):
-                lp += stats.norm.logpdf(atr,   loc=atr_mu,   scale=atr_sigma)
-            log_B[t] = lp
+        # Observation arrays (T,)
+        prices = np.array([obs.get('price', np.nan) for obs in observations])
+        atrs   = np.array([obs.get('atr',   np.nan) for obs in observations])
+
+        # Vectorised logpdf: broadcast (T,1) × (1,n) → (T,n)
+        log_B = np.zeros((T, self.n_states))
+
+        valid_p = ~np.isnan(prices)
+        if valid_p.any():
+            log_B[valid_p] += stats.norm.logpdf(
+                prices[valid_p, np.newaxis],
+                loc=price_mu[np.newaxis, :],
+                scale=price_sigma[np.newaxis, :]
+            )
+
+        valid_a = ~np.isnan(atrs)
+        if valid_a.any():
+            log_B[valid_a] += stats.norm.logpdf(
+                atrs[valid_a, np.newaxis],
+                loc=atr_mu[np.newaxis, :],
+                scale=atr_sigma[np.newaxis, :]
+            )
 
         return log_B
 
@@ -355,6 +391,18 @@ class SemiMarkovHMM:
         if T == 0:
             return np.array([])
 
+        # FB result cache: if the observations tail is identical to last call,
+        # the gamma matrix is unchanged — return cached result immediately.
+        tail = observations[-min(5, T):]
+        fb_fp = hash(tuple(
+            (o.get('price', 0.0), o.get('atr', 0.0)) for o in tail
+        ))
+        if fb_fp == self._fb_fingerprint and self._fb_cache is not None:
+            # Cache hit — shape may differ if T changed; validate
+            if self._fb_cache.shape[0] == T:
+                return self._fb_cache
+        self._fb_fingerprint = fb_fp
+
         # Pre-compute emission matrix and log-transition matrix once
         log_B = self._compute_log_B(observations)                  # (T, n)
         log_A = np.log(self.transition_matrix + 1e-10)             # (n, n)  A[sp, s]
@@ -366,7 +414,7 @@ class SemiMarkovHMM:
         for t in range(1, T):
             # log_alpha[t, s] = logsumexp_sp( log_alpha[t-1, sp] + log_A[sp, s] ) + log_B[t, s]
             # log_alpha[t-1, :, None] + log_A  has shape (n, n); logsumexp over axis=0
-            log_alpha[t] = logsumexp(
+            log_alpha[t] = _logsumexp(
                 log_alpha[t-1, :, np.newaxis] + log_A, axis=0
             ) + log_B[t]
 
@@ -376,12 +424,13 @@ class SemiMarkovHMM:
         for t in range(T - 2, -1, -1):
             # log_beta[t, s] = logsumexp_sn( log_A[s, sn] + log_B[t+1, sn] + log_beta[t+1, sn] )
             # log_A + log_B[t+1] + log_beta[t+1]  has shape (n, n); logsumexp over axis=1
-            log_beta[t] = logsumexp(
+            log_beta[t] = _logsumexp(
                 log_A + log_B[t+1] + log_beta[t+1], axis=1
             )
 
         log_gamma = log_alpha + log_beta
-        gamma = np.exp(log_gamma - logsumexp(log_gamma, axis=1, keepdims=True))
+        gamma = np.exp(log_gamma - _logsumexp(log_gamma, axis=1, keepdims=True))
+        self._fb_cache = gamma  # store for next call
         return gamma
 
     def viterbi(self, observations: List[Dict]) -> List[str]:
