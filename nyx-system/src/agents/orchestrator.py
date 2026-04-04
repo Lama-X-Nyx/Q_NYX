@@ -73,10 +73,24 @@ class Orchestrator:
         regime_tf = fractal_config.get('regime_tf', '1h')
         setup_tf = fractal_config.get('setup_tf', '15m')
         
-        # Step 1: Call Context Agent
-        context_result = self.context_agent.analyze(mtf_data.get(context_tf, pd.DataFrame()))
-        
-        # Step 2: Call Regime Agent (with context)
+        # Step 1a: Run HSMM on 4H data to compute Intent_1D via π_4H · A^k (P1)
+        # This is a projection-only pass — result used solely by ContextAgent.
+        # It does NOT participate in the AND-gate logic.
+        regime_4h_for_context = None
+        structure_tf = fractal_config.get('structure_tf', '4h')
+        if structure_tf in mtf_data and not mtf_data[structure_tf].empty:
+            regime_4h_for_context = self.regime_agent.analyze(
+                mtf_data[structure_tf],
+                context_state=None
+            )
+
+        # Step 1b: Call Context Agent with 4H HSMM posterior (P1)
+        context_result = self.context_agent.analyze(
+            mtf_data.get(context_tf, pd.DataFrame()),
+            regime_4h_result=regime_4h_for_context
+        )
+
+        # Step 2: Call Regime Agent on its operational TF (1H) with context
         regime_result = self.regime_agent.analyze(
             mtf_data.get(regime_tf, pd.DataFrame()),
             context_state=context_result.state
@@ -181,7 +195,8 @@ class Orchestrator:
     def compose_from_components(
         self,
         components: Dict[str, Any],
-        current_price: float
+        current_price: float,
+        regime_4h_for_context: Any = None  # P1: unused here, kept for API compat
     ) -> OrchestratorDecision:
         """
         Compose final decision from provided agent components
@@ -334,8 +349,8 @@ if __name__ == "__main__":
     
     # Create sample MTF data
     dates_1d = pd.date_range('2023-01-01', periods=100, freq='1D')
-    dates_4h = pd.date_range('2023-01-01', periods=400, freq='4H')
-    dates_15m = pd.date_range('2023-01-01', periods=1000, freq='15T')
+    dates_4h = pd.date_range('2023-01-01', periods=400, freq='4h')
+    dates_15m = pd.date_range('2023-01-01', periods=1000, freq='15min')
     
     prices_1d = np.linspace(40000, 50000, 100)  # Uptrend
     prices_4h = np.linspace(40000, 50000, 400)

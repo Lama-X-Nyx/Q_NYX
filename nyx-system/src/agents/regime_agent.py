@@ -179,6 +179,8 @@ class RegimeAgent:
                     'sdc': sdc,
                     'stability': stability,
                     'hsmm_states': hsmm_states,
+                    # transition_matrix exposed so ContextAgent can compute Intent_1D = argmax(π_4H · A^k)
+                    'transition_matrix': self.hsmm.transition_matrix.tolist(),
                     'context_aligned': context_aligned,
                     'bars': len(df),
                     'min_bars': min_bars

@@ -126,5 +126,103 @@ class TestContextAgent:
         assert 'Insufficient' in result.reason
 
 
+    # ------------------------------------------------------------------
+    # P1 tests: HSMM projection
+    # ------------------------------------------------------------------
+
+    @pytest.fixture
+    def bullish_regime_4h_result(self):
+        """Fake 4H regime result with Trend+ dominant"""
+        return AgentResult(
+            agent='regime',
+            state='trend_plus',
+            score=0.72,
+            passed=True,
+            reason='test',
+            metadata={
+                'hsmm_states': {'Trend+': 0.72, 'Range': 0.18, 'Trend-': 0.10},
+                'transition_matrix': [
+                    [0.75, 0.125, 0.125],
+                    [0.125, 0.75, 0.125],
+                    [0.125, 0.125, 0.75]
+                ]
+            }
+        )
+
+    @pytest.fixture
+    def bearish_regime_4h_result(self):
+        """Fake 4H regime result with Trend- dominant"""
+        return AgentResult(
+            agent='regime',
+            state='trend_minus',
+            score=0.68,
+            passed=True,
+            reason='test',
+            metadata={
+                'hsmm_states': {'Trend+': 0.08, 'Range': 0.22, 'Trend-': 0.70},
+                'transition_matrix': [
+                    [0.75, 0.125, 0.125],
+                    [0.125, 0.75, 0.125],
+                    [0.125, 0.125, 0.75]
+                ]
+            }
+        )
+
+    def test_hsmm_projection_used_when_regime_provided(
+        self, agent, bullish_data, bullish_regime_4h_result
+    ):
+        """When 4H regime result provided, use HSMM projection for Intent_1D"""
+        result = agent.analyze(bullish_data, regime_4h_result=bullish_regime_4h_result)
+
+        assert result.metadata.get('intent_method') == 'hsmm_projection', \
+            f"Expected 'hsmm_projection', got '{result.metadata.get('intent_method')}'"
+
+    def test_fallback_to_sma_when_no_regime(self, agent, bullish_data):
+        """Without regime_4h_result, fall back to SMA heuristic"""
+        result = agent.analyze(bullish_data, regime_4h_result=None)
+
+        assert result.metadata.get('intent_method') == 'sma_heuristic'
+
+    def test_hsmm_projection_bullish(self, agent, bullish_data, bullish_regime_4h_result):
+        """Trend+ dominant in 4H → bullish Intent_1D"""
+        result = agent.analyze(bullish_data, regime_4h_result=bullish_regime_4h_result)
+
+        assert result.state == 'bullish'
+        assert result.passed is True
+
+    def test_hsmm_projection_bearish(self, agent, bullish_data, bearish_regime_4h_result):
+        """Trend- dominant in 4H → bearish Intent_1D"""
+        result = agent.analyze(bullish_data, regime_4h_result=bearish_regime_4h_result)
+
+        assert result.state == 'bearish'
+        assert result.passed is True
+
+    def test_projected_distribution_in_metadata(
+        self, agent, bullish_data, bullish_regime_4h_result
+    ):
+        """Projected distribution must appear in metadata"""
+        result = agent.analyze(bullish_data, regime_4h_result=bullish_regime_4h_result)
+
+        assert 'projected_distribution' in result.metadata
+        pd_ = result.metadata['projected_distribution']
+        assert set(pd_.keys()) == {'Trend+', 'Range', 'Trend-'}
+        prob_sum = sum(pd_.values())
+        assert abs(prob_sum - 1.0) < 0.01, f"Projected distribution sums to {prob_sum:.4f}"
+
+    def test_hsmm_score_not_hardcoded(self, agent, bullish_data, bullish_regime_4h_result):
+        """Score must be derived from projected probability, not a fixed constant"""
+        result = agent.analyze(bullish_data, regime_4h_result=bullish_regime_4h_result)
+        hardcoded = {0.5, 0.4, 0.72}
+        if result.metadata.get('intent_method') == 'hsmm_projection':
+            assert result.score not in hardcoded, \
+                f"Score {result.score} looks like a hardcoded value"
+
+    def test_projection_k_metadata(self, agent, bullish_data, bullish_regime_4h_result):
+        """projection_k must appear in metadata"""
+        result = agent.analyze(bullish_data, regime_4h_result=bullish_regime_4h_result)
+        if result.metadata.get('intent_method') == 'hsmm_projection':
+            assert 'projection_k' in result.metadata
+
+
 if __name__ == "__main__":
     pytest.main([__file__, '-v'])
