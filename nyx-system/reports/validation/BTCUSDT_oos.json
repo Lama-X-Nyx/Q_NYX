@@ -1,0 +1,110 @@
+{
+  "pair": "BTCUSDT",
+  "split_ratio": 0.8,
+  "in_sample": {
+    "period": "in_sample",
+    "start_date": "2020-01-01T00:00:00",
+    "end_date": "2024-01-01T13:00:00",
+    "trades": [],
+    "metrics": {
+      "total_return": 0,
+      "cagr": null,
+      "total_pnl": 0,
+      "total_trades": 0,
+      "winners": 0,
+      "losers": 0,
+      "win_rate": 0,
+      "avg_trade": 0,
+      "avg_win": 0,
+      "avg_loss": 0,
+      "profit_factor": 0,
+      "expectancy": 0,
+      "max_drawdown": 0,
+      "sharpe_ratio": 0,
+      "sortino_ratio": 0,
+      "calmar_ratio": null,
+      "exposure_time": 0,
+      "total_days": 0,
+      "first_trade": null,
+      "last_trade": null,
+      "initial_capital": 10000,
+      "final_capital": 10000,
+      "is_blown_up": false
+    },
+    "performance": {
+      "bars_processed": 34978,
+      "warmup_bars": 100,
+      "lookback_bars": 50,
+      "execution_time_seconds": 1.1081557273864746,
+      "avg_time_per_bar_ms": 0.03168150630071687,
+      "signals_generated": 34978
+    }
+  },
+  "out_of_sample": {
+    "period": "out_of_sample",
+    "start_date": "2024-01-01T14:00:00",
+    "end_date": "2024-12-31T23:00:00",
+    "trades": [],
+    "metrics": {
+      "total_return": 0,
+      "cagr": null,
+      "total_pnl": 0,
+      "total_trades": 0,
+      "winners": 0,
+      "losers": 0,
+      "win_rate": 0,
+      "avg_trade": 0,
+      "avg_win": 0,
+      "avg_loss": 0,
+      "profit_factor": 0,
+      "expectancy": 0,
+      "max_drawdown": 0,
+      "sharpe_ratio": 0,
+      "sortino_ratio": 0,
+      "calmar_ratio": null,
+      "exposure_time": 0,
+      "total_days": 0,
+      "first_trade": null,
+      "last_trade": null,
+      "initial_capital": 10000,
+      "final_capital": 10000,
+      "is_blown_up": false
+    },
+    "performance": {
+      "bars_processed": 8670,
+      "warmup_bars": 100,
+      "lookback_bars": 50,
+      "execution_time_seconds": 0.25686073303222656,
+      "avg_time_per_bar_ms": 0.029626382125977686,
+      "signals_generated": 8670
+    }
+  },
+  "comparison": {
+    "total_return": {
+      "is": 0,
+      "oos": 0,
+      "change_pct": null
+    },
+    "sharpe_ratio": {
+      "is": 0,
+      "oos": 0,
+      "change_pct": null
+    },
+    "max_drawdown": {
+      "is": 0,
+      "oos": 0,
+      "change_pct": null
+    },
+    "win_rate": {
+      "is": 0,
+      "oos": 0,
+      "change_pct": null
+    }
+  },
+  "verdict": {
+    "status": "INCONCLUSIVE",
+    "reason": "Metrics not comparable (None values)",
+    "total_return_change_pct": null,
+    "sharpe_change_pct": null
+  }
+}

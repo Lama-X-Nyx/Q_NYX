@@ -1,0 +1,50 @@
+{
+  "pair": "BTCUSDT",
+  "version": "v3",
+  "periods": {
+    "2023-12-15T00:00:00": {
+      "bar_level_summary": {
+        "bars_ready_for_decision": 43,
+        "setup_pass_count_bars": 1,
+        "setup_pass_rate": 2.33,
+        "block_reasons": {
+          "no_pattern": 0,
+          "misaligned_pattern": 0,
+          "alignment_score_too_low": 42,
+          "detector_error": 0
+        }
+      },
+      "pattern_level_summary": {
+        "fvg_candidates_seen": 90,
+        "ob_candidates_seen": 39,
+        "total_candidates_seen": 129,
+        "pre_pattern_failures": 86,
+        "valid_patterns_formed": 43,
+        "alignment_rejections": 42,
+        "final_valid_patterns": 1
+      },
+      "rejection_summary": {
+        "failed_structure_rules": 43,
+        "failed_gap_threshold": 12,
+        "failed_range_threshold": 8,
+        "failed_followthrough": 17,
+        "failed_other_pre_pattern": 6,
+        "failed_alignment": 37,
+        "failed_other_post_pattern": 5
+      },
+      "consistency_checks": {
+        "flow_conservation_ok": true,
+        "notes": []
+      },
+      "level_linking": {
+        "pattern_to_bar_link_consistent": true,
+        "notes": []
+      },
+      "primary_root_cause": "alignment_filtering"
+    }
+  },
+  "cross_period_summary": {
+    "main_root_cause": "alignment_filtering",
+    "verdict": "Setup forms patterns, but alignment kills most of them"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "pair": "BTCUSDT",
+  "reference_date": "2023-12-15T00:00:00",
+  "detector_initialized": true,
+  "parameters_used": {
+    "ob_range_threshold": 0.015,
+    "fvg_min_gap": 0.005,
+    "liquidity_lookback": 20
+  },
+  "detector_error": false,
+  "error_type": null,
+  "error_message": null,
+  "patterns_detected": {
+    "bullish_ob": false,
+    "bearish_ob": false,
+    "bullish_fvg": false,
+    "bearish_fvg": false,
+    "liquidity_sweep": false,
+    "bos_bullish": false,
+    "bos_bearish": false
+  },
+  "verdict": "\u2713 SMCDetector correctly wired and functioning"
+}

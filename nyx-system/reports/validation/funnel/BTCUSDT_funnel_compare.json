@@ -1,0 +1,36 @@
+{
+  "pair": "BTCUSDT",
+  "min_bars_tested": [
+    50,
+    100
+  ],
+  "results": {
+    "50": {
+      "insufficient_data": 0,
+      "hsmm_passed": 900,
+      "confidence_passed": 900,
+      "smc_passed": 353,
+      "macro_passed": 65,
+      "risk_passed": 65,
+      "trades_executed": 65,
+      "top_rejection": [
+        "smc_no_pattern",
+        547
+      ]
+    },
+    "100": {
+      "insufficient_data": 900,
+      "hsmm_passed": 0,
+      "confidence_passed": 0,
+      "smc_passed": 0,
+      "macro_passed": 0,
+      "risk_passed": 0,
+      "trades_executed": 0,
+      "top_rejection": [
+        "insufficient_data",
+        900
+      ]
+    }
+  },
+  "summary": "\nCOMPARISON RESULTS:\n================================================================================\n\nMetric                                  50         100\n--------------------------------------------------------------------------------\ninsufficient_data                        0         900\nhsmm_passed                            900           0\nconfidence_passed                      900           0\nsmc_passed                             353           0\nmacro_passed                            65           0\nrisk_passed                             65           0\ntrades_executed                         65           0\n\n================================================================================\n\nTOP REJECTIONS:\n  50 bars: smc_no_pattern (547)\n  100 bars: insufficient_data (900)\n"
+}

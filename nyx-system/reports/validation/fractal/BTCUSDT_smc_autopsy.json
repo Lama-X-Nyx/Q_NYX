@@ -1,0 +1,90 @@
+{
+  "pair": "BTCUSDT",
+  "reference_date": "2023-12-15T00:00:00",
+  "bars_analyzed": 47,
+  "code_path": {
+    "detector_called": 47,
+    "fvg_function_called": 94,
+    "ob_function_called": 94
+  },
+  "fvg_audit": {
+    "candidates_seen": 94,
+    "detected": 2,
+    "failed_gap_threshold": 10,
+    "failed_structure_rules": 82,
+    "failed_other": 0
+  },
+  "ob_audit": {
+    "candidates_seen": 141,
+    "detected": 0,
+    "failed_range_threshold": 81,
+    "failed_followthrough": 60,
+    "failed_other": 0
+  },
+  "configuration": {
+    "ob_range_threshold": 0.015,
+    "fvg_min_gap": 0.005,
+    "liquidity_lookback": 20
+  },
+  "final_output": {
+    "patterns_detected": 2,
+    "setup_passed": 0
+  },
+  "verdict": {
+    "category": "A",
+    "summary": "Detector works but very low success rate (0.9%) - likely threshold strictness."
+  },
+  "sensitivity_analysis": {
+    "test_configurations": [
+      {
+        "name": "baseline",
+        "configuration": {
+          "name": "baseline",
+          "ob_range_threshold": 0.015,
+          "fvg_min_gap": 0.005
+        },
+        "fvg_detected": 2,
+        "ob_detected": 0,
+        "total_patterns": 2,
+        "detection_rate": 0.0425531914893617
+      },
+      {
+        "name": "relaxed_25pct",
+        "configuration": {
+          "name": "relaxed_25pct",
+          "ob_range_threshold": 0.0112,
+          "fvg_min_gap": 0.00375
+        },
+        "fvg_detected": 2,
+        "ob_detected": 0,
+        "total_patterns": 2,
+        "detection_rate": 0.0425531914893617
+      },
+      {
+        "name": "relaxed_50pct",
+        "configuration": {
+          "name": "relaxed_50pct",
+          "ob_range_threshold": 0.0075,
+          "fvg_min_gap": 0.0025
+        },
+        "fvg_detected": 4,
+        "ob_detected": 0,
+        "total_patterns": 4,
+        "detection_rate": 0.0851063829787234
+      },
+      {
+        "name": "very_relaxed",
+        "configuration": {
+          "name": "very_relaxed",
+          "ob_range_threshold": 0.005,
+          "fvg_min_gap": 0.001
+        },
+        "fvg_detected": 7,
+        "ob_detected": 0,
+        "total_patterns": 7,
+        "detection_rate": 0.14893617021276595
+      }
+    ],
+    "summary": "Relaxing thresholds to 'very_relaxed' improves detection by 5 patterns (14.9% vs 4.3%)."
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "pair": "BTCUSDT",
+  "sample_date": "2023-12-15T00:00:00",
+  "regime_timeframe": "1h",
+  "prepared_columns": [
+    "Unnamed: 0",
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+    "returns",
+    "atr_14",
+    "sma_20",
+    "sma_50"
+  ],
+  "required_by_hsmm": [
+    "sma_20",
+    "sma_50"
+  ],
+  "recommended_features": [
+    "returns",
+    "atr_14"
+  ],
+  "missing_required": [],
+  "missing_recommended": [],
+  "feature_alignment_ok": true,
+  "hsmm_initialization_success": true,
+  "hsmm_error": null,
+  "verdict": "All required HSMM features are present"
+}

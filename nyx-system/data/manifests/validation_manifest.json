@@ -1,0 +1,52 @@
+{
+  "created_at": "2026-03-28T17:00:45.006791",
+  "data_directory": "data/raw",
+  "files": {
+    "BTCUSDT_1h.csv": {
+      "path": "data/raw/BTCUSDT_1h.csv",
+      "filename": "BTCUSDT_1h.csv",
+      "hash_sha256": "a93b5d27ea679eb5f236d9ef287b142c59d45d7042e81a2e75f5f5c39dec0d9e",
+      "modified_at": "2026-03-28T17:00:12.493739",
+      "rows": 43848,
+      "columns": [
+        "datetime",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "size_bytes": 4906260,
+      "start_date": "2020-01-01T00:00:00",
+      "end_date": "2024-12-31T23:00:00",
+      "datetime_column": "datetime"
+    },
+    "ETHUSDT_1h.csv": {
+      "path": "data/raw/ETHUSDT_1h.csv",
+      "filename": "ETHUSDT_1h.csv",
+      "hash_sha256": "210b87f14259fc408034a06c38279d96cf48b4515d1ddb6486a69c46cf5a762a",
+      "modified_at": "2026-03-28T17:00:28.776739",
+      "rows": 43848,
+      "columns": [
+        "datetime",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "size_bytes": 4917949,
+      "start_date": "2020-01-01T00:00:00",
+      "end_date": "2024-12-31T23:00:00",
+      "datetime_column": "datetime"
+    }
+  },
+  "summary": {
+    "total_files": 2,
+    "total_rows": 87696,
+    "pairs_included": [
+      "BTCUSDT_1h.csv",
+      "ETHUSDT_1h.csv"
+    ]
+  }
+}

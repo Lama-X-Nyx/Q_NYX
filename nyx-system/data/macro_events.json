@@ -1,0 +1,216 @@
+{
+  "events": [
+    {
+      "date": "2020-03-03",
+      "type": "FED_EMERGENCY_CUT",
+      "title": "Fed Emergency Rate Cut (COVID)",
+      "magnitude": -0.5,
+      "impact": "BULLISH",
+      "decay_days": 45,
+      "strength": 0.8,
+      "assets_affected": ["BTC", "ETH", "GOLD", "STOCKS"],
+      "asset_sensitivity": {
+        "BTC": 0.9,
+        "ETH": 0.85,
+        "GOLD": 0.7,
+        "STOCKS": 1.0
+      }
+    },
+    {
+      "date": "2020-03-15",
+      "type": "FED_RATE_CUT",
+      "title": "Fed Cuts to Zero",
+      "magnitude": -1.0,
+      "impact": "BULLISH",
+      "decay_days": 90,
+      "strength": 1.0,
+      "assets_affected": ["BTC", "ETH", "GOLD", "STOCKS"],
+      "asset_sensitivity": {
+        "BTC": 1.0,
+        "ETH": 0.95,
+        "GOLD": 0.8,
+        "STOCKS": 1.0
+      }
+    },
+    {
+      "date": "2020-03-23",
+      "type": "FED_QE_UNLIMITED",
+      "title": "Fed Announces Unlimited QE",
+      "magnitude": 10.0,
+      "impact": "BULLISH",
+      "decay_days": 180,
+      "strength": 1.0,
+      "assets_affected": ["BTC", "ETH", "GOLD", "STOCKS"],
+      "asset_sensitivity": {
+        "BTC": 1.0,
+        "ETH": 0.95,
+        "GOLD": 0.85,
+        "STOCKS": 1.0
+      }
+    },
+    {
+      "date": "2020-05-11",
+      "type": "BTC_HALVING",
+      "title": "Bitcoin Halving Event",
+      "magnitude": 0.0,
+      "impact": "BULLISH",
+      "decay_days": 365,
+      "strength": 0.9,
+      "assets_affected": ["BTC"],
+      "asset_sensitivity": {
+        "BTC": 1.0
+      }
+    },
+    {
+      "date": "2021-11-02",
+      "type": "FED_TAPER_START",
+      "title": "Fed Begins Taper",
+      "magnitude": 0.5,
+      "impact": "BEARISH",
+      "decay_days": 120,
+      "strength": 0.6,
+      "assets_affected": ["BTC", "ETH", "STOCKS"],
+      "asset_sensitivity": {
+        "BTC": 0.7,
+        "ETH": 0.75,
+        "STOCKS": 0.8
+      }
+    },
+    {
+      "date": "2022-03-16",
+      "type": "FED_RATE_HIKE",
+      "title": "Fed First Rate Hike",
+      "magnitude": 0.25,
+      "impact": "BEARISH",
+      "decay_days": 60,
+      "strength": 0.8,
+      "assets_affected": ["BTC", "ETH", "STOCKS"],
+      "asset_sensitivity": {
+        "BTC": 0.85,
+        "ETH": 0.9,
+        "STOCKS": 0.95
+      }
+    },
+    {
+      "date": "2022-05-04",
+      "type": "FED_RATE_HIKE",
+      "title": "Fed 50bp Hike",
+      "magnitude": 0.5,
+      "impact": "BEARISH",
+      "decay_days": 60,
+      "strength": 0.9,
+      "assets_affected": ["BTC", "ETH", "STOCKS"],
+      "asset_sensitivity": {
+        "BTC": 0.9,
+        "ETH": 0.95,
+        "STOCKS": 1.0
+      }
+    },
+    {
+      "date": "2022-06-15",
+      "type": "FED_RATE_HIKE",
+      "title": "Fed 75bp Hike (Aggressive)",
+      "magnitude": 0.75,
+      "impact": "BEARISH",
+      "decay_days": 90,
+      "strength": 1.0,
+      "assets_affected": ["BTC", "ETH", "STOCKS"],
+      "asset_sensitivity": {
+        "BTC": 1.0,
+        "ETH": 1.0,
+        "STOCKS": 1.0
+      }
+    },
+    {
+      "date": "2022-11-10",
+      "type": "FTX_COLLAPSE",
+      "title": "FTX Exchange Collapse",
+      "magnitude": 0.0,
+      "impact": "BEARISH",
+      "decay_days": 120,
+      "strength": 0.9,
+      "assets_affected": ["BTC", "ETH"],
+      "asset_sensitivity": {
+        "BTC": 0.8,
+        "ETH": 0.85
+      }
+    },
+    {
+      "date": "2023-03-10",
+      "type": "BANK_CRISIS",
+      "title": "Silicon Valley Bank Collapse",
+      "magnitude": 0.0,
+      "impact": "MIXED",
+      "decay_days": 60,
+      "strength": 0.7,
+      "assets_affected": ["BTC", "ETH", "STOCKS"],
+      "asset_sensitivity": {
+        "BTC": -0.5,
+        "ETH": -0.5,
+        "STOCKS": 0.8
+      },
+      "note": "Initially bearish, then bullish (flight to quality)"
+    },
+    {
+      "date": "2023-06-14",
+      "type": "FED_RATE_PAUSE",
+      "title": "Fed Pauses Rate Hikes",
+      "magnitude": 0.0,
+      "impact": "BULLISH",
+      "decay_days": 90,
+      "strength": 0.7,
+      "assets_affected": ["BTC", "ETH", "STOCKS"],
+      "asset_sensitivity": {
+        "BTC": 0.8,
+        "ETH": 0.85,
+        "STOCKS": 0.9
+      }
+    },
+    {
+      "date": "2023-10-17",
+      "type": "BTC_ETF_SPECULATION",
+      "title": "Bitcoin ETF Speculation Intensifies",
+      "magnitude": 0.0,
+      "impact": "BULLISH",
+      "decay_days": 120,
+      "strength": 0.8,
+      "assets_affected": ["BTC"],
+      "asset_sensitivity": {
+        "BTC": 1.0
+      }
+    },
+    {
+      "date": "2024-01-10",
+      "type": "BTC_ETF_APPROVAL",
+      "title": "Bitcoin Spot ETF Approved",
+      "magnitude": 0.0,
+      "impact": "BULLISH",
+      "decay_days": 180,
+      "strength": 1.0,
+      "assets_affected": ["BTC"],
+      "asset_sensitivity": {
+        "BTC": 1.0,
+        "ETH": 0.3
+      }
+    },
+    {
+      "date": "2024-04-20",
+      "type": "BTC_HALVING",
+      "title": "Bitcoin Halving Event",
+      "magnitude": 0.0,
+      "impact": "BULLISH",
+      "decay_days": 365,
+      "strength": 0.9,
+      "assets_affected": ["BTC"],
+      "asset_sensitivity": {
+        "BTC": 1.0
+      }
+    }
+  ],
+  "metadata": {
+    "version": "1.0",
+    "last_updated": "2024-01-01",
+    "source": "Historical macro events 2020-2024",
+    "decay_function": "exponential"
+  }
+}

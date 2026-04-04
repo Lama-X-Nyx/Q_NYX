@@ -1,0 +1,89 @@
+{
+  "pair": "BTCUSDT",
+  "periods": {
+    "2023-01-15": {
+      "period_label": "early_bull",
+      "context": {
+        "state": "bullish",
+        "score": 0.71,
+        "passed": true,
+        "reason": "Bullish bias: SMA20 2.1% above SMA50"
+      },
+      "regime": {
+        "state": "range",
+        "score": 0.98,
+        "passed": true,
+        "reason": "HSMM Range with SdC=9.8, Stability=0.75",
+        "sdc": 9.836279584565801,
+        "stability": 0.75
+      },
+      "joint_interpretation": "regime_too_conservative"
+    },
+    "2023-03-15": {
+      "period_label": "mid_bull",
+      "context": {
+        "state": "neutral",
+        "score": 0.4,
+        "passed": false,
+        "reason": "Neutral: SMA20 within 2.0% of SMA50"
+      },
+      "regime": {
+        "state": "range",
+        "score": 1.0,
+        "passed": true,
+        "reason": "HSMM Range with SdC=10.0, Stability=0.75",
+        "sdc": 10.0,
+        "stability": 0.75
+      },
+      "joint_interpretation": "bullish_not_expressed"
+    },
+    "2023-10-15": {
+      "period_label": "late_bull",
+      "context": {
+        "state": "bullish",
+        "score": 0.71,
+        "passed": true,
+        "reason": "Bullish bias: SMA20 2.1% above SMA50"
+      },
+      "regime": {
+        "state": "range",
+        "score": 0.59,
+        "passed": true,
+        "reason": "HSMM Range with SdC=5.9, Stability=0.75",
+        "sdc": 5.896141797932263,
+        "stability": 0.75
+      },
+      "joint_interpretation": "regime_too_conservative"
+    },
+    "2023-12-15": {
+      "period_label": "range_comparison",
+      "context": {
+        "state": "bullish",
+        "score": 1.0,
+        "passed": true,
+        "reason": "Bullish bias: SMA20 7.9% above SMA50"
+      },
+      "regime": {
+        "state": "range",
+        "score": 1.0,
+        "passed": true,
+        "reason": "HSMM Range with SdC=10.0, Stability=0.75",
+        "sdc": 9.999999999991331,
+        "stability": 0.75
+      },
+      "joint_interpretation": "regime_too_conservative"
+    }
+  },
+  "cross_period_summary": {
+    "context_bullish_rate": 75.0,
+    "context_neutral_rate": 25.0,
+    "regime_trend_plus_rate": 0.0,
+    "regime_range_rate": 100.0,
+    "main_issue": "regime_too_conservative",
+    "verdict": "Context is often bullish, but regime collapses too often into range.",
+    "interpretation_distribution": {
+      "regime_too_conservative": 3,
+      "bullish_not_expressed": 1
+    }
+  }
+}

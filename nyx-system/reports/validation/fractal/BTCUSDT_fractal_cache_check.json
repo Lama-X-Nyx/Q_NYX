@@ -1,0 +1,424 @@
+{
+  "pair": "BTCUSDT",
+  "reference_date": "2023-12-15T00:00:00",
+  "steps_processed": 10,
+  "cache_stats": {
+    "context": {
+      "cached": true,
+      "last_timestamp": "2023-12-15T00:00:00",
+      "stats": {
+        "cache_hit_count": 9,
+        "cache_miss_count": 1,
+        "recompute_count": 1,
+        "hit_rate": 90.0
+      }
+    },
+    "regime": {
+      "cached": true,
+      "last_timestamp": "2023-12-15T02:00:00",
+      "stats": {
+        "cache_hit_count": 7,
+        "cache_miss_count": 3,
+        "recompute_count": 3,
+        "hit_rate": 70.0
+      }
+    },
+    "setup": {
+      "cached": true,
+      "last_timestamp": "2023-12-15T02:15:00",
+      "stats": {
+        "cache_hit_count": 0,
+        "cache_miss_count": 0,
+        "recompute_count": 10,
+        "hit_rate": 0.0
+      }
+    }
+  },
+  "step_details": [
+    {
+      "step": 0,
+      "timestamp": "2023-12-15T00:00:00",
+      "action": "WAIT",
+      "score": 0.79,
+      "cache_stats": {
+        "context": {
+          "cached": true,
+          "last_timestamp": "2023-12-15T00:00:00",
+          "stats": {
+            "cache_hit_count": 0,
+            "cache_miss_count": 1,
+            "recompute_count": 1,
+            "hit_rate": 0.0
+          }
+        },
+        "regime": {
+          "cached": true,
+          "last_timestamp": "2023-12-15T00:00:00",
+          "stats": {
+            "cache_hit_count": 0,
+            "cache_miss_count": 1,
+            "recompute_count": 1,
+            "hit_rate": 0.0
+          }
+        },
+        "setup": {
+          "cached": true,
+          "last_timestamp": "2023-12-15T00:00:00",
+          "stats": {
+            "cache_hit_count": 0,
+            "cache_miss_count": 0,
+            "recompute_count": 1,
+            "hit_rate": 0.0
+          }
+        }
+      }
+    },
+    {
+      "step": 1,
+      "timestamp": "2023-12-15T00:15:00",
+      "action": "WAIT",
+      "score": 0.79,
+      "cache_stats": {
+        "context": {
+          "cached": true,
+          "last_timestamp": "2023-12-15T00:00:00",
+          "stats": {
+            "cache_hit_count": 1,
+            "cache_miss_count": 1,
+            "recompute_count": 1,
+            "hit_rate": 50.0
+          }
+        },
+        "regime": {
+          "cached": true,
+          "last_timestamp": "2023-12-15T00:00:00",
+          "stats": {
+            "cache_hit_count": 1,
+            "cache_miss_count": 1,
+            "recompute_count": 1,
+            "hit_rate": 50.0
+          }
+        },
+        "setup": {
+          "cached": true,
+          "last_timestamp": "2023-12-15T00:15:00",
+          "stats": {
+            "cache_hit_count": 0,
+            "cache_miss_count": 0,
+            "recompute_count": 2,
+            "hit_rate": 0.0
+          }
+        }
+      }
+    },
+    {
+      "step": 2,
+      "timestamp": "2023-12-15T00:30:00",
+      "action": "WAIT",
+      "score": 0.79,
+      "cache_stats": {
+        "context": {
+          "cached": true,
+          "last_timestamp": "2023-12-15T00:00:00",
+          "stats": {
+            "cache_hit_count": 2,
+            "cache_miss_count": 1,
+            "recompute_count": 1,
+            "hit_rate": 66.66666666666666
+          }
+        },
+        "regime": {
+          "cached": true,
+          "last_timestamp": "2023-12-15T00:00:00",
+          "stats": {
+            "cache_hit_count": 2,
+            "cache_miss_count": 1,
+            "recompute_count": 1,
+            "hit_rate": 66.66666666666666
+          }
+        },
+        "setup": {
+          "cached": true,
+          "last_timestamp": "2023-12-15T00:30:00",
+          "stats": {
+            "cache_hit_count": 0,
+            "cache_miss_count": 0,
+            "recompute_count": 3,
+            "hit_rate": 0.0
+          }
+        }
+      }
+    },
+    {
+      "step": 3,
+      "timestamp": "2023-12-15T00:45:00",
+      "action": "WAIT",
+      "score": 0.79,
+      "cache_stats": {
+        "context": {
+          "cached": true,
+          "last_timestamp": "2023-12-15T00:00:00",
+          "stats": {
+            "cache_hit_count": 3,
+            "cache_miss_count": 1,
+            "recompute_count": 1,
+            "hit_rate": 75.0
+          }
+        },
+        "regime": {
+          "cached": true,
+          "last_timestamp": "2023-12-15T00:00:00",
+          "stats": {
+            "cache_hit_count": 3,
+            "cache_miss_count": 1,
+            "recompute_count": 1,
+            "hit_rate": 75.0
+          }
+        },
+        "setup": {
+          "cached": true,
+          "last_timestamp": "2023-12-15T00:45:00",
+          "stats": {
+            "cache_hit_count": 0,
+            "cache_miss_count": 0,
+            "recompute_count": 4,
+            "hit_rate": 0.0
+          }
+        }
+      }
+    },
+    {
+      "step": 4,
+      "timestamp": "2023-12-15T01:00:00",
+      "action": "WAIT",
+      "score": 0.79,
+      "cache_stats": {
+        "context": {
+          "cached": true,
+          "last_timestamp": "2023-12-15T00:00:00",
+          "stats": {
+            "cache_hit_count": 4,
+            "cache_miss_count": 1,
+            "recompute_count": 1,
+            "hit_rate": 80.0
+          }
+        },
+        "regime": {
+          "cached": true,
+          "last_timestamp": "2023-12-15T01:00:00",
+          "stats": {
+            "cache_hit_count": 3,
+            "cache_miss_count": 2,
+            "recompute_count": 2,
+            "hit_rate": 60.0
+          }
+        },
+        "setup": {
+          "cached": true,
+          "last_timestamp": "2023-12-15T01:00:00",
+          "stats": {
+            "cache_hit_count": 0,
+            "cache_miss_count": 0,
+            "recompute_count": 5,
+            "hit_rate": 0.0
+          }
+        }
+      }
+    },
+    {
+      "step": 5,
+      "timestamp": "2023-12-15T01:15:00",
+      "action": "WAIT",
+      "score": 0.79,
+      "cache_stats": {
+        "context": {
+          "cached": true,
+          "last_timestamp": "2023-12-15T00:00:00",
+          "stats": {
+            "cache_hit_count": 5,
+            "cache_miss_count": 1,
+            "recompute_count": 1,
+            "hit_rate": 83.33333333333334
+          }
+        },
+        "regime": {
+          "cached": true,
+          "last_timestamp": "2023-12-15T01:00:00",
+          "stats": {
+            "cache_hit_count": 4,
+            "cache_miss_count": 2,
+            "recompute_count": 2,
+            "hit_rate": 66.66666666666666
+          }
+        },
+        "setup": {
+          "cached": true,
+          "last_timestamp": "2023-12-15T01:15:00",
+          "stats": {
+            "cache_hit_count": 0,
+            "cache_miss_count": 0,
+            "recompute_count": 6,
+            "hit_rate": 0.0
+          }
+        }
+      }
+    },
+    {
+      "step": 6,
+      "timestamp": "2023-12-15T01:30:00",
+      "action": "WAIT",
+      "score": 0.79,
+      "cache_stats": {
+        "context": {
+          "cached": true,
+          "last_timestamp": "2023-12-15T00:00:00",
+          "stats": {
+            "cache_hit_count": 6,
+            "cache_miss_count": 1,
+            "recompute_count": 1,
+            "hit_rate": 85.71428571428571
+          }
+        },
+        "regime": {
+          "cached": true,
+          "last_timestamp": "2023-12-15T01:00:00",
+          "stats": {
+            "cache_hit_count": 5,
+            "cache_miss_count": 2,
+            "recompute_count": 2,
+            "hit_rate": 71.42857142857143
+          }
+        },
+        "setup": {
+          "cached": true,
+          "last_timestamp": "2023-12-15T01:30:00",
+          "stats": {
+            "cache_hit_count": 0,
+            "cache_miss_count": 0,
+            "recompute_count": 7,
+            "hit_rate": 0.0
+          }
+        }
+      }
+    },
+    {
+      "step": 7,
+      "timestamp": "2023-12-15T01:45:00",
+      "action": "WAIT",
+      "score": 0.79,
+      "cache_stats": {
+        "context": {
+          "cached": true,
+          "last_timestamp": "2023-12-15T00:00:00",
+          "stats": {
+            "cache_hit_count": 7,
+            "cache_miss_count": 1,
+            "recompute_count": 1,
+            "hit_rate": 87.5
+          }
+        },
+        "regime": {
+          "cached": true,
+          "last_timestamp": "2023-12-15T01:00:00",
+          "stats": {
+            "cache_hit_count": 6,
+            "cache_miss_count": 2,
+            "recompute_count": 2,
+            "hit_rate": 75.0
+          }
+        },
+        "setup": {
+          "cached": true,
+          "last_timestamp": "2023-12-15T01:45:00",
+          "stats": {
+            "cache_hit_count": 0,
+            "cache_miss_count": 0,
+            "recompute_count": 8,
+            "hit_rate": 0.0
+          }
+        }
+      }
+    },
+    {
+      "step": 8,
+      "timestamp": "2023-12-15T02:00:00",
+      "action": "WAIT",
+      "score": 0.79,
+      "cache_stats": {
+        "context": {
+          "cached": true,
+          "last_timestamp": "2023-12-15T00:00:00",
+          "stats": {
+            "cache_hit_count": 8,
+            "cache_miss_count": 1,
+            "recompute_count": 1,
+            "hit_rate": 88.88888888888889
+          }
+        },
+        "regime": {
+          "cached": true,
+          "last_timestamp": "2023-12-15T02:00:00",
+          "stats": {
+            "cache_hit_count": 6,
+            "cache_miss_count": 3,
+            "recompute_count": 3,
+            "hit_rate": 66.66666666666666
+          }
+        },
+        "setup": {
+          "cached": true,
+          "last_timestamp": "2023-12-15T02:00:00",
+          "stats": {
+            "cache_hit_count": 0,
+            "cache_miss_count": 0,
+            "recompute_count": 9,
+            "hit_rate": 0.0
+          }
+        }
+      }
+    },
+    {
+      "step": 9,
+      "timestamp": "2023-12-15T02:15:00",
+      "action": "WAIT",
+      "score": 0.79,
+      "cache_stats": {
+        "context": {
+          "cached": true,
+          "last_timestamp": "2023-12-15T00:00:00",
+          "stats": {
+            "cache_hit_count": 9,
+            "cache_miss_count": 1,
+            "recompute_count": 1,
+            "hit_rate": 90.0
+          }
+        },
+        "regime": {
+          "cached": true,
+          "last_timestamp": "2023-12-15T02:00:00",
+          "stats": {
+            "cache_hit_count": 7,
+            "cache_miss_count": 3,
+            "recompute_count": 3,
+            "hit_rate": 70.0
+          }
+        },
+        "setup": {
+          "cached": true,
+          "last_timestamp": "2023-12-15T02:15:00",
+          "stats": {
+            "cache_hit_count": 0,
+            "cache_miss_count": 0,
+            "recompute_count": 10,
+            "hit_rate": 0.0
+          }
+        }
+      }
+    }
+  ],
+  "verdicts": {
+    "context": "\u2705 Context cache working (rare recomputes)",
+    "regime": "\u2705 Regime cache working (occasional recomputes)",
+    "setup": "\u2705 Setup always fresh (recomputes every step)"
+  }
+}

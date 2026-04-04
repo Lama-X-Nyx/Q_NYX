@@ -1,0 +1,38 @@
+# Trading Pairs Configuration
+
+pairs:
+  BTCUSDT:
+    enabled: true
+    timeframes: ["15m", "1h", "4h"]
+    params:
+      sdc_threshold: 3.5
+      prob_threshold: 0.55
+      pyramid_threshold: 0.10
+      stop_loss: 0.05
+    
+  ETHUSDT:
+    enabled: true
+    timeframes: ["15m", "1h", "4h"]
+    params:
+      sdc_threshold: 3.5
+      prob_threshold: 0.55
+      pyramid_threshold: 0.10
+      stop_loss: 0.05
+  
+  SOLUSDT:
+    enabled: false  # Enable when data available
+    timeframes: ["15m", "1h", "4h"]
+    params:
+      sdc_threshold: 3.2  # More volatile
+      prob_threshold: 0.55
+      pyramid_threshold: 0.08
+      stop_loss: 0.06
+  
+  AVAXUSDT:
+    enabled: false
+    timeframes: ["15m", "1h", "4h"]
+    params:
+      sdc_threshold: 3.3
+      prob_threshold: 0.55
+      pyramid_threshold: 0.09
+      stop_loss: 0.055

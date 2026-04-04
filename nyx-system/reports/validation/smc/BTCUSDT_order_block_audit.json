@@ -1,0 +1,88 @@
+{
+  "pair": "BTCUSDT",
+  "bars_analyzed": 1000,
+  "config_used": {
+    "ob_lookback": 5,
+    "ob_range_threshold": 0.015
+  },
+  "ob_audit": {
+    "bars_analyzed": 1000,
+    "evaluation_count": 994,
+    "bullish_ob_detected": 9,
+    "bearish_ob_detected": 16,
+    "failed_range_threshold": 1926,
+    "failed_followthrough_move": 37,
+    "failed_window_constraints": 0
+  },
+  "coverage": {
+    "bullish_ob_rate": 0.9054325955734407,
+    "bearish_ob_rate": 1.6096579476861168,
+    "overall_ob_rate": 2.5150905432595576
+  },
+  "summary": "\nBars analyzed:         1000\nEvaluation count:      994\n\nBullish OB detected:   9\nBearish OB detected:   16\nTotal OB detected:     25\n\nFailure breakdown:\n  Range threshold fail:      1926\n  Follow-through fail:       37\n  Window constraint fail:    0\n\nConclusion:\nOrder Block detection is active (25 detected).\n",
+  "sensitivity": [
+    {
+      "ob_lookback": 5,
+      "ob_range_threshold": 0.015,
+      "bullish_ob_detected": 9,
+      "bearish_ob_detected": 16,
+      "total_detected": 25
+    },
+    {
+      "ob_lookback": 5,
+      "ob_range_threshold": 0.01,
+      "bullish_ob_detected": 1,
+      "bearish_ob_detected": 1,
+      "total_detected": 2
+    },
+    {
+      "ob_lookback": 5,
+      "ob_range_threshold": 0.005,
+      "bullish_ob_detected": 0,
+      "bearish_ob_detected": 0,
+      "total_detected": 0
+    },
+    {
+      "ob_lookback": 10,
+      "ob_range_threshold": 0.015,
+      "bullish_ob_detected": 0,
+      "bearish_ob_detected": 0,
+      "total_detected": 0
+    },
+    {
+      "ob_lookback": 10,
+      "ob_range_threshold": 0.01,
+      "bullish_ob_detected": 0,
+      "bearish_ob_detected": 0,
+      "total_detected": 0
+    },
+    {
+      "ob_lookback": 10,
+      "ob_range_threshold": 0.005,
+      "bullish_ob_detected": 0,
+      "bearish_ob_detected": 0,
+      "total_detected": 0
+    },
+    {
+      "ob_lookback": 20,
+      "ob_range_threshold": 0.015,
+      "bullish_ob_detected": 0,
+      "bearish_ob_detected": 0,
+      "total_detected": 0
+    },
+    {
+      "ob_lookback": 20,
+      "ob_range_threshold": 0.01,
+      "bullish_ob_detected": 0,
+      "bearish_ob_detected": 0,
+      "total_detected": 0
+    },
+    {
+      "ob_lookback": 20,
+      "ob_range_threshold": 0.005,
+      "bullish_ob_detected": 0,
+      "bearish_ob_detected": 0,
+      "total_detected": 0
+    }
+  ]
+}

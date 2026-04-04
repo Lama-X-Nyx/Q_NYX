@@ -1,0 +1,54 @@
+{
+  "pair": "BTCUSDT",
+  "reference_date": "2024-01-01T00:00:00",
+  "expected_windows": {
+    "context_1d_days": 360,
+    "structure_4h_days": 7,
+    "regime_1h_days": 2,
+    "setup_15m_days": 1
+  },
+  "geometry": {
+    "1d": {
+      "bars_loaded": 361,
+      "start_date": "2023-01-06T00:00:00",
+      "end_date": "2024-01-01T00:00:00",
+      "days_span": 360,
+      "expected_days": 360,
+      "aligned_to_reference": true,
+      "closed_candles_only": true
+    },
+    "4h": {
+      "bars_loaded": 43,
+      "start_date": "2023-12-25T00:00:00",
+      "end_date": "2024-01-01T00:00:00",
+      "days_span": 7,
+      "expected_days": 7,
+      "aligned_to_reference": true,
+      "closed_candles_only": true
+    },
+    "1h": {
+      "bars_loaded": 49,
+      "start_date": "2023-12-30T00:00:00",
+      "end_date": "2024-01-01T00:00:00",
+      "days_span": 2,
+      "expected_days": 2,
+      "aligned_to_reference": true,
+      "closed_candles_only": true
+    },
+    "15m": {
+      "bars_loaded": 97,
+      "start_date": "2023-12-31T00:00:00",
+      "end_date": "2024-01-01T00:00:00",
+      "days_span": 1,
+      "expected_days": 1,
+      "aligned_to_reference": true,
+      "closed_candles_only": true
+    }
+  },
+  "status": "valid",
+  "validation": {
+    "all_tfs_loaded": true,
+    "all_aligned": true,
+    "all_closed": true
+  }
+}
