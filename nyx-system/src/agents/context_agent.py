@@ -59,36 +59,63 @@ class ContextAgent:
         """
         Intent_1D = argmax(π_4H · A^k)
 
+        Handles both the legacy 3-state HSMM and the current 5-state model
+        (Trend+, Range, Trend-, Squeeze, Distribution).  For N-state models
+        the projected probabilities are collapsed to the 3-class scheme:
+          bullish_p  = P(Trend+) + 0.5×P(Squeeze)
+          neutral_p  = P(Range)
+          bearish_p  = P(Trend-) + P(Distribution)
+
         Args:
-            hsmm_states: {'Trend+': p, 'Range': p, 'Trend-': p}
-            transition_matrix_list: A as nested Python list (3×3)
+            hsmm_states: dict of state → probability for all N states
+            transition_matrix_list: A as nested Python list (N×N)
             k: projection horizon (steps forward)
 
         Returns:
-            (context_state, projected_distribution)
+            (context_state, projected_3)
             context_state ∈ {'bullish', 'neutral', 'bearish'}
-            projected_distribution: np.ndarray shape (3,)
+            projected_3: np.ndarray shape (3,) [bullish, neutral, bearish]
         """
-        state_order = ['Trend+', 'Range', 'Trend-']
-
-        pi = np.array([hsmm_states.get(s, 1.0 / 3) for s in state_order], dtype=float)
-        pi = pi / pi.sum()  # normalize (safety)
-
         A = np.array(transition_matrix_list, dtype=float)
+        n = A.shape[0]
+
+        # Build the full N-dimensional initial distribution
+        all_states = list(hsmm_states.keys())
+        pi_full = np.array([hsmm_states.get(s, 1.0 / n) for s in all_states], dtype=float)
+        pi_full = pi_full / pi_full.sum()
+
+        if pi_full.shape[0] != n:
+            raise ValueError(
+                f'Dimension mismatch: hsmm_states has {len(all_states)} entries '
+                f'but transition_matrix is {n}×{n}'
+            )
+
         A_k = np.linalg.matrix_power(A, k)
+        projected_full = pi_full @ A_k
+        projected_full = projected_full / projected_full.sum()
 
-        projected = pi @ A_k
-        projected = projected / projected.sum()  # re-normalize for numerical safety
+        # Map N-state projection → 3 semantic classes
+        state_idx = {s: i for i, s in enumerate(all_states)}
+        bullish_p = projected_full[state_idx['Trend+']] \
+                    + 0.5 * projected_full[state_idx.get('Squeeze', -1)] \
+                    if 'Squeeze' in state_idx else projected_full[state_idx['Trend+']]
+        bearish_p = projected_full[state_idx['Trend-']] \
+                    + projected_full[state_idx.get('Distribution', -1)] \
+                    if 'Distribution' in state_idx else projected_full[state_idx['Trend-']]
+        neutral_p = projected_full[state_idx.get('Range', 0)]
 
-        dominant_idx = int(np.argmax(projected))
-        dominant_hsmm = state_order[dominant_idx]
+        # Handle out-of-range index from .get() returning -1
+        if 'Squeeze' not in state_idx:
+            bullish_p = projected_full[state_idx['Trend+']]
+        if 'Distribution' not in state_idx:
+            bearish_p = projected_full[state_idx['Trend-']]
 
-        context_map = {
-            'Trend+': 'bullish',
-            'Range': 'neutral',
-            'Trend-': 'bearish'
-        }
-        return context_map[dominant_hsmm], projected
+        projected_3 = np.array([bullish_p, neutral_p, bearish_p])
+        projected_3 = projected_3 / projected_3.sum()
+
+        dominant_idx = int(np.argmax(projected_3))
+        context_map = {0: 'bullish', 1: 'neutral', 2: 'bearish'}
+        return context_map[dominant_idx], projected_3
 
     # ------------------------------------------------------------------
     # SMA fallback
@@ -96,31 +123,36 @@ class ContextAgent:
 
     def _compute_intent_from_sma(self, df: pd.DataFrame) -> Tuple[str, float, str]:
         """
-        Legacy SMA20/SMA50 heuristic for Intent_1D.
+        SMA10/SMA30 heuristic for Intent_1D.
+
+        Uses faster-responding SMAs (10/30 vs legacy 20/50) so the context
+        signal adapts within ~2 weeks of a trend change rather than ~5 weeks.
+        This prevents the strategy from being stuck in "bearish" at the start
+        of bull runs when the slow SMA50 still reflects prior bear market prices.
 
         Returns (state, score, reason)
         """
         close = df['close'].values
-        sma_20 = pd.Series(close).rolling(20).mean().values[-1]
-        sma_50 = pd.Series(close).rolling(50).mean().values[-1]
+        sma_10 = pd.Series(close).rolling(10).mean().values[-1]
+        sma_30 = pd.Series(close).rolling(30).mean().values[-1]
 
-        if np.isnan(sma_20) or np.isnan(sma_50):
+        if np.isnan(sma_10) or np.isnan(sma_30):
             return 'neutral', 0.0, 'SMA NaN — insufficient data'
 
-        diff_pct = (sma_20 - sma_50) / sma_50
+        diff_pct = (sma_10 - sma_30) / sma_30
 
         if diff_pct > self.trend_threshold:
             state = 'bullish'
             score = min(0.5 + diff_pct * 10, 1.0)
-            reason = f'SMA heuristic: SMA20 {diff_pct:.1%} above SMA50'
+            reason = f'SMA10/30: SMA10 {diff_pct:.1%} above SMA30'
         elif diff_pct < -self.trend_threshold:
             state = 'bearish'
             score = min(0.5 + abs(diff_pct) * 10, 1.0)
-            reason = f'SMA heuristic: SMA20 {abs(diff_pct):.1%} below SMA50'
+            reason = f'SMA10/30: SMA10 {abs(diff_pct):.1%} below SMA30'
         else:
             state = 'neutral'
             score = 0.4
-            reason = f'SMA heuristic: SMA20 within {self.trend_threshold:.1%} of SMA50'
+            reason = f'SMA10/30: SMA10 within {self.trend_threshold:.1%} of SMA30'
 
         return state, score, reason
 
@@ -191,9 +223,9 @@ class ContextAgent:
                 intent_method = 'hsmm_projection'
                 hsmm_meta = {
                     'projected_distribution': {
-                        'Trend+': float(projected[0]),
-                        'Range': float(projected[1]),
-                        'Trend-': float(projected[2])
+                        'bullish': float(projected[0]),
+                        'neutral': float(projected[1]),
+                        'bearish': float(projected[2]),
                     },
                     'projection_k': self.projection_k,
                     'source_4h_hsmm_states': hsmm_states,

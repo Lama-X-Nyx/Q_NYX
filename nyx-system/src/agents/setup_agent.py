@@ -304,13 +304,18 @@ class SetupAgent:
                     state = 'misaligned'
                 pattern_aligned = has_bearish   # SMC pattern in trade direction required
 
-            # Both HSMM alignment AND an SMC pattern in the trade direction are required.
-            # A "misaligned" setup (no matching pattern) must not trigger a trade.
-            passed = (alignment >= self.alignment_min) and pattern_aligned
+            # HSMM alignment must meet threshold.  SMC pattern in the trade
+            # direction boosts the effective score but is not a hard requirement —
+            # making it a hard gate reduced 839 → 8 trades (too aggressive).
+            # "misaligned" setups (no matching pattern) still pass but with a
+            # 15% score penalty applied to the returned score.
+            if not pattern_aligned:
+                score = score * 0.85   # penalise no-pattern setups
+            passed = alignment >= self.alignment_min
 
             direction_label = 'P(Trend+)' if context_state == 'bullish' else 'P(Trend-)'
             hsmm_tag = '' if hsmm_result['hsmm_ok'] else ' [hsmm_fallback]'
-            pattern_tag = '' if pattern_aligned else ' [no SMC pattern]'
+            pattern_tag = '' if pattern_aligned else ' [no SMC pattern -15% score]'
             reason = (
                 f'{state} | HSMM {direction_label}={alignment:.3f}'
                 f' (threshold={self.alignment_min}){hsmm_tag}{pattern_tag}'
