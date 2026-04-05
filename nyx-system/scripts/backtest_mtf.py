@@ -133,8 +133,8 @@ BASE_CONFIG = {
         },
         'intent_daily_projection_steps': 2,
         # Minimum aggregate score to enter a trade.
-        # Raised from 0.78 to 0.82 to further reduce over-trading.
-        'min_entry_score': 0.82,
+        # Raised from 0.82 to 0.84 to further reduce over-trading.
+        'min_entry_score': 0.84,
     },
     'fractal_readiness': {
         'context_min_bars': 50,
@@ -156,22 +156,28 @@ BASE_CONFIG = {
         # Initial stop = entry ± k_atr × ATR(50). Trails in the direction
         # of the trade — never moves against it.
         'atr_period':              50,     # ATR period for stop/sizing (50×15m = 12.5h)
-        'atr_sl_multiplier':       2.5,    # default k_atr (if no regime info)
+        'atr_sl_multiplier':       3.5,    # default k_atr (if no regime info)
+        # k_atr widened to give trades room to breathe against BTC noise.
+        # The trailing stop was firing on normal 15m consolidation (k=2-3 × ATR(50)
+        # ≈ $170-250 stop on $20k BTC ≈ 0.9-1.3%), which 15m bars easily exceed.
+        # Wider k reduces false stop-outs; position size scales proportionally
+        # (risk_per_trade stays at 2%), so dollar risk is unchanged.
         'atr_k_by_regime': {
-            'Trend+':       3.0,   # wider: let trend breathe
-            'Trend-':       3.0,
-            'Range':        2.0,   # tighter: mean-reversion context
-            'Squeeze':      2.5,
-            'Distribution': 2.0,
+            'Trend+':       5.0,   # very wide: capture the full trend move
+            'Trend-':       5.0,
+            'Range':        3.5,   # moderate: mean-reversion has tighter natural SL
+            'Squeeze':      4.0,
+            'Distribution': 3.5,
         },
 
         # --- Trailing take-profit (high-water-mark) ---
         # Activates after min_profit_atr_mult × ATR gain.
         # Closes when price retraces trail_tp_retracement of peak gain.
-        # With ATR(50)~$300 and min_mult=2.0: activates after +$600 gain.
-        # If high_water gains $1500: close when current < entry + 1500×0.60.
-        'min_profit_atr_mult':     2.0,    # 2× ATR gain before trail TP activates
-        'trail_tp_retracement':    0.40,   # close when retracing 40% of peak gain
+        # With ATR(50)~$250 and min_mult=3.0: activates after +$750 gain.
+        # Raised from 2.0 to 3.0 so the trail TP doesn't fire on small bounces;
+        # retrace threshold lowered to 30% to lock in more profit once active.
+        'min_profit_atr_mult':     3.0,    # was 2.0: require larger swing before trail TP
+        'trail_tp_retracement':    0.30,   # was 0.40: capture 70% of peak gain
 
         # --- Re-entry cooldown ---
         # Bars to wait after any close before new entry.
