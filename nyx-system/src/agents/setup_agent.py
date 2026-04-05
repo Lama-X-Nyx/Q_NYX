@@ -285,7 +285,6 @@ class SetupAgent:
             hsmm_result = self._compute_hsmm_alignment(df, context_state)
             alignment = hsmm_result['alignment']
             score = alignment
-            passed = alignment >= self.alignment_min
 
             # State label derived from SMC pattern direction (informational)
             if context_state == 'bullish':
@@ -295,6 +294,7 @@ class SetupAgent:
                     state = 'mixed_signals'
                 else:
                     state = 'misaligned'
+                pattern_aligned = has_bullish   # SMC pattern in trade direction required
             else:  # bearish
                 if has_bearish and not has_bullish:
                     state = 'valid_setup'
@@ -302,12 +302,18 @@ class SetupAgent:
                     state = 'mixed_signals'
                 else:
                     state = 'misaligned'
+                pattern_aligned = has_bearish   # SMC pattern in trade direction required
+
+            # Both HSMM alignment AND an SMC pattern in the trade direction are required.
+            # A "misaligned" setup (no matching pattern) must not trigger a trade.
+            passed = (alignment >= self.alignment_min) and pattern_aligned
 
             direction_label = 'P(Trend+)' if context_state == 'bullish' else 'P(Trend-)'
             hsmm_tag = '' if hsmm_result['hsmm_ok'] else ' [hsmm_fallback]'
+            pattern_tag = '' if pattern_aligned else ' [no SMC pattern]'
             reason = (
                 f'{state} | HSMM {direction_label}={alignment:.3f}'
-                f' (threshold={self.alignment_min}){hsmm_tag}'
+                f' (threshold={self.alignment_min}){hsmm_tag}{pattern_tag}'
             )
 
         else:  # neutral
