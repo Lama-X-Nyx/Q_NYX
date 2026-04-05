@@ -524,6 +524,56 @@ class SemiMarkovHMM:
         xi = np.exp(log_xi - log_Z[:, np.newaxis, np.newaxis])          # (T-1, n, n)
         return xi
 
+    # ------------------------------------------------------------------
+    # Huber-robust M-step utilities
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _huber_weighted_stats(
+        w: np.ndarray,
+        x: np.ndarray,
+        delta: float = 1.345,
+        n_iter: int = 5,
+    ) -> Tuple[float, float]:
+        """
+        Iteratively Reweighted Least Squares (IRLS) with Huber weights.
+
+        Combines L2 (quadratic) near the centre with L1 (linear) in the tails,
+        making emission estimates robust to flash-crash outliers.
+
+        Huber weight: hw_t = 1             if |r_t| ≤ δ
+                             δ / |r_t|     otherwise
+        where r_t = (x_t − μ) / σ  (standardised residual).
+
+        The default δ = 1.345 gives 95%-efficiency under Gaussianity while
+        down-weighting points > 1.345σ from the current estimate.
+
+        Args:
+            w:      Non-negative EM posterior weights (T,).
+            x:      Observation array (T,).
+            delta:  Huber threshold in units of σ (default 1.345).
+            n_iter: IRLS iterations (5 is sufficient for convergence).
+
+        Returns:
+            (mu, sigma) — Huber-robust weighted mean and std.
+        """
+        EPS = 1e-8
+        w_sum = w.sum() + EPS
+        mu  = np.dot(w, x) / w_sum
+        sig = np.sqrt(np.dot(w, (x - mu) ** 2) / w_sum)
+        sig = max(sig, EPS)
+
+        for _ in range(n_iter):
+            r   = np.abs(x - mu) / sig
+            hw  = np.where(r <= delta, 1.0, delta / (r + EPS))
+            ew  = w * hw
+            ew_sum = ew.sum() + EPS
+            mu  = np.dot(ew, x) / ew_sum
+            sig = np.sqrt(np.dot(ew, (x - mu) ** 2) / ew_sum)
+            sig = max(sig, EPS)
+
+        return float(mu), float(sig)
+
     def _m_step(
         self,
         gamma:    np.ndarray,
@@ -532,7 +582,11 @@ class SemiMarkovHMM:
         atrs:     np.ndarray,
     ) -> None:
         """
-        M-step: update π, A, and Gaussian emission params.
+        M-step: update π, A, and Huber-robust emission params.
+
+        Emission parameters are estimated via IRLS (Huber weights) instead of
+        plain WLS, making the model robust to flash-crash outliers that would
+        otherwise drag emission means toward extreme observations.
 
         gamma  : (T, n)     — smoothed state posteriors
         xi     : (T-1, n, n) — joint transition posteriors
@@ -552,26 +606,24 @@ class SemiMarkovHMM:
         A_new = np.clip(A_new, 1e-4, None)
         self.transition_matrix = A_new / A_new.sum(axis=1, keepdims=True)
 
-        # ---- Emission params (Gaussian, per state) ----
+        # ---- Emission params (Huber-robust IRLS, per state) ----
         for i, state in enumerate(self.states):
             w = gamma[:, i]                                     # (T,)
 
-            # Price
+            # Price — Huber IRLS
             vp = ~np.isnan(prices)
             w_p = w[vp]; p = prices[vp]
             if w_p.sum() > EPS:
-                mu_p  = np.dot(w_p, p) / w_p.sum()
-                sig_p = np.sqrt(np.dot(w_p, (p - mu_p) ** 2) / w_p.sum())
+                mu_p, sig_p = self._huber_weighted_stats(w_p, p)
             else:
                 mu_p  = self.emission_params[state]['price_mu']
                 sig_p = self.emission_params[state]['price_sigma']
 
-            # ATR
+            # ATR — Huber IRLS
             va = ~np.isnan(atrs)
             w_a = w[va]; a = atrs[va]
             if w_a.sum() > EPS:
-                mu_a  = np.dot(w_a, a) / w_a.sum()
-                sig_a = np.sqrt(np.dot(w_a, (a - mu_a) ** 2) / w_a.sum())
+                mu_a, sig_a = self._huber_weighted_stats(w_a, a)
             else:
                 mu_a  = self.emission_params[state]['atr_mu']
                 sig_a = self.emission_params[state]['atr_sigma']
@@ -707,6 +759,194 @@ class SemiMarkovHMM:
             return []
 
         return self.fit(observations, n_iter=n_iter, tol=tol)
+
+    # ------------------------------------------------------------------
+    # Girsanov regime-change score
+    # ------------------------------------------------------------------
+
+    def compute_girsanov_score(
+        self,
+        observations: List[Dict],
+        ref_state:    Optional[str] = None,
+        window:       int = 50,
+    ) -> np.ndarray:
+        """
+        Sequential log-likelihood ratio between the dominant regime and each
+        alternative, accumulated over a rolling window (Girsanov change-of-measure).
+
+        For a Gaussian emission model the log-LR between state i (current
+        dominant) and state j at time t is:
+
+            ℓ_t(i→j) = log p(x_t | state=j) − log p(x_t | state=i)
+
+        A strongly positive value means observations fit state j better than
+        state i — a potential regime change in that direction.
+
+        The returned score per time step is:
+
+            score_t = max_j≠i  Σ_{s=max(0,t-window)}^{t}  ℓ_s(i→j)
+
+        A monotonically rising score signals a regime transition BEFORE the
+        smoothed posterior γ(t) catches up (lead indicator).
+
+        Args:
+            observations: List of {'price': float, 'atr': float} dicts.
+            ref_state:    Reference (baseline) state name.  If None, the
+                          dominant state of the final posterior is used.
+            window:       Sliding accumulation window in bars.
+
+        Returns:
+            scores : (T,) array of Girsanov regime-change scores.
+                     Higher = stronger evidence that a regime shift is imminent.
+        """
+        if self.emission_params is None:
+            raise RuntimeError("Call initialize_parameters() before compute_girsanov_score().")
+
+        T = len(observations)
+        if T == 0:
+            return np.array([])
+
+        # Run Forward-Backward to get posterior and dominant state
+        gamma = self.forward_backward(observations)           # (T, n)
+        if gamma.size == 0:
+            return np.zeros(T)
+
+        if ref_state is not None:
+            if ref_state not in self.state_to_idx:
+                raise ValueError(f"Unknown ref_state '{ref_state}'. "
+                                 f"Valid states: {self.states}")
+            ref_idx = self.state_to_idx[ref_state]
+        else:
+            # Use the dominant state at the last time step
+            ref_idx = int(np.argmax(gamma[-1]))
+
+        # Compute per-step log-likelihood for every state
+        log_B = self._compute_log_B(observations)             # (T, n)
+
+        # Log-LR for each alternative j relative to ref
+        # shape (T, n): col j = log p(x_t | j) − log p(x_t | ref)
+        log_lr = log_B - log_B[:, ref_idx : ref_idx + 1]     # broadcast
+
+        # Remove self-comparison (col ref_idx = 0 identically)
+        mask = np.ones(self.n_states, dtype=bool)
+        mask[ref_idx] = False
+        log_lr_alt = log_lr[:, mask]                          # (T, n-1)
+
+        # Rolling sum (accumulation) over `window` bars
+        scores = np.zeros(T)
+        for t in range(T):
+            start   = max(0, t - window + 1)
+            window_ = log_lr_alt[start : t + 1]              # (≤window, n-1)
+            cumsum  = window_.sum(axis=0)                     # (n-1,)
+            scores[t] = float(cumsum.max())
+
+        return scores
+
+    # ------------------------------------------------------------------
+    # ALE — Accumulated Local Effects
+    # ------------------------------------------------------------------
+
+    def compute_ale(
+        self,
+        observations: List[Dict],
+        feature:      str  = 'price',
+        state_idx:    int  = 0,
+        n_bins:       int  = 20,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Accumulated Local Effects (ALE) for feature → P(state=state_idx | obs).
+
+        ALE (Apley & Zhu 2020) measures the marginal effect of a single feature
+        on the model output while averaging out correlations with other features.
+        Unlike ICE / PDP it is unbiased when features are correlated.
+
+        Algorithm:
+            1. Extract all values of `feature` from observations.
+            2. Partition them into n_bins equal-frequency bins.
+            3. For each bin b with bounds [z_lo, z_hi]:
+                a. Build two perturbation sets: original obs with feature set to
+                   z_lo and z_hi respectively.
+                b. Run forward_backward on each set.
+                c. Local effect for each obs in the bin = P(state_idx | z_hi) − P(state_idx | z_lo).
+                d. Average those local effects to get ALE_b.
+            4. Accumulate: ALE(z_k) = Σ_{b=1}^{k} ALE_b.
+            5. Centre: subtract mean so the curve integrates to zero.
+
+        Args:
+            observations: List of {'price': float, 'atr': float} dicts (T entries).
+            feature:      Feature key to vary — 'price' or 'atr'.
+            state_idx:    Which state's posterior to explain (0-indexed).
+            n_bins:       Number of equal-frequency bins (default 20).
+
+        Returns:
+            bin_centers : (n_bins,) — mid-point of each bin in feature space.
+            ale_values  : (n_bins,) — accumulated local effect at each bin centre.
+                          Positive = increasing the feature raises P(state_idx).
+                          Negative = increasing the feature lowers P(state_idx).
+        """
+        if self.emission_params is None:
+            raise RuntimeError("Call initialize_parameters() before compute_ale().")
+        if state_idx < 0 or state_idx >= self.n_states:
+            raise ValueError(f"state_idx {state_idx} out of range [0, {self.n_states}).")
+        if feature not in ('price', 'atr'):
+            raise ValueError(f"feature must be 'price' or 'atr', got '{feature}'.")
+
+        T = len(observations)
+        if T < 2 * n_bins:
+            raise ValueError(f"Need at least {2 * n_bins} observations for {n_bins} bins.")
+
+        # Extract raw feature values
+        feat_vals = np.array([float(o.get(feature, np.nan)) for o in observations])
+        valid     = ~np.isnan(feat_vals)
+        feat_clean = feat_vals[valid]
+        obs_clean  = [observations[i] for i in range(T) if valid[i]]
+
+        # Build n_bins equal-frequency bin edges
+        quantiles  = np.linspace(0, 100, n_bins + 1)
+        bin_edges  = np.percentile(feat_clean, quantiles)
+        # Ensure strictly increasing edges (deduplicate)
+        bin_edges  = np.unique(bin_edges)
+        actual_bins = len(bin_edges) - 1
+        if actual_bins < 1:
+            return np.array([np.mean(feat_clean)]), np.array([0.0])
+
+        bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+
+        # Helper: run FB on a modified observation set
+        def _posterior(obs_list: List[Dict]) -> np.ndarray:
+            """Return (T, n_states) gamma array."""
+            g = self.forward_backward(obs_list)
+            return g if g.size > 0 else np.ones((len(obs_list), self.n_states)) / self.n_states
+
+        ale_values = np.zeros(actual_bins)
+
+        for b in range(actual_bins):
+            z_lo = bin_edges[b]
+            z_hi = bin_edges[b + 1]
+
+            # Find observations in this bin
+            in_bin = (feat_clean >= z_lo) & (feat_clean <= z_hi)
+            if not in_bin.any():
+                continue
+
+            obs_bin = [obs_clean[i] for i in range(len(obs_clean)) if in_bin[i]]
+
+            # Perturb feature to bin lower / upper bound
+            obs_lo = [{**o, feature: z_lo} for o in obs_bin]
+            obs_hi = [{**o, feature: z_hi} for o in obs_bin]
+
+            g_lo = _posterior(obs_lo)[:, state_idx]  # (n_in_bin,)
+            g_hi = _posterior(obs_hi)[:, state_idx]  # (n_in_bin,)
+
+            ale_values[b] = float(np.mean(g_hi - g_lo))
+
+        # Accumulate
+        ale_cumulative = np.cumsum(ale_values)
+
+        # Centre (zero-mean over bins)
+        ale_cumulative -= ale_cumulative.mean()
+
+        return bin_centers, ale_cumulative
 
     # ------------------------------------------------------------------
     # Helpers
