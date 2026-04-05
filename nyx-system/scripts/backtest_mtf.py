@@ -352,6 +352,7 @@ class MTFBacktest:
         self.notional:     float = 0.0     # position value in $ at entry
         self.trail_sl:     float = 0.0     # current trailing stop level
         self.high_water:   float = 0.0     # best price seen (LONG peak / SHORT trough)
+        self.fixed_tp:     float = 0.0     # fixed 2:1 take-profit target (set at entry)
 
         # ---- Account risk ----
         # Daily DD kill switch: 5% loss vs that day's opening capital
@@ -483,44 +484,54 @@ class MTFBacktest:
             # 1. Update trailing stop & trailing TP for open position
             # ----------------------------------------------------------------
             if self.position == 'LONG':
-                # Trail stop upward
-                new_sl = current_price - self.entry_k * atr_now
-                self.trail_sl = max(self.trail_sl, new_sl)
-                # Track high-water
-                self.high_water = max(self.high_water, current_price)
-
-                # Check trail stop
-                if current_price <= self.trail_sl:
-                    self._close('Trail-Stop', ts, current_price)
+                # Fixed 2:1 TP target — check first (best price = limit exit)
+                if self.fixed_tp > 0 and current_price >= self.fixed_tp:
+                    self._close('Fixed-TP', ts, current_price)
                     self._last_close_bar = bar_i
                 else:
-                    # Check trail TP (only after min_profit_atr_mult × ATR gain)
-                    gain = self.high_water - self.entry_price
-                    if gain >= min_mult * self.entry_atr:
-                        locked_floor = self.entry_price + gain * (1 - retr)
-                        if current_price < locked_floor:
-                            self._close('Trail-TP', ts, current_price)
-                            self._last_close_bar = bar_i
+                    # Trail stop upward
+                    new_sl = current_price - self.entry_k * atr_now
+                    self.trail_sl = max(self.trail_sl, new_sl)
+                    # Track high-water
+                    self.high_water = max(self.high_water, current_price)
+
+                    # Check trail stop
+                    if current_price <= self.trail_sl:
+                        self._close('Trail-Stop', ts, current_price)
+                        self._last_close_bar = bar_i
+                    else:
+                        # Check trail TP (only after min_profit_atr_mult × ATR gain)
+                        gain = self.high_water - self.entry_price
+                        if gain >= min_mult * self.entry_atr:
+                            locked_floor = self.entry_price + gain * (1 - retr)
+                            if current_price < locked_floor:
+                                self._close('Trail-TP', ts, current_price)
+                                self._last_close_bar = bar_i
 
             elif self.position == 'SHORT':
-                # Trail stop downward
-                new_sl = current_price + self.entry_k * atr_now
-                self.trail_sl = min(self.trail_sl, new_sl)
-                # Track low-water
-                self.high_water = min(self.high_water, current_price)
-
-                # Check trail stop
-                if current_price >= self.trail_sl:
-                    self._close('Trail-Stop', ts, current_price)
+                # Fixed 2:1 TP target — check first
+                if self.fixed_tp > 0 and current_price <= self.fixed_tp:
+                    self._close('Fixed-TP', ts, current_price)
                     self._last_close_bar = bar_i
                 else:
-                    # Check trail TP
-                    gain = self.entry_price - self.high_water
-                    if gain >= min_mult * self.entry_atr:
-                        locked_floor = self.entry_price - gain * (1 - retr)
-                        if current_price > locked_floor:
-                            self._close('Trail-TP', ts, current_price)
-                            self._last_close_bar = bar_i
+                    # Trail stop downward
+                    new_sl = current_price + self.entry_k * atr_now
+                    self.trail_sl = min(self.trail_sl, new_sl)
+                    # Track low-water
+                    self.high_water = min(self.high_water, current_price)
+
+                    # Check trail stop
+                    if current_price >= self.trail_sl:
+                        self._close('Trail-Stop', ts, current_price)
+                        self._last_close_bar = bar_i
+                    else:
+                        # Check trail TP
+                        gain = self.entry_price - self.high_water
+                        if gain >= min_mult * self.entry_atr:
+                            locked_floor = self.entry_price - gain * (1 - retr)
+                            if current_price > locked_floor:
+                                self._close('Trail-TP', ts, current_price)
+                                self._last_close_bar = bar_i
 
             # ----------------------------------------------------------------
             # 2. Equity snapshot & daily drawdown check (prop-desk style)
@@ -636,14 +647,17 @@ class MTFBacktest:
                     self.entry_k     = k
                     self.notional    = notional
 
+                    stop_dist = k * atr_now
                     if action == 'BUY':
-                        self.trail_sl   = eff_entry - k * atr_now
+                        self.trail_sl   = eff_entry - stop_dist
                         self.high_water = eff_entry
                         self.position   = 'LONG'
+                        self.fixed_tp   = eff_entry + 2.0 * stop_dist   # 2:1 R:R target
                     else:
-                        self.trail_sl   = eff_entry + k * atr_now
+                        self.trail_sl   = eff_entry + stop_dist
                         self.high_water = eff_entry
                         self.position   = 'SHORT'
+                        self.fixed_tp   = eff_entry - 2.0 * stop_dist   # 2:1 R:R target
 
                     self._log_entry(ts, eff_entry, decision, lev, k, atr_now)
 
@@ -712,7 +726,7 @@ class MTFBacktest:
               f"  PnL: ${pnl:+,.2f} ({pnl_pct*100:+.2f}%)  [{reason}]")
         self.position    = None
         self.entry_price = self.entry_atr = self.entry_k = 0.0
-        self.notional    = self.trail_sl  = self.high_water = 0.0
+        self.notional    = self.trail_sl  = self.high_water = self.fixed_tp = 0.0
 
     def _log_entry(self, ts, price: float, decision, leverage: float,
                    k: float, atr: float):
@@ -721,7 +735,7 @@ class MTFBacktest:
         icon  = '🟢' if side == 'LONG' else '🔴'
         print(f"  {icon} ENTRY {side:<5}  {ts.strftime('%m/%d %H:%M')} @ ${price:,.0f}"
               f"  score={score:.2f}  lev={leverage:.1f}×  "
-              f"k={k:.1f}  ATR={atr:.0f}  SL=${self.trail_sl:,.0f}")
+              f"k={k:.1f}  ATR={atr:.0f}  SL=${self.trail_sl:,.0f}  TP=${self.fixed_tp:,.0f}")
 
     # -----------------------------------------------------------------------
     # Metrics
