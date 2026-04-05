@@ -604,10 +604,11 @@ class MTFBacktest:
                     reason = 'DD kill switch active'
 
                 else:
-                    # 15m momentum confirmation: last bar must agree with trade direction.
-                    # Filters entries where HSMM is bullish but the most recent candle
-                    # is already reversing (bearish candle before a LONG entry, etc.).
                     df_15m = slices.get('15m', pd.DataFrame())
+
+                    # --- Filter 1: 15m momentum confirmation ---
+                    # Last bar must agree with trade direction to avoid entering
+                    # just as price is reversing against the signal.
                     if not df_15m.empty and len(df_15m) >= 2:
                         last_bar = df_15m.iloc[-1]
                         prev_bar = df_15m.iloc[-2]
@@ -622,6 +623,24 @@ class MTFBacktest:
                         elif action == 'SELL' and not (last_bearish or prev_bearish):
                             action = 'WAIT'
                             reason = 'No 15m bearish momentum (last 2 bars both bullish)'
+
+                    # --- Filter 2: Pullback entry filter ---
+                    # Avoid entering when price is at or near a recent 3-hour high/low.
+                    # The HSMM fires "bullish" after a sustained rally → we'd be
+                    # buying the top.  Require at least 0.6% pullback from the 12-bar
+                    # high (LONG) or 0.6% bounce from the 12-bar low (SHORT) before entry.
+                    if action in ('BUY', 'SELL') and not df_15m.empty and len(df_15m) >= 12:
+                        lookback = df_15m.tail(12)    # 12 × 15m = 3 hours
+                        recent_high = float(lookback['high'].max())
+                        recent_low  = float(lookback['low'].min())
+                        pullback_from_high = (recent_high - current_price) / recent_high
+                        bounce_from_low    = (current_price - recent_low)  / recent_low
+                        if action == 'BUY' and pullback_from_high < 0.006:
+                            action = 'WAIT'
+                            reason = f'At 3h high (pullback={pullback_from_high:.2%} < 0.6%)'
+                        elif action == 'SELL' and bounce_from_low < 0.006:
+                            action = 'WAIT'
+                            reason = f'At 3h low (bounce={bounce_from_low:.2%} < 0.6%)'
 
                 if action in ('BUY', 'SELL'):
                     # Regime-adaptive k_atr
