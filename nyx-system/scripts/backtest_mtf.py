@@ -191,7 +191,7 @@ class MTFBacktest:
         self.capital = initial_capital
         self.orchestrator = Orchestrator(config)
 
-        self.position = None          # None | 'LONG'
+        self.position = None          # None | 'LONG' | 'SHORT'
         self.entry_price = 0.0
         self.stop_loss = 0.0
         self.take_profit = 0.0
@@ -251,13 +251,20 @@ class MTFBacktest:
             if self.position == 'LONG':
                 if current_price <= self.stop_loss:
                     self._close('Stop-Loss', ts, current_price)
-                    self._last_close_bar = bar_i   # record close bar for cooldown
+                    self._last_close_bar = bar_i
                 elif current_price >= self.take_profit:
+                    self._close('Take-Profit', ts, current_price)
+                    self._last_close_bar = bar_i
+            elif self.position == 'SHORT':
+                if current_price >= self.stop_loss:   # price rises → SL hit
+                    self._close('Stop-Loss', ts, current_price)
+                    self._last_close_bar = bar_i
+                elif current_price <= self.take_profit:  # price falls → TP hit
                     self._close('Take-Profit', ts, current_price)
                     self._last_close_bar = bar_i
 
             # --- 2. Skip orchestrator when in position (exits are SL/TP only) ---
-            if self.position == 'LONG':
+            if self.position in ('LONG', 'SHORT'):
                 equity = self._equity(current_price)
                 self.equity_curve.append({'ts': ts, 'price': current_price, 'equity': equity})
                 self.decision_log.append({'ts': ts, 'price': current_price,
@@ -290,16 +297,23 @@ class MTFBacktest:
 
             # --- 5. Entry (with minimum quality score filter) ---
             min_score = self.config.get('strategy', {}).get('min_entry_score', 0.0)
-            if self.position is None and action == 'BUY':
+            if self.position is None and action in ('BUY', 'SELL'):
                 if decision and decision.score < min_score:
                     action = 'WAIT'
                     reason = f'Score {decision.score:.2f} < min_entry_score {min_score:.2f}'
-                else:
+                elif action == 'BUY':
                     self.entry_price   = current_price
                     self.stop_loss     = current_price * (1 - sl_pct)
                     self.take_profit   = current_price * (1 + sl_pct * tp_ratio)
                     self.position_size = size_pct
                     self.position      = 'LONG'
+                    self._log_entry(ts, current_price, decision)
+                else:  # SELL → SHORT
+                    self.entry_price   = current_price
+                    self.stop_loss     = current_price * (1 + sl_pct)       # SL above entry
+                    self.take_profit   = current_price * (1 - sl_pct * tp_ratio)  # TP below
+                    self.position_size = size_pct
+                    self.position      = 'SHORT'
                     self._log_entry(ts, current_price, decision)
 
             # --- 6. Equity snapshot ---
@@ -329,15 +343,24 @@ class MTFBacktest:
     def _equity(self, price: float) -> float:
         if self.position == 'LONG':
             pnl_pct = (price - self.entry_price) / self.entry_price
-            return self.capital * (1 + pnl_pct * self.position_size *
-                                   self.config['risk']['leverage'])
-        return self.capital
+        elif self.position == 'SHORT':
+            pnl_pct = (self.entry_price - price) / self.entry_price  # profit when price falls
+        else:
+            return self.capital
+        return self.capital * (1 + pnl_pct * self.position_size *
+                               self.config['risk']['leverage'])
 
     def _close(self, reason: str, ts, price: float):
-        pnl_pct = (price - self.entry_price) / self.entry_price
+        if self.position == 'LONG':
+            pnl_pct = (price - self.entry_price) / self.entry_price
+            side = 'LONG'
+        else:  # SHORT
+            pnl_pct = (self.entry_price - price) / self.entry_price
+            side = 'SHORT'
         pnl = self.capital * pnl_pct * self.position_size * self.config['risk']['leverage']
         self.capital += pnl
         self.trades.append({
+            'side':        side,
             'reason':      reason,
             'ts':          ts,
             'entry_price': self.entry_price,
@@ -347,14 +370,16 @@ class MTFBacktest:
             'won':         pnl > 0,
         })
         marker = '✅' if pnl > 0 else '❌'
-        print(f"  {marker}  CLOSE LONG  {ts.strftime('%m/%d %H:%M')} @ ${price:,.0f}"
+        print(f"  {marker}  CLOSE {side:<5}  {ts.strftime('%m/%d %H:%M')} @ ${price:,.0f}"
               f"  PnL: ${pnl:+,.2f} ({pnl_pct*100:+.2f}%)  [{reason}]")
         self.position = None
         self.entry_price = self.stop_loss = self.take_profit = self.position_size = 0.0
 
     def _log_entry(self, ts, price: float, decision):
         score = decision.score if decision else 0
-        print(f"  🟢 ENTRY LONG  {ts.strftime('%m/%d %H:%M')} @ ${price:,.0f}"
+        side = self.position  # already set before this is called
+        icon = '🟢' if side == 'LONG' else '🔴'
+        print(f"  {icon} ENTRY {side:<5}  {ts.strftime('%m/%d %H:%M')} @ ${price:,.0f}"
               f"  score={score:.2f}  SL=${self.stop_loss:,.0f}  TP=${self.take_profit:,.0f}")
 
     # -----------------------------------------------------------------------
@@ -459,6 +484,10 @@ def print_report(res: dict, start: str, end: str):
 
     print(f"\n  Trades")
     print(f"  {'Total':<22}  {res['trades']:>11}")
+    longs  = [t for t in res['trade_list'] if t.get('side') == 'LONG']
+    shorts = [t for t in res['trade_list'] if t.get('side') == 'SHORT']
+    print(f"  {'  dont LONG':<22}  {len(longs):>11}")
+    print(f"  {'  dont SHORT':<22}  {len(shorts):>11}")
     print(f"  {'Gagnants':<22}  {res['winners']:>11}")
     print(f"  {'Perdants':<22}  {res['losers']:>11}")
     print(f"  {'Win Rate':<22}  {res['win_rate']:>10.1f}%")
@@ -469,8 +498,9 @@ def print_report(res: dict, start: str, end: str):
     print(f"\n  Détail des trades")
     for i, t in enumerate(res['trade_list'], 1):
         marker = '✅' if t['won'] else '❌'
+        side   = t.get('side', 'LONG')
         ts_str = t['ts'].strftime('%m/%d %H:%M') if hasattr(t['ts'], 'strftime') else str(t['ts'])
-        print(f"    {i:>2}. {marker}  {ts_str}  "
+        print(f"    {i:>2}. {marker} [{side:<5}]  {ts_str}  "
               f"entrée ${t['entry_price']:,.0f} → sortie ${t['exit_price']:,.0f}  "
               f"PnL: ${t['pnl']:+,.2f} ({t['pnl_pct']:+.2f}%)  [{t['reason']}]")
 

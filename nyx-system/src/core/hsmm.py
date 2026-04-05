@@ -61,6 +61,10 @@ class SemiMarkovHMM:
         self._fb_fingerprint:   Optional[int] = None
         self._fb_cache:         Optional[np.ndarray] = None
 
+        # Locked after Baum-Welch EM: initialize_parameters() becomes a no-op
+        # so pre-trained params are not overwritten by heuristic re-init each bar.
+        self._locked: bool = False
+
     # ------------------------------------------------------------------
     # Initialisation
     # ------------------------------------------------------------------
@@ -78,7 +82,14 @@ class SemiMarkovHMM:
         Speed note: if called with identical data (same tail fingerprint as the
         previous call) the method returns immediately — parameters are unchanged.
         This is transparent to callers and does not affect trade logic.
+
+        Lock note: if fit() has been called (Baum-Welch EM), this method is a
+        no-op — the learned parameters are preserved for OOS inference.
+        Call unlock() to re-enable heuristic re-init (e.g. for online retraining).
         """
+        if self._locked:
+            return  # EM pre-trained — keep learned parameters
+
         # Fingerprint: hash of the last 10 close prices (cheap, stable proxy)
         fp = hash(data['close'].iloc[-10:].values.tobytes()) if len(data) >= 10 else None
         if fp is not None and fp == self._init_fingerprint and self.emission_params is not None:
@@ -637,7 +648,17 @@ class SemiMarkovHMM:
         self._fb_fingerprint   = None
         self._fb_cache         = None
 
+        # Lock: prevent heuristic re-init from overwriting learned params
+        self._locked = True
+
         return ll_history
+
+    def unlock(self) -> None:
+        """
+        Re-enable heuristic re-init (e.g. before periodic re-training in live trading).
+        After calling this, initialize_parameters() will run normally again.
+        """
+        self._locked = False
 
     def initialize_parameters_with_em(
         self,
