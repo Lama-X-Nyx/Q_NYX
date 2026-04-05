@@ -156,28 +156,25 @@ BASE_CONFIG = {
         # Initial stop = entry ± k_atr × ATR(50). Trails in the direction
         # of the trade — never moves against it.
         'atr_period':              50,     # ATR period for stop/sizing (50×15m = 12.5h)
-        'atr_sl_multiplier':       3.5,    # default k_atr (if no regime info)
-        # k_atr widened to give trades room to breathe against BTC noise.
-        # The trailing stop was firing on normal 15m consolidation (k=2-3 × ATR(50)
-        # ≈ $170-250 stop on $20k BTC ≈ 0.9-1.3%), which 15m bars easily exceed.
-        # Wider k reduces false stop-outs; position size scales proportionally
-        # (risk_per_trade stays at 2%), so dollar risk is unchanged.
+        'atr_sl_multiplier':       2.5,    # default k_atr (if no regime info)
+        # k_atr = 2.5 across all regimes (simplified from per-regime table).
+        # This places the fixed-TP at 2×2.5×ATR = 5×ATR above entry, which on
+        # BTC at $25k with ATR(50)~$200 means a $1,000 (4%) target — reachable
+        # in a single daily swing. With k=5.0 the TP was 10% away (rarely hit).
         'atr_k_by_regime': {
-            'Trend+':       5.0,   # very wide: capture the full trend move
-            'Trend-':       5.0,
-            'Range':        3.5,   # moderate: mean-reversion has tighter natural SL
-            'Squeeze':      4.0,
-            'Distribution': 3.5,
+            'Trend+':       2.5,
+            'Trend-':       2.5,
+            'Range':        2.5,
+            'Squeeze':      2.5,
+            'Distribution': 2.5,
         },
 
         # --- Trailing take-profit (high-water-mark) ---
-        # Activates after min_profit_atr_mult × ATR gain.
-        # Closes when price retraces trail_tp_retracement of peak gain.
-        # With ATR(50)~$250 and min_mult=3.0: activates after +$750 gain.
-        # Raised from 2.0 to 3.0 so the trail TP doesn't fire on small bounces;
-        # retrace threshold lowered to 30% to lock in more profit once active.
-        'min_profit_atr_mult':     3.0,    # was 2.0: require larger swing before trail TP
-        'trail_tp_retracement':    0.30,   # was 0.40: capture 70% of peak gain
+        # Trail TP kept as a fallback for very large moves that exceed the fixed TP.
+        # min_profit_atr_mult=8.0 means it only activates after an 8×ATR gain —
+        # effectively ensuring the fixed 2:1 TP fires first on normal winners.
+        'min_profit_atr_mult':     8.0,    # large: trail TP is fallback only
+        'trail_tp_retracement':    0.25,   # tight retrace to lock in big gains
 
         # --- Re-entry cooldown ---
         # Bars to wait after any close before new entry.
