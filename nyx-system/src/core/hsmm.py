@@ -61,9 +61,15 @@ class SemiMarkovHMM:
         self._fb_fingerprint:   Optional[int] = None
         self._fb_cache:         Optional[np.ndarray] = None
 
-        # Locked after Baum-Welch EM: initialize_parameters() becomes a no-op
-        # so pre-trained params are not overwritten by heuristic re-init each bar.
+        # Lock modes after Baum-Welch EM:
+        #   _locked=True  → full lock: initialize_parameters() is a no-op
+        #   _locked_structure=True → partial lock: keep A and π from EM,
+        #     but allow heuristic re-estimation of emission params each bar
+        #     (transitions are structurally stable; emissions must adapt to regime)
         self._locked: bool = False
+        self._locked_structure: bool = False
+        self._locked_transition: Optional[np.ndarray] = None
+        self._locked_initial:    Optional[np.ndarray] = None
 
     # ------------------------------------------------------------------
     # Initialisation
@@ -88,7 +94,7 @@ class SemiMarkovHMM:
         Call unlock() to re-enable heuristic re-init (e.g. for online retraining).
         """
         if self._locked:
-            return  # EM pre-trained — keep learned parameters
+            return  # Full lock — keep all EM-learned parameters
 
         # Fingerprint: hash of the last 10 close prices (cheap, stable proxy)
         fp = hash(data['close'].iloc[-10:].values.tobytes()) if len(data) >= 10 else None
@@ -96,8 +102,13 @@ class SemiMarkovHMM:
             return  # Data unchanged — reuse existing parameters
         self._init_fingerprint = fp
 
-        self.initial_probs = np.ones(self.n_states) / self.n_states
-        self.transition_matrix = self._build_transition_prior()
+        if self._locked_structure:
+            # Partial lock: restore EM-learned A and π, re-estimate emissions only
+            self.initial_probs    = self._locked_initial.copy()
+            self.transition_matrix = self._locked_transition.copy()
+        else:
+            self.initial_probs = np.ones(self.n_states) / self.n_states
+            self.transition_matrix = self._build_transition_prior()
 
         labeled_states = self._label_states_heuristic(data)
 
@@ -648,17 +659,29 @@ class SemiMarkovHMM:
         self._fb_fingerprint   = None
         self._fb_cache         = None
 
-        # Lock: prevent heuristic re-init from overwriting learned params
-        self._locked = True
+        # Partial lock: save learned A and π so they survive heuristic re-init
+        self._locked_transition = self.transition_matrix.copy()
+        self._locked_initial    = self.initial_probs.copy()
+        self._locked_structure  = True   # default: adaptive emissions, frozen structure
+
+        # Full lock (opt-in via lock_all()): keep everything frozen
+        self._locked = False
 
         return ll_history
 
+    def lock_all(self) -> None:
+        """Freeze all parameters (A, π, emissions). initialize_parameters() → no-op."""
+        self._locked = True
+
     def unlock(self) -> None:
         """
-        Re-enable heuristic re-init (e.g. before periodic re-training in live trading).
-        After calling this, initialize_parameters() will run normally again.
+        Re-enable full heuristic re-init (e.g. before periodic re-training).
+        Clears both full and structure locks.
         """
         self._locked = False
+        self._locked_structure = False
+        self._locked_transition = None
+        self._locked_initial    = None
 
     def initialize_parameters_with_em(
         self,

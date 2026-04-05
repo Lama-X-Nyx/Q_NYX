@@ -141,35 +141,45 @@ def pct_str(v: float) -> str:
 
 def pretrain_agents(orchestrator: Orchestrator, mtf_all: dict,
                     pretrain_end: str, pretrain_months: int,
-                    em_iters: int = 20) -> None:
+                    em_iters: int = 30) -> None:
     """
     Pre-train HSMM agents via Baum-Welch EM on historical data that
     precedes the backtest period.
+
+    Lock mode: STRUCTURE LOCK (default after fit())
+      - Transition matrix A and initial π → frozen from EM (structurally stable)
+      - Emission params → re-estimated heuristically each bar (adapt to regime)
+    This is the best of both worlds: learned structure, adaptive emissions.
 
     Args:
         orchestrator:    Orchestrator instance (exposes .regime_agent, .setup_agent)
         mtf_all:         Full MTF data dict
         pretrain_end:    ISO date string — last day of pre-training window
         pretrain_months: Number of months to look back for training data
-        em_iters:        EM iterations per agent (default 20)
+        em_iters:        EM iterations per agent (default 30)
     """
-    end_ts    = pd.Timestamp(pretrain_end)
-    start_ts  = end_ts - relativedelta(months=pretrain_months)
+    end_ts   = pd.Timestamp(pretrain_end)
+    start_ts = end_ts - relativedelta(months=pretrain_months)
+    # Cap at actual data start
+    for df in mtf_all.values():
+        if not df.empty:
+            start_ts = max(start_ts, df.index[0])
+            break
 
     print(f"\n  [EM PRE-TRAIN]  {start_ts.date()} → {end_ts.date()}  "
-          f"({pretrain_months}M, {em_iters} iters)")
+          f"({pretrain_months}M, {em_iters} iters, structure-lock)")
 
-    # Regime agent — 4H data (or regime timeframe)
+    # Regime agent — 4H data
     regime_tf = '4h' if '4h' in mtf_all else '1h'
     df_regime = mtf_all[regime_tf]
     regime_window = df_regime[(df_regime.index >= start_ts) & (df_regime.index < end_ts)]
     if len(regime_window) >= 100:
         ll = orchestrator.regime_agent.pretrain(regime_window, n_iter=em_iters)
-        print(f"    RegimeAgent  ({regime_tf})  {len(regime_window)} bars  "
-              f"{len(ll)} EM iters  LL={ll[-1]:.0f}" if ll else
-              f"    RegimeAgent  ({regime_tf})  {len(regime_window)} bars  EM skipped")
+        # fit() already sets _locked_structure=True (adaptive emissions, frozen A/π)
+        msg = f"{len(ll)} EM iters  LL={ll[-1]:.0f}" if ll else "EM skipped"
+        print(f"    RegimeAgent  ({regime_tf})  {len(regime_window)} bars  {msg}")
     else:
-        print(f"    RegimeAgent  SKIP (only {len(regime_window)} bars in pretrain window)")
+        print(f"    RegimeAgent  SKIP ({len(regime_window)} bars < 100)")
 
     # Setup agent — 15M data
     setup_tf = '15m' if '15m' in mtf_all else '1h'
@@ -177,11 +187,10 @@ def pretrain_agents(orchestrator: Orchestrator, mtf_all: dict,
     setup_window = df_setup[(df_setup.index >= start_ts) & (df_setup.index < end_ts)]
     if len(setup_window) >= 100:
         ll = orchestrator.setup_agent.pretrain(setup_window, n_iter=em_iters)
-        print(f"    SetupAgent   ({setup_tf})  {len(setup_window)} bars  "
-              f"{len(ll)} EM iters  LL={ll[-1]:.0f}" if ll else
-              f"    SetupAgent   ({setup_tf})  {len(setup_window)} bars  EM skipped")
+        msg = f"{len(ll)} EM iters  LL={ll[-1]:.0f}" if ll else "EM skipped"
+        print(f"    SetupAgent   ({setup_tf})  {len(setup_window)} bars  {msg}")
     else:
-        print(f"    SetupAgent   SKIP (only {len(setup_window)} bars in pretrain window)")
+        print(f"    SetupAgent   SKIP ({len(setup_window)} bars < 100)")
 
 
 class MTFBacktest:
@@ -523,10 +532,11 @@ def main():
     parser.add_argument('--capital',  type=float, default=10_000.0)
     parser.add_argument('--data-dir', default='data/raw/mtf')
     parser.add_argument('--pretrain-months', type=int, default=0,
-                        help='Months of history before --start to pre-train HSMM via EM '
-                             '(0 = disabled, uses heuristic init only)')
-    parser.add_argument('--em-iters', type=int, default=20,
-                        help='EM iterations for pre-training (default: 20)')
+                        help='Months before --start to pre-train via EM (0=disabled)')
+    parser.add_argument('--pretrain-all', action='store_true',
+                        help='Use ALL data before --start for EM pre-training')
+    parser.add_argument('--em-iters', type=int, default=30,
+                        help='EM iterations for pre-training (default: 30)')
     args = parser.parse_args()
 
     import time as _time
@@ -534,8 +544,22 @@ def main():
 
     bt = MTFBacktest(BASE_CONFIG, args.capital)
 
-    # Optional EM pre-training on data before the backtest window
-    if args.pretrain_months > 0:
+    # EM pre-training: all data before backtest start, or N months
+    if args.pretrain_all:
+        # Compute how many months from data start to backtest start
+        start_ts = pd.Timestamp(args.start)
+        data_start = mtf_all['4h'].index[0]
+        months_available = int((start_ts - data_start).days / 30)
+        print(f"\n  [--pretrain-all]  {data_start.date()} → {start_ts.date()}"
+              f"  ({months_available}M de données)")
+        pretrain_agents(
+            bt.orchestrator,
+            mtf_all,
+            pretrain_end=args.start,
+            pretrain_months=months_available,
+            em_iters=args.em_iters,
+        )
+    elif args.pretrain_months > 0:
         pretrain_agents(
             bt.orchestrator,
             mtf_all,
