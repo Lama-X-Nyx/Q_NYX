@@ -85,21 +85,20 @@ class Orchestrator:
         regime_tf = fractal_config.get('regime_tf', '1h')
         setup_tf = fractal_config.get('setup_tf', '15m')
         
-        # Step 1a: Run HSMM on 4H data to compute Intent_1D via π_4H · A^k (P1)
-        # This is a projection-only pass — result used solely by ContextAgent.
-        # It does NOT participate in the AND-gate logic.
+        # Step 1a: HSMM projection for context is disabled.
+        # The 4H HSMM trained on historical data (which includes bear markets)
+        # introduces systematic bearish bias via the learned transition matrix —
+        # it predicts bearish continuations even during bull markets, overriding
+        # the correctly bullish SMA10/30 signal.
+        # ContextAgent now always uses its SMA10/30 heuristic for Intent_1D.
+        # HSMM models are reserved for regime (1H) and setup (15M) detection
+        # where they classify *current* dynamics, not project forward.
         regime_4h_for_context = None
-        structure_tf = fractal_config.get('structure_tf', '4h')
-        if structure_tf in mtf_data and not mtf_data[structure_tf].empty:
-            regime_4h_for_context = self.regime_agent.analyze(
-                mtf_data[structure_tf],
-                context_state=None
-            )
 
-        # Step 1b: Call Context Agent with 4H HSMM posterior (P1)
+        # Step 1b: Call Context Agent (SMA10/30 heuristic only)
         context_result = self.context_agent.analyze(
             mtf_data.get(context_tf, pd.DataFrame()),
-            regime_4h_result=regime_4h_for_context
+            regime_4h_result=None   # force SMA path
         )
 
         # Step 2: Call Regime Agent on its operational TF (1H) with context
