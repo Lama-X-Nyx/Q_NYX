@@ -641,9 +641,19 @@ class MTFBacktest:
                         elif action == 'SELL' and bounce_from_low < 0.006:
                             action = 'WAIT'
                             reason = f'At 3h low (bounce={bounce_from_low:.2%} < 0.6%)'
+                    # --- Filter 3: Volume confirmation ---
+                    # Only enter when 15m volume is above its 20-bar average.
+                    # Low-volume moves are more likely to be noise; institutional
+                    # participation requires above-average volume at entry.
+                    if action in ('BUY', 'SELL') and not df_15m.empty \
+                            and 'volume' in df_15m.columns and len(df_15m) >= 20:
+                        vol_now  = float(df_15m['volume'].iloc[-1])
+                        vol_avg  = float(df_15m['volume'].tail(20).mean())
+                        if vol_avg > 0 and vol_now < 1.2 * vol_avg:
+                            action = 'WAIT'
+                            reason = f'Low volume ({vol_now/vol_avg:.2f}× avg, need 1.2×)'
 
-                if action in ('BUY', 'SELL'):
-                    # Regime-adaptive k_atr
+
                     regime_comp = decision.components.get('regime')
                     dominant    = (regime_comp.metadata.get('dominant_state', 'Range')
                                    if regime_comp else 'Range')
@@ -668,12 +678,12 @@ class MTFBacktest:
                         self.trail_sl   = eff_entry - stop_dist
                         self.high_water = eff_entry
                         self.position   = 'LONG'
-                        self.fixed_tp   = eff_entry + 2.0 * stop_dist   # 2:1 R:R target
+                        self.fixed_tp   = eff_entry + 2.5 * stop_dist   # 2.5:1 R:R target
                     else:
                         self.trail_sl   = eff_entry + stop_dist
                         self.high_water = eff_entry
                         self.position   = 'SHORT'
-                        self.fixed_tp   = eff_entry - 2.0 * stop_dist   # 2:1 R:R target
+                        self.fixed_tp   = eff_entry - 2.5 * stop_dist   # 2.5:1 R:R target
 
                     self._log_entry(ts, eff_entry, decision, lev, k, atr_now)
 

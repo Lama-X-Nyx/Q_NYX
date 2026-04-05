@@ -169,12 +169,14 @@ class RegimeAgent:
             stability_passed = stability >= stability_min_effective
             
             # Context alignment (if provided)
-            # P4a: Squeeze/Distribution are ambiguous — don't hard-block on context
+            # Strict alignment: in bullish context only trend_plus or squeeze pass
+            # (range is allowed as neutral but not as a directional confirmation).
+            # In bearish context only trend_minus or distribution pass.
             context_aligned = True
             if context_state:
-                if context_state == 'bullish' and state in ('trend_minus', 'distribution', 'liquidation'):
+                if context_state == 'bullish' and state not in ('trend_plus', 'squeeze'):
                     context_aligned = False
-                elif context_state == 'bearish' and state in ('trend_plus',):
+                elif context_state == 'bearish' and state not in ('trend_minus', 'distribution'):
                     context_aligned = False
                 elif context_state == 'neutral' and state not in ('range', 'squeeze'):
                     context_aligned = False
