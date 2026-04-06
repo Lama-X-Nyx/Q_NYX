@@ -1,259 +1,169 @@
 """
-MLOrchestrator — Meta-learner that combines all 4 ML agent signals.
+MLOrchestrator — meta-learner that combines all 4 agent signals.
 
-Key insight
------------
-A rule-based threshold (score > 0.78) treats all agent combinations
-equally. The meta-learner discovers non-linear interactions:
-  "Context=0.8 + Regime=0.6 + Setup=0.5 → WR=72%"  (different from)
-  "Context=0.6 + Regime=0.8 + Setup=0.8 → WR=61%"
+Key insight: agents may disagree in correlated ways that a rule-based
+threshold (min_score=0.78) cannot capture. The meta-learner learns:
+"when ContextML=0.8 AND RegimeML=0.6 AND SetupML=0.5 → actual WR=72%"
 
-Training labels (bar-level, not trade-level)
---------------------------------------------
-For every 15m bar above warmup: did price move >0.8% in the right
-direction within the next 8 bars?  This gives ~5-10% positive rate
-and 50-100x more samples than actual trade outcomes.
-
-Features
---------
-  4 agent probabilities + their statistics (agreement, entropy) +
-  microstructure snapshot (vol, spread, buy_pressure) +
-  time features (hour, day-of-week) +
-  context direction
+Training labels: direction outcome = did price move >0.8% in the right
+direction within the next 8 bars?
 """
 
 import pickle
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 
 import lightgbm as lgb
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import roc_auc_score
 
+from src.agents.contracts import AgentResult, OrchestratorDecision
+
 try:
-    from river import linear_model, preprocessing, compose
+    from river import linear_model, preprocessing, compose, metrics as river_metrics
     _RIVER_OK = True
 except ImportError:
     _RIVER_OK = False
 
-from src.agents.contracts import AgentResult, OrchestratorDecision
-
 CACHE_DIR  = Path('data/pretrain_cache')
-CACHE_PATH = CACHE_DIR / 'orchestrator_ml.pkl'
-CACHE_DIR.mkdir(parents=True, exist_ok=True)
+CACHE_FILE = CACHE_DIR / 'orchestrator_ml.pkl'
 
 
 class MLOrchestrator:
     """
-    Meta-learner orchestrator.
+    Meta-learner that takes outputs from all 4 ML agents and learns the
+    optimal non-linear combination to predict trade profitability.
 
-    Replaces the rule-based score threshold with a LightGBM model that
-    learns the optimal combination of all agent signals.
+    Key insight: agents may disagree in correlated ways that a rule-based
+    threshold (min_score=0.78) cannot capture. The meta-learner learns:
+    "when ContextML=0.8 AND RegimeML=0.6 AND SetupML=0.5 → actual WR=72%"
 
-    Usage
-    -----
-    orch = MLOrchestrator()
-    orch.generate_training_data(...)   # build meta-dataset
-    orch.pretrain(meta_dataset)        # train LGB
+    Training labels: direction outcome = did price move >0.8% in the right
+    direction within the next 8 bars? (bar-level, not trade-level → 50-100x
+    more samples than actual trade outcomes)
 
-    # In backtest loop:
-    decision = orch.decide(ctx, reg, setup, entry, df_15m_row, price)
+    Features fed to meta-LGB:
+      - p_context_bull, p_context_bear
+      - p_regime_trend, p_regime_range, p_regime_squeeze
+      - p_setup, p_entry
+      - vol_ratio (short/long vol ratio)
+      - buy_pressure (last bar)
+      - amihud (rolling)
+      - hour_of_day (sin/cos encoded, 0-23)
+      - day_of_week (sin/cos encoded, 0-6)
+      - agent_agreement: std of [p_context, p_regime, p_setup, p_entry] — low std = consensus
+      - agent_max, agent_min
     """
 
-    MIN_SAMPLES = 200
+    # Rule-based fallback threshold
+    RULE_THRESHOLD  = 0.78
+    # ML action threshold
+    ML_THRESHOLD    = 0.55
+    # Min forward return to be a positive label (0.8% in the right direction)
+    LABEL_THR       = 0.008
+    LABEL_BARS      = 8
 
-    def __init__(self, min_score: float = 0.55):
-        self.min_score  = min_score
-        self.lgb: Optional[lgb.LGBMClassifier] = None
-        self._online    = None
-        self._trained   = False
-        self._feat_cols: List[str] = []
+    def __init__(self):
+        self._lgb:        Optional[lgb.LGBMClassifier] = None
+        self._trained     = False
+        self._feat_names: Optional[List[str]] = None
 
+        # River online adapter
+        self._online = None
+        self._n_online = 0
         if _RIVER_OK:
-            self._online = compose.Pipeline(
-                preprocessing.StandardScaler(),
-                linear_model.LogisticRegression()
-            )
+            try:
+                self._online = compose.Pipeline(
+                    preprocessing.StandardScaler(),
+                    linear_model.LogisticRegression()
+                )
+                self._online_metric = river_metrics.ROCAUC()
+            except Exception:
+                self._online = None
 
     # ------------------------------------------------------------------
-    # Feature construction
+    # Meta-feature builder
     # ------------------------------------------------------------------
 
     def _build_meta_features(self,
-                              context_result: Optional[AgentResult],
-                              regime_result:  Optional[AgentResult],
-                              setup_result:   Optional[AgentResult],
-                              entry_result:   Optional[AgentResult],
-                              micro: Dict) -> Dict:
+                              context_result: AgentResult,
+                              regime_result:  AgentResult,
+                              setup_result:   AgentResult,
+                              entry_result:   AgentResult,
+                              df_15m_row:     pd.Series) -> Dict:
         """
-        micro : dict with vol_ratio, buy_pressure, amihud, kyle_lambda,
-                eff_spread_ratio, ewma_vol_ratio, hour_sin, hour_cos,
-                dow_sin, dow_cos  (from MLFeatureEngine last bar)
+        Builds the meta-feature dict from 4 agent results + last 15m bar.
+        df_15m_row: a single-row Series with at minimum close, high, low, volume.
         """
-        ctx_meta = context_result.metadata if context_result else {}
-        reg_meta = regime_result.metadata  if regime_result  else {}
-        stp_meta = setup_result.metadata   if setup_result   else {}
-        ent_meta = entry_result.metadata   if entry_result   else {}
+        # Context probabilities
+        ctx_meta  = context_result.metadata if context_result else {}
+        p_ctx_bull = float(ctx_meta.get('p_bull', context_result.score if context_result and context_result.state == 'bullish' else 0.5))
+        p_ctx_bear = float(ctx_meta.get('p_bear', context_result.score if context_result and context_result.state == 'bearish' else 0.5))
 
-        p_ctx   = ctx_meta.get('p_bull', 0.5)
-        p_ctx_b = ctx_meta.get('p_bear', 0.5)
-        p_reg   = float(reg_meta.get('p_bull', regime_result.score  if regime_result  else 0.5))
-        p_stp   = float(stp_meta.get('p_setup', setup_result.score  if setup_result   else 0.5))
-        p_ent   = float(ent_meta.get('ml_prob',  entry_result.score  if entry_result   else 0.5))
+        # Regime probabilities
+        reg_meta   = regime_result.metadata if regime_result else {}
+        hsmm_probs = reg_meta.get('hsmm_probs', [1/6] * 6)
+        if len(hsmm_probs) >= 6:
+            p_reg_trend = float(hsmm_probs[0]) + float(hsmm_probs[2])   # Trend+ + Trend-
+            p_reg_range = float(hsmm_probs[1])
+            p_reg_squeeze = float(hsmm_probs[3])
+        else:
+            p_reg_trend, p_reg_range, p_reg_squeeze = 0.33, 0.33, 0.33
 
-        ctx_dir = {'bullish': 1.0, 'bearish': -1.0, 'neutral': 0.0}.get(
-            context_result.state if context_result else 'neutral', 0.0)
+        # Setup / entry scores
+        p_setup = float(setup_result.score) if setup_result else 0.5
+        p_entry = float(entry_result.score) if entry_result else 0.5
 
-        # Agent agreement metrics
-        probs  = np.array([p_ctx, p_reg, p_stp, p_ent])
-        agree  = float(np.std(probs))        # low std = consensus
-        agree2 = float(np.min(probs))        # weakest signal
-        p_all  = float(np.prod(probs))       # joint probability (harsh)
-        p_mean = float(np.mean(probs))
+        # 15m bar micro-features
+        close  = float(df_15m_row.get('close', 1.0))
+        high   = float(df_15m_row.get('high',  close))
+        low    = float(df_15m_row.get('low',   close))
+        volume = float(df_15m_row.get('volume', 1.0))
 
-        feat = {
-            # Individual agent signals
-            'p_context_bull':  p_ctx,
-            'p_context_bear':  p_ctx_b,
-            'p_regime':        p_reg,
-            'p_setup':         p_stp,
-            'p_entry':         p_ent,
-            # Agent agreement
-            'agent_std':       agree,
-            'agent_min':       agree2,
-            'agent_mean':      p_mean,
-            'agent_product':   p_all,
-            # Context direction
-            'context_dir':     ctx_dir,
-            # Regime state one-hot lite
-            'is_trending':     float(regime_result.state in ('trend_plus',) if regime_result else False),
-            'is_range':        float(regime_result.state == 'range'         if regime_result else False),
-            'is_squeeze':      float(regime_result.state == 'squeeze'       if regime_result else False),
-            # Setup pattern presence
-            'has_smc_pattern': float(stp_meta.get('has_pattern', False)),
-            # Agent readiness flags
-            'ctx_passed':      float(context_result.passed if context_result else False),
-            'reg_passed':      float(regime_result.passed  if regime_result  else False),
-            'stp_passed':      float(setup_result.passed   if setup_result   else False),
-            'ent_passed':      float(entry_result.passed   if entry_result   else False),
+        denom        = (high - low) if (high - low) > 0 else 1e-9
+        buy_pressure = (close - low) / denom
+
+        # vol_ratio pulled from setup metadata if available
+        setup_meta = setup_result.metadata if setup_result else {}
+        vol_ratio  = float(setup_meta.get('vol_ratio', 1.0))
+        amihud     = float(setup_meta.get('amihud', 0.0))
+
+        # Time features (sin/cos encoding)
+        ts = df_15m_row.name if hasattr(df_15m_row, 'name') and isinstance(df_15m_row.name, pd.Timestamp) else pd.Timestamp.now()
+        hour = ts.hour
+        dow  = ts.dayofweek
+        hour_sin = np.sin(2 * np.pi * hour / 24.0)
+        hour_cos = np.cos(2 * np.pi * hour / 24.0)
+        dow_sin  = np.sin(2 * np.pi * dow  / 7.0)
+        dow_cos  = np.cos(2 * np.pi * dow  / 7.0)
+
+        # Agent agreement
+        scores_vec  = [p_ctx_bull, p_reg_trend, p_setup, p_entry]
+        agent_agree = float(np.std(scores_vec))
+        agent_max   = float(np.max(scores_vec))
+        agent_min   = float(np.min(scores_vec))
+
+        return {
+            'p_context_bull':  p_ctx_bull,
+            'p_context_bear':  p_ctx_bear,
+            'p_regime_trend':  p_reg_trend,
+            'p_regime_range':  p_reg_range,
+            'p_regime_squeeze': p_reg_squeeze,
+            'p_setup':          p_setup,
+            'p_entry':          p_entry,
+            'vol_ratio':        vol_ratio,
+            'buy_pressure':     buy_pressure,
+            'amihud':           amihud,
+            'hour_sin':         hour_sin,
+            'hour_cos':         hour_cos,
+            'dow_sin':          dow_sin,
+            'dow_cos':          dow_cos,
+            'agent_agreement':  agent_agree,
+            'agent_max':        agent_max,
+            'agent_min':        agent_min,
         }
-
-        # Microstructure features
-        for k in ['vol_ratio_8_96', 'buy_pressure', 'amihud', 'kyle_lambda',
-                  'eff_spread_ratio', 'ewma_vol_ratio',
-                  'hour_sin', 'hour_cos', 'dow_sin', 'dow_cos']:
-            feat[k] = float(micro.get(k, 0.0))
-
-        return feat
-
-    # ------------------------------------------------------------------
-    # Training data generation (from precomputed arrays)
-    # ------------------------------------------------------------------
-
-    def generate_training_data(self,
-                                df_15m: pd.DataFrame,
-                                context_arr: np.ndarray,
-                                gamma_1h: np.ndarray,
-                                gamma_15m: np.ndarray,
-                                smc_list: List[Dict],
-                                smc_start_iloc: int,
-                                df_1d: pd.DataFrame,
-                                df_1h: pd.DataFrame,
-                                forward_bars: int = 8,
-                                thr: float = 0.008) -> List[Tuple[Dict, int, str]]:
-        """
-        Generate (features_dict, label, direction) tuples for every 15m bar.
-
-        label = 1 if price moved >thr in context direction within forward_bars
-        direction = 'bullish' | 'bearish'
-
-        Parameters
-        ----------
-        context_arr    : (T_1d,) str array from _precompute_context
-        gamma_1h       : (T_1h, 6) regime HSMM probs
-        gamma_15m      : (T_15m, 6) setup HSMM probs
-        smc_list       : precomputed SMC dicts
-        smc_start_iloc : iloc offset for smc_list
-        df_1d, df_1h   : raw data for alignment
-        """
-        from src.ml.feature_engine import MLFeatureEngine
-        from src.ml.ml_agents import MLContextAgent, MLRegimeAgent, MLSetupAgent
-
-        feat_eng = MLFeatureEngine()
-        ctx_agent = MLContextAgent()
-        reg_agent = MLRegimeAgent()
-        stp_agent = MLSetupAgent()
-
-        # Precompute microstructure features on full 15m dataset
-        X_micro = feat_eng.compute(df_15m, context_state='neutral')
-
-        # Alignment: 1D and 1H timestamps → iloc
-        idx_1d  = df_1d.index.astype(np.int64)
-        idx_1h  = df_1h.index.astype(np.int64)
-        idx_15m = df_15m.index.astype(np.int64)
-
-        close_15m = df_15m['close'].values
-        high_15m  = df_15m['high'].values
-
-        results = []
-        warmup = max(200, smc_start_iloc)
-
-        print(f'  [MLOrch] Generating training data: {len(df_15m) - warmup} bars…')
-
-        for i in range(warmup, len(df_15m) - forward_bars):
-            ts_ns = idx_15m[i]
-
-            # 1D context
-            i_1d = int(np.searchsorted(idx_1d, ts_ns, side='left')) - 1
-            if i_1d < 0 or i_1d >= len(context_arr):
-                continue
-            ctx_str = str(context_arr[i_1d])
-            if ctx_str in ('insufficient', 'neutral'):
-                continue
-
-            # Regime (1H)
-            i_1h = int(np.searchsorted(idx_1h, ts_ns, side='left')) - 1
-            if i_1h < 0 or i_1h >= len(gamma_1h):
-                continue
-            hsmm_1h = gamma_1h[i_1h]
-
-            # Setup (15M)
-            hsmm_15m = gamma_15m[i]
-
-            # SMC
-            smc_idx = i - smc_start_iloc
-            smc_pat = smc_list[smc_idx] if 0 <= smc_idx < len(smc_list) else {}
-
-            # Build mock agent results (passthrough)
-            ctx_result = ctx_agent._passthrough(
-                df_1d.iloc[max(0, i_1d - 200):i_1d + 1])
-            reg_result = reg_agent._passthrough(hsmm_1h)
-            stp_result = stp_agent._passthrough(hsmm_15m, smc_pat, ctx_result)
-
-            # Micro features
-            micro_row = X_micro.iloc[i].to_dict() if i < len(X_micro) else {}
-
-            feat = self._build_meta_features(ctx_result, reg_result, stp_result,
-                                             None, micro_row)
-
-            # Label: did price move >thr in context direction within forward_bars?
-            direction = ctx_str
-            future_slice = slice(i + 1, i + 1 + forward_bars)
-            if direction == 'bullish':
-                fut_high = high_15m[future_slice].max() if len(high_15m[future_slice]) > 0 else close_15m[i]
-                label = int((fut_high / close_15m[i] - 1) > thr)
-            else:
-                from src.ml.ml_agents import HSMM_STATES
-                fut_low = df_15m['low'].values[future_slice].min() if i + 1 + forward_bars <= len(df_15m) else close_15m[i]
-                label = int((close_15m[i] / (fut_low + 1e-9) - 1) > thr)
-
-            results.append((feat, label, direction))
-
-        pos_rate = sum(r[1] for r in results) / max(len(results), 1)
-        print(f'  [MLOrch] Generated {len(results)} samples  positive_rate={pos_rate:.1%}')
-        return results
 
     # ------------------------------------------------------------------
     # Training
@@ -262,159 +172,361 @@ class MLOrchestrator:
     def pretrain(self, meta_dataset: List[Tuple[Dict, int, str]],
                  n_splits: int = 5) -> Dict:
         """
-        meta_dataset : list of (features_dict, label, direction)
+        meta_dataset: list of (features_dict, label, direction)
+          - features_dict: output of _build_meta_features
+          - label: 1 = price moved in direction by LABEL_THR within LABEL_BARS
+          - direction: 'bullish' | 'bearish'
         """
-        if len(meta_dataset) < self.MIN_SAMPLES:
-            print(f'  [MLOrch] Not enough samples ({len(meta_dataset)} < {self.MIN_SAMPLES})')
-            return {}
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        if CACHE_FILE.exists():
+            self._load()
+            print('  [MLOrchestrator] Loaded from cache.')
+            return {'from_cache': True, 'deployed': True}
 
-        feat_list   = [x[0] for x in meta_dataset]
-        labels      = np.array([x[1] for x in meta_dataset])
-        X = pd.DataFrame(feat_list).fillna(0.0)
-        self._feat_cols = list(X.columns)
+        if len(meta_dataset) < 200:
+            print(f'  [MLOrchestrator] Not enough meta-samples ({len(meta_dataset)})')
+            return {'deployed': False, 'reason': 'not_enough_data'}
 
-        params = dict(num_leaves=15, learning_rate=0.03, n_estimators=500,
-                      min_child_samples=30, verbose=-1, n_jobs=-1,
-                      class_weight='balanced')
+        try:
+            records = [fd for fd, _, _ in meta_dataset]
+            labels  = [lbl for _, lbl, _ in meta_dataset]
 
-        tscv   = TimeSeriesSplit(n_splits=n_splits)
-        scores = []
-        for tr, va in tscv.split(X):
-            m = lgb.LGBMClassifier(**params)
-            m.fit(X.iloc[tr], labels[tr])
-            if labels[va].sum() > 0:
-                scores.append(roc_auc_score(labels[va], m.predict_proba(X.iloc[va])[:, 1]))
+            X = pd.DataFrame(records)
+            y = pd.Series(labels)
 
-        self.lgb = lgb.LGBMClassifier(**params)
-        self.lgb.fit(X, labels)
-        self._trained = True
+            # Drop rows with NaNs
+            mask = X.notna().all(axis=1)
+            X, y = X[mask], y[mask]
 
-        result = {
-            'auc':       float(np.mean(scores)) if scores else 0.0,
-            'n_samples': len(meta_dataset),
-            'pos_rate':  float(labels.mean()),
-        }
-        self._save()
-        print(f'  [MLOrch]    AUC={result["auc"]:.3f}  n={result["n_samples"]}  '
-              f'pos={result["pos_rate"]:.1%}')
-        return result
+            self._feat_names = X.columns.tolist()
+            params = dict(
+                num_leaves=15, learning_rate=0.03, n_estimators=500,
+                min_child_samples=30, verbose=-1, n_jobs=-1,
+                class_weight='balanced'
+            )
+
+            tscv = TimeSeriesSplit(n_splits=n_splits)
+            fold_aucs = []
+
+            for tr_idx, val_idx in tscv.split(X):
+                Xtr, ytr = X.iloc[tr_idx], y.iloc[tr_idx]
+                Xval, yval = X.iloc[val_idx], y.iloc[val_idx]
+                if ytr.sum() < 10 or yval.sum() < 5:
+                    continue
+                m = lgb.LGBMClassifier(**params)
+                m.fit(Xtr, ytr, eval_set=[(Xval, yval)],
+                      callbacks=[lgb.early_stopping(50, verbose=False),
+                                 lgb.log_evaluation(-1)])
+                pred = m.predict_proba(Xval)[:, 1]
+                try:
+                    fold_aucs.append(roc_auc_score(yval, pred))
+                except Exception:
+                    pass
+
+            self._lgb = lgb.LGBMClassifier(**params)
+            self._lgb.fit(X, y, callbacks=[lgb.log_evaluation(-1)])
+            self._trained = True
+            self._save()
+
+            mean_auc = float(np.mean(fold_aucs)) if fold_aucs else 0.5
+            print(f'  [MLOrchestrator] Trained. AUC={mean_auc:.3f} n={len(X)}')
+            return {'deployed': True, 'mean_auc': mean_auc, 'fold_aucs': fold_aucs,
+                    'n_samples': len(X)}
+
+        except Exception as e:
+            print(f'  [MLOrchestrator] Training failed: {e}')
+            return {'deployed': False, 'reason': str(e)}
 
     # ------------------------------------------------------------------
-    # Inference
+    # Decision
     # ------------------------------------------------------------------
 
     def decide(self,
-               context_result: Optional[AgentResult],
-               regime_result:  Optional[AgentResult],
-               setup_result:   Optional[AgentResult],
-               entry_result:   Optional[AgentResult],
-               micro: Dict,
-               current_price: float) -> OrchestratorDecision:
+               context_result: AgentResult,
+               regime_result:  AgentResult,
+               setup_result:   AgentResult,
+               entry_result:   AgentResult,
+               df_15m_row:     pd.Series,
+               current_price:  float) -> OrchestratorDecision:
         """
-        micro : microstructure features dict (last bar from MLFeatureEngine)
+        Produce an OrchestratorDecision from all 4 agent results.
+        Falls back to rule-based when not trained.
         """
-        components = {k: v for k, v in [
-            ('context', context_result), ('regime', regime_result),
-            ('setup', setup_result),     ('entry', entry_result),
-        ] if v is not None}
+        components = {
+            'context': context_result,
+            'regime':  regime_result,
+            'setup':   setup_result,
+            'entry':   entry_result,
+        }
 
-        # Readiness gate
-        for name, res in components.items():
-            if not res.ready:
+        # Collect blocked agents
+        blocked_by = [k for k, r in components.items() if r is not None and not r.passed]
+        not_ready  = [k for k, r in components.items() if r is not None and not r.ready]
+
+        if not_ready:
+            return OrchestratorDecision(
+                action='WAIT', score=0.0,
+                reason=f'Not ready: {not_ready}',
+                blocked_by=['readiness'],
+                components=components
+            )
+
+        # ---- Rule-based fallback ----
+        if not self._trained:
+            weights = {'context': 0.30, 'regime': 0.30, 'setup': 0.25, 'entry': 0.15}
+            agg_score = sum(
+                components[k].score * weights[k]
+                for k in weights if components[k] is not None
+            )
+            agg_score = float(np.clip(agg_score, 0.0, 1.0))
+
+            if blocked_by or agg_score < self.RULE_THRESHOLD:
                 return OrchestratorDecision(
-                    action='WAIT', score=0.0,
-                    reason=f'{name} not ready',
-                    blocked_by=['readiness'], components=components
+                    action='WAIT', score=agg_score,
+                    reason=f'Rule-based WAIT: score={agg_score:.3f} blocked={blocked_by}',
+                    blocked_by=blocked_by,
+                    components=components
                 )
 
-        # Context gate — must have direction
-        ctx   = context_result.state if context_result else 'neutral'
-        if ctx == 'neutral':
+            ctx_state = context_result.state if context_result else 'neutral'
+            action    = 'BUY' if ctx_state == 'bullish' else \
+                        'SELL' if ctx_state == 'bearish' else 'WAIT'
             return OrchestratorDecision(
-                action='WAIT', score=0.0, reason='Context neutral',
-                blocked_by=['context'], components=components
-            )
-        action_dir = 'BUY' if ctx == 'bullish' else 'SELL'
-
-        # All agents must pass individually (hard gate)
-        blocked = [k for k, v in components.items() if not v.passed]
-        if blocked:
-            agg = self._rule_score(components)
-            return OrchestratorDecision(
-                action='WAIT', score=agg, reason=f'Blocked: {blocked}',
-                blocked_by=blocked, components=components
+                action=action, score=agg_score,
+                reason=f'Rule-based {action}: score={agg_score:.3f}',
+                blocked_by=[],
+                components=components,
+                risk_analysis={'size_factor': 1.0}
             )
 
-        # Meta-learner score
-        if self._trained or self._load():
-            feat = self._build_meta_features(
-                context_result, regime_result, setup_result, entry_result, micro)
-            X = pd.DataFrame([feat])[self._feat_cols].fillna(0.0)
-            p_profit = float(self.lgb.predict_proba(X)[0, 1])
-        else:
-            # Fallback: weighted average of agent scores
-            p_profit = self._rule_score(components)
-
-        if p_profit < self.min_score:
-            return OrchestratorDecision(
-                action='WAIT', score=p_profit,
-                reason=f'MLOrch: P(profit)={p_profit:.2f} < {self.min_score:.2f}',
-                blocked_by=['orchestrator'], components=components
+        # ---- ML decision ----
+        try:
+            meta_feats = self._build_meta_features(
+                context_result, regime_result, setup_result, entry_result, df_15m_row
             )
 
-        # Size factor: scale position with conviction
-        if p_profit >= 0.75:
-            size_factor = 1.5
-        elif p_profit >= 0.65:
-            size_factor = 1.2
-        elif p_profit >= 0.60:
-            size_factor = 1.0
-        else:
-            size_factor = 0.75   # 0.55–0.60 band — smaller size
+            # River blend
+            if self._n_online >= 20 and self._online is not None and _RIVER_OK:
+                try:
+                    proba = self._online.predict_proba_one(meta_feats)
+                    p_online = float(proba.get(True, 0.5))
+                except Exception:
+                    p_online = 0.5
+            else:
+                p_online = 0.5
 
-        return OrchestratorDecision(
-            action=action_dir,
-            score=p_profit,
-            reason=f'MLOrch: P(profit)={p_profit:.2f} ctx={ctx} '
-                   f'reg={regime_result.state if regime_result else "?"} '
-                   f'size×{size_factor:.2f}',
-            blocked_by=[],
-            components=components,
-            risk_analysis={'ml_p_profit': p_profit, 'size_factor': size_factor}
-        )
+            X_row = pd.DataFrame([meta_feats])[self._feat_names]
+            p_lgb = float(self._lgb.predict_proba(X_row)[0, 1])
+
+            if self._n_online >= 20:
+                p_profit = 0.7 * p_lgb + 0.3 * p_online
+            else:
+                p_profit = p_lgb
+
+            p_profit = float(np.clip(p_profit, 0.0, 1.0))
+
+            # Direction from context
+            ctx_state = context_result.state if context_result else 'neutral'
+
+            if p_profit <= self.ML_THRESHOLD or ctx_state == 'neutral':
+                return OrchestratorDecision(
+                    action='WAIT', score=p_profit,
+                    reason=f'ML WAIT: P(profit)={p_profit:.3f} ctx={ctx_state}',
+                    blocked_by=blocked_by or (['ml_threshold'] if p_profit <= self.ML_THRESHOLD else []),
+                    components=components,
+                    risk_analysis={'p_profit': p_profit, 'size_factor': 0.0}
+                )
+
+            action = 'BUY' if ctx_state == 'bullish' else 'SELL'
+
+            # Size factor
+            if p_profit > 0.75:
+                size_factor = 1.5
+            elif p_profit > 0.60:
+                size_factor = 1.0
+            else:
+                size_factor = 0.6
+
+            return OrchestratorDecision(
+                action=action, score=p_profit,
+                reason=f'ML {action}: P(profit)={p_profit:.3f} ctx={ctx_state}',
+                blocked_by=[],
+                components=components,
+                risk_analysis={'p_profit': p_profit, 'size_factor': size_factor,
+                               'p_lgb': p_lgb, 'p_online': p_online}
+            )
+
+        except Exception as e:
+            # Fall back to rule-based on inference error
+            weights = {'context': 0.30, 'regime': 0.30, 'setup': 0.25, 'entry': 0.15}
+            agg_score = float(np.clip(
+                sum(components[k].score * weights[k] for k in weights if components[k] is not None),
+                0.0, 1.0
+            ))
+            ctx_state = context_result.state if context_result else 'neutral'
+            action = 'BUY' if (ctx_state == 'bullish' and agg_score >= self.RULE_THRESHOLD) else \
+                     'SELL' if (ctx_state == 'bearish' and agg_score >= self.RULE_THRESHOLD) else 'WAIT'
+            return OrchestratorDecision(
+                action=action, score=agg_score,
+                reason=f'ML fallback ({e}): rule-based {action}',
+                blocked_by=blocked_by,
+                components=components
+            )
 
     # ------------------------------------------------------------------
     # Online update
     # ------------------------------------------------------------------
 
-    def update_online(self, features: Dict, outcome: int) -> None:
-        if _RIVER_OK and self._online is not None:
-            try:
-                self._online.learn_one(features, outcome)
-            except Exception:
-                pass
+    def update_online(self, features_dict: Dict, outcome: int) -> None:
+        if self._online is None or not _RIVER_OK:
+            return
+        try:
+            self._online.learn_one(features_dict, bool(outcome))
+            self._n_online += 1
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
-    # Helpers
+    # Meta-dataset generation
     # ------------------------------------------------------------------
+
+    def generate_training_data(self,
+                                df_15m: pd.DataFrame,
+                                context_arr: np.ndarray,
+                                gamma_1h: np.ndarray,
+                                gamma_15m: np.ndarray,
+                                smc_list: List[Dict],
+                                smc_start_iloc: int = 0,
+                                warmup: int = 200) -> List[Tuple[Dict, int, str]]:
+        """
+        Generate meta-dataset from precomputed arrays.
+
+        For each 15m bar (after warmup), builds a minimal features_dict
+        using raw arrays and creates a forward-return label.
+
+        Parameters
+        ----------
+        df_15m         : full 15m OHLCV DataFrame
+        context_arr    : (T_1d,) string array of 1D context states
+        gamma_1h       : (T_1h, 6) HSMM probability array for 1H
+        gamma_15m      : (T_15m, 6) HSMM probability array for 15M
+        smc_list       : list of SMC pattern dicts
+        smc_start_iloc : absolute iloc offset for smc_list[0]
+        warmup         : bars to skip at start
+        """
+        close = df_15m['close'].values
+        high  = df_15m['high'].values
+        low   = df_15m['low'].values
+        vol   = df_15m['volume'].values
+        n     = len(df_15m)
+
+        # Build a 1D context index mapping: one context per day
+        # We approximate by resampling context_arr to 15m length
+        ctx_15m = self._broadcast_context(context_arr, n)
+
+        records = []
+        for i in range(warmup, n - self.LABEL_BARS):
+            ctx = ctx_15m[i]
+            if ctx not in ('bullish', 'bearish'):
+                continue
+
+            # Forward return label
+            if ctx == 'bullish':
+                future_max = high[i + 1: i + 1 + self.LABEL_BARS].max()
+                label = 1 if future_max > close[i] * (1 + self.LABEL_THR) else 0
+            else:
+                future_min = low[i + 1: i + 1 + self.LABEL_BARS].min()
+                label = 1 if future_min < close[i] * (1 - self.LABEL_THR) else 0
+
+            # Build meta features from raw arrays
+            hsmm_row_15m = gamma_15m[i] if gamma_15m is not None and i < len(gamma_15m) else np.ones(6) / 6
+            hsmm_row_1h  = gamma_1h[min(i // 4, len(gamma_1h) - 1)] if gamma_1h is not None and len(gamma_1h) > 0 else np.ones(6) / 6
+
+            smc_idx = i - smc_start_iloc
+            smc_pat = smc_list[smc_idx] if 0 <= smc_idx < len(smc_list) else {}
+
+            # Approximate agent scores from raw arrays
+            p_trend  = float(hsmm_row_1h[0]) + float(hsmm_row_1h[2])
+            p_range  = float(hsmm_row_1h[1])
+            p_squeeze= float(hsmm_row_1h[3])
+            p_setup  = float(hsmm_row_15m[0]) + 0.5 * float(hsmm_row_15m[3]) + 0.25 * float(hsmm_row_15m[1])
+            p_setup  = float(np.clip(p_setup, 0.0, 1.0))
+
+            p_ctx_bull = 0.8 if ctx == 'bullish' else 0.2
+            p_ctx_bear = 0.8 if ctx == 'bearish' else 0.2
+
+            # vol_ratio
+            rv_short = float(np.std(close[max(0, i-4): i+1] / close[max(0, i-5): i] - 1)) if i >= 5 else 0.01
+            rv_long  = float(np.std(close[max(0, i-32): i+1] / close[max(0, i-33): i] - 1)) if i >= 33 else 0.01
+            vol_ratio = rv_short / (rv_long + 1e-9)
+
+            denom        = (high[i] - low[i]) if (high[i] - low[i]) > 0 else 1e-9
+            buy_pressure = (close[i] - low[i]) / denom
+
+            ts = df_15m.index[i]
+            if isinstance(ts, pd.Timestamp):
+                hour_sin = np.sin(2 * np.pi * ts.hour / 24.0)
+                hour_cos = np.cos(2 * np.pi * ts.hour / 24.0)
+                dow_sin  = np.sin(2 * np.pi * ts.dayofweek / 7.0)
+                dow_cos  = np.cos(2 * np.pi * ts.dayofweek / 7.0)
+            else:
+                hour_sin = hour_cos = dow_sin = dow_cos = 0.0
+
+            scores_vec  = [p_ctx_bull, p_trend, p_setup, 0.5]
+            agent_agree = float(np.std(scores_vec))
+
+            feat = {
+                'p_context_bull':   p_ctx_bull,
+                'p_context_bear':   p_ctx_bear,
+                'p_regime_trend':   p_trend,
+                'p_regime_range':   p_range,
+                'p_regime_squeeze': p_squeeze,
+                'p_setup':          p_setup,
+                'p_entry':          0.5,
+                'vol_ratio':        float(np.clip(vol_ratio, 0.0, 10.0)),
+                'buy_pressure':     float(np.clip(buy_pressure, 0.0, 1.0)),
+                'amihud':           0.0,
+                'hour_sin':         hour_sin,
+                'hour_cos':         hour_cos,
+                'dow_sin':          dow_sin,
+                'dow_cos':          dow_cos,
+                'agent_agreement':  agent_agree,
+                'agent_max':        float(max(scores_vec)),
+                'agent_min':        float(min(scores_vec)),
+            }
+
+            records.append((feat, label, ctx))
+
+        print(f'  [MLOrchestrator] Generated {len(records)} meta-samples '
+              f'({sum(1 for _, l, _ in records if l == 1)} positive)')
+        return records
 
     @staticmethod
-    def _rule_score(components: Dict) -> float:
-        w = {'context': 0.30, 'regime': 0.30, 'setup': 0.25, 'entry': 0.15}
-        return sum(components[k].score * w.get(k, 0) for k in components if k in w)
+    def _broadcast_context(context_arr: np.ndarray, target_len: int) -> np.ndarray:
+        """
+        Broadcast a 1D context array (daily) to target_len (15m bars).
+        Simple repeat: each day = 96 15m bars.
+        """
+        if context_arr is None or len(context_arr) == 0:
+            return np.full(target_len, 'neutral', dtype=object)
+        n_days = len(context_arr)
+        bars_per_day = max(1, target_len // n_days)
+        out = np.repeat(context_arr, bars_per_day)
+        if len(out) < target_len:
+            out = np.concatenate([out, np.full(target_len - len(out), out[-1], dtype=object)])
+        return out[:target_len]
 
-    def _save(self) -> None:
-        with open(CACHE_PATH, 'wb') as f:
-            pickle.dump({'lgb': self.lgb, 'feat_cols': self._feat_cols}, f)
+    # ------------------------------------------------------------------
+    # Persistence
+    # ------------------------------------------------------------------
 
-    def _load(self) -> bool:
-        if not CACHE_PATH.exists():
-            return False
-        try:
-            p = pickle.load(open(CACHE_PATH, 'rb'))
-            self.lgb        = p['lgb']
-            self._feat_cols = p['feat_cols']
-            self._trained   = True
-            return True
-        except Exception:
-            return False
+    def _save(self):
+        with open(CACHE_FILE, 'wb') as f:
+            pickle.dump({'lgb': self._lgb, 'feat_names': self._feat_names}, f, protocol=4)
+
+    def _load(self):
+        with open(CACHE_FILE, 'rb') as f:
+            p = pickle.load(f)
+        self._lgb        = p['lgb']
+        self._feat_names = p['feat_names']
+        self._trained    = True

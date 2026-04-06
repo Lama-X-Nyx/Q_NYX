@@ -1,708 +1,923 @@
 """
-ML Agents — LightGBM replacements for rule-based Context/Regime/Setup agents.
+ML Agents — LightGBM + River online learning replacements for rule-based agents.
 
-Architecture
-------------
-HSMM + SMA200 become FEATURE EXTRACTORS, not decision makers.
-Each ML agent learns: "which combination of HSMM probs + microstructure
-features actually predicts profitable direction?"
+Three agents:
+  MLContextAgent  — 1D data, bull/bear/neutral bias
+  MLRegimeAgent   — 1H data + HSMM probs, dominant market regime
+  MLSetupAgent    — 15M data + HSMM probs + SMC patterns, trade setup quality
 
-MLContextAgent  (1D daily)     → P(bull/bear/neutral)
-MLRegimeAgent   (1H + HSMM)    → dominant regime + confidence
-MLSetupAgent    (15M + HSMM + SMC) → P(valid setup)
-
-All agents:
-  - pretrain() : walk-forward CV with LightGBM (TimeSeriesSplit, 5 folds)
-  - analyze()  : returns AgentResult (same contract as rule-based agents)
-  - update_online() : River incremental update after trade resolves
-  - Pass-through mode when not trained (preserves backward compatibility)
+Each agent:
+  - pretrain()  : walk-forward CV (TimeSeriesSplit), saves .pkl to data/pretrain_cache/
+  - analyze()   : returns AgentResult (pass-through when not trained)
+  - update_online(): River LR adapts after each outcome
 """
 
 import pickle
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 
 import lightgbm as lgb
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import roc_auc_score
 
+from src.agents.contracts import AgentResult
+
+# River is optional — wrap all usage in try/except
 try:
-    from river import linear_model, preprocessing, compose
+    from river import linear_model, preprocessing, compose, metrics as river_metrics
     _RIVER_OK = True
 except ImportError:
     _RIVER_OK = False
 
-from src.agents.contracts import AgentResult
-
 CACHE_DIR = Path('data/pretrain_cache')
-CACHE_DIR.mkdir(parents=True, exist_ok=True)
-
-# HSMM state ordering (must match precomputed_runner gamma columns)
-HSMM_STATES = ['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution', 'Liquidation']
-
-
-# ---------------------------------------------------------------------------
-# Shared feature helpers
-# ---------------------------------------------------------------------------
-
-def _momentum_features(close: pd.Series, windows: List[int]) -> pd.DataFrame:
-    f = pd.DataFrame(index=close.index)
-    ret = close.pct_change()
-    for w in windows:
-        f[f'mom_{w}'] = close / close.shift(w) - 1
-    return f
-
-
-def _vol_features(df: pd.DataFrame, windows: List[int]) -> pd.DataFrame:
-    f = pd.DataFrame(index=df.index)
-    ret = df['close'].pct_change()
-    high, low, close, volume = df['high'], df['low'], df['close'], df['volume']
-
-    for w in windows:
-        f[f'rv_{w}'] = ret.rolling(w).std()
-
-    # GARCH-like EWMA
-    f['ewma_v94'] = np.sqrt(ret.ewm(alpha=0.06, adjust=False).var().clip(lower=0))
-    f['ewma_v97'] = np.sqrt(ret.ewm(alpha=0.03, adjust=False).var().clip(lower=0))
-    f['ewma_ratio'] = f['ewma_v94'] / (f['ewma_v97'] + 1e-9)
-
-    # Buy pressure
-    hl = (high - low).replace(0, np.nan)
-    f['buy_pressure'] = (close - low) / hl
-    f['buy_pressure_ma'] = f['buy_pressure'].rolling(min(8, windows[0])).mean()
-
-    # Amihud illiquidity
-    dollar_vol = volume * close
-    f['amihud'] = (ret.abs() / (dollar_vol + 1e-9)).rolling(windows[-1]).mean()
-
-    # Kyle's lambda
-    f['kyle_lambda'] = (ret.abs() / (np.sqrt(volume) + 1e-9)).rolling(windows[0]).mean()
-
-    # Effective spread
-    f['eff_spread'] = (high - low) / (close + 1e-9)
-    f['eff_spread_ratio'] = f['eff_spread'] / (f['eff_spread'].rolling(windows[-1]).mean() + 1e-9)
-
-    return f
-
-
-def _add_hsmm_features(f: pd.DataFrame, hsmm_probs: np.ndarray) -> pd.DataFrame:
-    """Append HSMM probability columns (shape T×6) to feature DataFrame."""
-    for i, state in enumerate(HSMM_STATES):
-        col = f'hsmm_{state.replace("+","p").replace("-","m").lower()}'
-        f[col] = hsmm_probs[:, i]
-    # Dominant state index
-    f['hsmm_dominant'] = np.argmax(hsmm_probs, axis=1).astype(float)
-    f['hsmm_entropy'] = -(hsmm_probs * np.log(hsmm_probs + 1e-10)).sum(axis=1)
-    return f
+HSMM_STATE_NAMES = ['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution', 'Liquidation']
+HSMM_COL_NAMES   = ['p_trend_plus', 'p_range', 'p_trend_minus',
+                     'p_squeeze', 'p_distribution', 'p_liquidation']
 
 
 # ---------------------------------------------------------------------------
-# MLContextAgent  (1D daily data)
+# Shared helpers
+# ---------------------------------------------------------------------------
+
+def _safe_rsi(close: pd.Series, period: int = 14) -> pd.Series:
+    delta = close.diff()
+    gain  = delta.clip(lower=0)
+    loss  = (-delta).clip(lower=0)
+    avg_g = gain.ewm(alpha=1 / period, min_periods=period).mean()
+    avg_l = loss.ewm(alpha=1 / period, min_periods=period).mean()
+    rs    = avg_g / (avg_l + 1e-9)
+    return 100 - (100 / (1 + rs))
+
+
+def _parkinson_vol(high: pd.Series, low: pd.Series, window: int) -> pd.Series:
+    log_hl = np.log(high / low.replace(0, np.nan))
+    return np.sqrt((log_hl ** 2 / (4 * np.log(2))).rolling(window).mean())
+
+
+def _build_river_pipeline():
+    if not _RIVER_OK:
+        return None
+    return compose.Pipeline(
+        preprocessing.StandardScaler(),
+        linear_model.LogisticRegression()
+    )
+
+
+def _river_predict(model, features: Dict) -> float:
+    if model is None or not _RIVER_OK:
+        return 0.5
+    try:
+        proba = model.predict_proba_one(features)
+        return float(proba.get(True, 0.5))
+    except Exception:
+        return 0.5
+
+
+def _river_update(model, features: Dict, label: int) -> None:
+    if model is None or not _RIVER_OK:
+        return
+    try:
+        model.learn_one(features, bool(label))
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# MLContextAgent
 # ---------------------------------------------------------------------------
 
 class MLContextAgent:
     """
-    Replaces SMA200 rule-based context with a LightGBM classifier.
-    Predicts P(bullish) and P(bearish) from daily OHLCV features.
+    1D context classifier: bullish / bearish / neutral.
+
+    Two LGB binary classifiers:
+      lgb_bull : P(1D trend is bullish in next 5 days)
+      lgb_bear : P(1D trend is bearish in next 5 days)
     """
 
-    CACHE_PATH = CACHE_DIR / 'context_ml.pkl'
+    MIN_BARS   = 250   # need at least SMA200 + buffer
+    CACHE_FILE = CACHE_DIR / 'context_ml.pkl'
 
     def __init__(self):
-        self.lgb_bull: Optional[lgb.LGBMClassifier] = None
-        self.lgb_bear: Optional[lgb.LGBMClassifier] = None
-        self._online  = None
-        self._trained = False
-        self._feat_cols: List[str] = []
-
-        if _RIVER_OK:
-            self._online = compose.Pipeline(
-                preprocessing.StandardScaler(),
-                linear_model.LogisticRegression()
-            )
+        self._lgb_bull:   Optional[lgb.LGBMClassifier] = None
+        self._lgb_bear:   Optional[lgb.LGBMClassifier] = None
+        self._trained     = False
+        self._feat_names: Optional[List[str]] = None
+        self._online      = _build_river_pipeline()
+        self._n_online    = 0
 
     # ------------------------------------------------------------------
+    # Feature computation
+    # ------------------------------------------------------------------
+
     def compute_features(self, df_1d: pd.DataFrame) -> pd.DataFrame:
         f = pd.DataFrame(index=df_1d.index)
-        close = df_1d['close']
-        ret   = close.pct_change()
+        c = df_1d['close']
+        h = df_1d['high']
+        l = df_1d['low']
+        v = df_1d['volume']
+        ret = c.pct_change()
 
-        # Multi-horizon momentum
+        # Momentum
         for w in [5, 20, 60, 200]:
-            f[f'mom_{w}d'] = close / close.shift(w) - 1
-        f['mom_acc_5'] = f['mom_5d'].diff()
+            f[f'mom_{w}d'] = c / c.shift(w) - 1
 
-        # Volatility
-        f['rv_5']  = ret.rolling(5).std()
-        f['rv_20'] = ret.rolling(20).std()
-        f['rv_ratio'] = f['rv_5'] / (f['rv_20'] + 1e-9)
-        f['ewma_v94'] = np.sqrt(ret.ewm(alpha=0.06, adjust=False).var().clip(lower=0))
+        # Realized vol
+        for w in [5, 20]:
+            f[f'rv_{w}d'] = ret.rolling(w).std()
 
-        # RSI (Wilder's EMA)
-        delta = close.diff()
-        g = delta.clip(lower=0).ewm(alpha=1/14, adjust=False).mean()
-        l = (-delta.clip(upper=0)).ewm(alpha=1/14, adjust=False).mean()
-        f['rsi_14'] = 100 - 100 / (1 + g / (l + 1e-9))
+        # Parkinson vol
+        f['parkinson_vol'] = _parkinson_vol(h, l, 20)
 
-        # Trend position
-        sma50  = close.rolling(50).mean()
-        sma200 = close.rolling(200).mean()
-        f['vs_sma50']  = (close - sma50) / (sma50 + 1e-9)
-        f['vs_sma200'] = (close - sma200) / (sma200 + 1e-9)
-        f['sma50_200_ratio'] = sma50 / (sma200 + 1e-9) - 1
+        # Trend indicators
+        rsi14          = _safe_rsi(c, 14)
+        f['rsi_14']    = rsi14
 
-        # Garman-Klass vol
-        hl = np.log(df_1d['high'] / df_1d['low']) ** 2
-        co = np.log(close / df_1d['open']) ** 2
-        gk = 0.5 * hl.rolling(20).mean() - (2 * np.log(2) - 1) * co.rolling(20).mean()
-        f['gk_20d'] = np.sqrt(gk.clip(lower=0))
+        ema12 = c.ewm(span=12).mean()
+        ema26 = c.ewm(span=26).mean()
+        f['macd']      = ema12 - ema26
+        f['macd_sig']  = f['macd'].ewm(span=9).mean()
+        f['macd_hist'] = f['macd'] - f['macd_sig']
+
+        sma20  = c.rolling(20).mean()
+        sma200 = c.rolling(200).mean()
+
+        # Volume ratio
+        vol_ma20       = v.rolling(20).mean()
+        f['vol_ratio'] = v / (vol_ma20 + 1e-9)
 
         # Buy pressure
-        hl_rng = (df_1d['high'] - df_1d['low']).replace(0, np.nan)
-        f['buy_pressure'] = (close - df_1d['low']) / hl_rng
-        f['buy_pressure_ma'] = f['buy_pressure'].rolling(10).mean()
+        denom = (h - l).replace(0, np.nan)
+        f['buy_pressure'] = (c - l) / denom
 
-        # Amihud
-        dollar_vol = df_1d['volume'] * close
-        f['amihud'] = (ret.abs() / (dollar_vol + 1e-9)).rolling(20).mean()
+        # Amihud illiquidity
+        dollar_vol = c * v
+        f['amihud'] = (ret.abs() / (dollar_vol.rolling(20).mean() + 1e-9)).rolling(20).mean()
+
+        # Trend strength
+        f['trend_strength'] = (c - sma200) / (sma200 + 1e-9)
 
         return f
+
+    # ------------------------------------------------------------------
+    # Labels
+    # ------------------------------------------------------------------
 
     def create_labels(self, df_1d: pd.DataFrame,
                       forward_bars: int = 5,
                       bull_thr: float = 0.03,
                       bear_thr: float = -0.03) -> pd.Series:
         """
-        1 = bullish (max future return > bull_thr)
-        0 = bearish/neutral
+        Returns Series: 1=bullish, -1=bearish, 0=neutral.
+        Based on forward return over next `forward_bars` bars.
         """
-        close = df_1d['close']
-        fut_max = close.rolling(forward_bars).max().shift(-forward_bars)
-        fut_min = close.rolling(forward_bars).min().shift(-forward_bars)
-        bull = (fut_max / close - 1 > bull_thr).astype(int)
-        bear = (close / fut_min - 1 > abs(bear_thr)).astype(int)
-        # For bull classifier: label=1 iff bullish AND NOT bearish
-        y_bull = (bull & ~bear.astype(bool)).astype(int)
-        y_bear = (bear & ~bull.astype(bool)).astype(int)
-        return y_bull, y_bear
+        fwd_ret = df_1d['close'].shift(-forward_bars) / df_1d['close'] - 1
+        labels  = pd.Series(0, index=df_1d.index)
+        labels[fwd_ret >  bull_thr] =  1
+        labels[fwd_ret <  bear_thr] = -1
+        return labels
+
+    # ------------------------------------------------------------------
+    # Training
+    # ------------------------------------------------------------------
 
     def pretrain(self, df_1d: pd.DataFrame, n_splits: int = 5) -> Dict:
-        X = self.compute_features(df_1d)
-        y_bull, y_bear = self.create_labels(df_1d)
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        if self.CACHE_FILE.exists():
+            self._load()
+            print('  [MLContextAgent] Loaded from cache.')
+            return {'from_cache': True, 'deployed': True}
 
-        valid = X.dropna().index.intersection(y_bull.dropna().index)
-        X = X.loc[valid].dropna()
-        y_bull = y_bull.loc[X.index]
-        y_bear = y_bear.loc[X.index]
-        self._feat_cols = list(X.columns)
+        try:
+            X = self.compute_features(df_1d)
+            y = self.create_labels(df_1d)
 
-        if len(X) < 100:
-            print('  [ContextML] Not enough data for training')
-            return {}
+            mask = X.notna().all(axis=1) & y.notna()
+            # Drop last forward_bars rows (no label)
+            mask.iloc[-5:] = False
+            X, y = X[mask], y[mask]
 
-        tscv = TimeSeriesSplit(n_splits=n_splits)
-        params = dict(num_leaves=15, learning_rate=0.05, n_estimators=200,
-                      min_child_samples=20, verbose=-1, n_jobs=-1)
+            if len(X) < 300:
+                print(f'  [MLContextAgent] Not enough data ({len(X)} rows)')
+                return {'deployed': False, 'reason': 'not_enough_data'}
 
-        scores_bull, scores_bear = [], []
-        for tr, va in tscv.split(X):
-            Xtr, Xva = X.iloc[tr], X.iloc[va]
-            yb_tr, yb_va = y_bull.iloc[tr], y_bull.iloc[va]
-            yz_tr, yz_va = y_bear.iloc[tr], y_bear.iloc[va]
+            y_bull = (y ==  1).astype(int)
+            y_bear = (y == -1).astype(int)
+            self._feat_names = X.columns.tolist()
 
-            m_bull = lgb.LGBMClassifier(**params)
-            m_bull.fit(Xtr, yb_tr)
-            if yb_va.sum() > 0:
-                scores_bull.append(roc_auc_score(yb_va, m_bull.predict_proba(Xva)[:, 1]))
+            params = dict(num_leaves=15, learning_rate=0.05, n_estimators=200,
+                          min_child_samples=20, verbose=-1, n_jobs=-1)
 
-            m_bear = lgb.LGBMClassifier(**params)
-            m_bear.fit(Xtr, yz_tr)
-            if yz_va.sum() > 0:
-                scores_bear.append(roc_auc_score(yz_va, m_bear.predict_proba(Xva)[:, 1]))
+            tscv     = TimeSeriesSplit(n_splits=n_splits)
+            auc_bull, auc_bear = [], []
 
-        # Final fit on all data
-        self.lgb_bull = lgb.LGBMClassifier(**params)
-        self.lgb_bull.fit(X, y_bull)
-        self.lgb_bear = lgb.LGBMClassifier(**params)
-        self.lgb_bear.fit(X, y_bear)
-        self._trained = True
+            for tr_idx, val_idx in tscv.split(X):
+                Xtr, Xval = X.iloc[tr_idx], X.iloc[val_idx]
+                for y_bin, auc_list, name in [
+                    (y_bull, auc_bull, 'bull'),
+                    (y_bear, auc_bear, 'bear'),
+                ]:
+                    ytr, yval = y_bin.iloc[tr_idx], y_bin.iloc[val_idx]
+                    if ytr.sum() < 5 or yval.sum() < 2:
+                        continue
+                    m = lgb.LGBMClassifier(**params)
+                    m.fit(Xtr, ytr, eval_set=[(Xval, yval)],
+                          callbacks=[lgb.early_stopping(30, verbose=False),
+                                     lgb.log_evaluation(-1)])
+                    pred = m.predict_proba(Xval)[:, 1]
+                    try:
+                        auc_list.append(roc_auc_score(yval, pred))
+                    except Exception:
+                        pass
 
-        result = {
-            'auc_bull': float(np.mean(scores_bull)) if scores_bull else 0.0,
-            'auc_bear': float(np.mean(scores_bear)) if scores_bear else 0.0,
-            'n_samples': len(X),
-        }
-        self._save()
-        print(f'  [ContextML] AUC bull={result["auc_bull"]:.3f}  bear={result["auc_bear"]:.3f}  '
-              f'n={result["n_samples"]}')
-        return result
+            # Final models on full data
+            self._lgb_bull = lgb.LGBMClassifier(**params)
+            self._lgb_bull.fit(X, y_bull, callbacks=[lgb.log_evaluation(-1)])
+
+            self._lgb_bear = lgb.LGBMClassifier(**params)
+            self._lgb_bear.fit(X, y_bear, callbacks=[lgb.log_evaluation(-1)])
+
+            self._trained = True
+            self._save()
+
+            result = {
+                'deployed': True,
+                'auc_bull': float(np.mean(auc_bull)) if auc_bull else 0.5,
+                'auc_bear': float(np.mean(auc_bear)) if auc_bear else 0.5,
+                'n_samples': len(X),
+            }
+            print(f'  [MLContextAgent] Trained. AUC bull={result["auc_bull"]:.3f} '
+                  f'bear={result["auc_bear"]:.3f}')
+            return result
+
+        except Exception as e:
+            print(f'  [MLContextAgent] Training failed: {e}')
+            return {'deployed': False, 'reason': str(e)}
+
+    # ------------------------------------------------------------------
+    # Inference
+    # ------------------------------------------------------------------
 
     def analyze(self, df_1d: pd.DataFrame) -> AgentResult:
-        if not self._trained and not self._load():
-            return self._passthrough(df_1d)
+        if len(df_1d) < self.MIN_BARS:
+            return AgentResult(
+                agent='context', state='not_ready', score=0.0,
+                passed=False, ready=False, blocked_by_readiness=True,
+                reason=f'MLContextAgent: need {self.MIN_BARS} bars, got {len(df_1d)}'
+            )
 
-        X = self.compute_features(df_1d)
-        last = X[self._feat_cols].iloc[-1:].fillna(0)
+        # --- pass-through: SMA200 rule-based ---
+        sma200 = df_1d['close'].rolling(200).mean()
+        last_close = float(df_1d['close'].iloc[-1])
+        last_sma   = float(sma200.iloc[-1]) if not np.isnan(sma200.iloc[-1]) else last_close
 
-        p_bull = float(self.lgb_bull.predict_proba(last)[0, 1])
-        p_bear = float(self.lgb_bear.predict_proba(last)[0, 1])
-        p_neut = max(0.0, 1.0 - p_bull - p_bear)
+        pt_state = 'bullish' if last_close > last_sma * 1.02 else \
+                   'bearish' if last_close < last_sma * 0.98 else 'neutral'
 
-        if p_bull > p_bear and p_bull > 0.40:
-            state, score = 'bullish', p_bull
-        elif p_bear > p_bull and p_bear > 0.40:
-            state, score = 'bearish', p_bear
-        else:
-            state, score = 'neutral', p_neut
+        if not self._trained:
+            return AgentResult(
+                agent='context', state=pt_state, score=0.5,
+                passed=(pt_state != 'neutral'), ready=True,
+                reason='MLContextAgent: pass-through (not trained)',
+                metadata={'p_bull': 0.5, 'p_bear': 0.5, 'p_neutral': 0.0}
+            )
 
-        return AgentResult(
-            agent='context', state=state, score=min(score, 1.0),
-            passed=(state != 'neutral'), ready=True,
-            reason=f'MLContext: P(bull)={p_bull:.2f} P(bear)={p_bear:.2f}',
-            metadata={'p_bull': p_bull, 'p_bear': p_bear, 'p_neutral': p_neut}
-        )
+        try:
+            X = self.compute_features(df_1d)
+            last = X.iloc[[-1]]
+            if last.isna().any().any():
+                return AgentResult(
+                    agent='context', state=pt_state, score=0.5,
+                    passed=(pt_state != 'neutral'), ready=True,
+                    reason='MLContextAgent: NaN features (warmup)',
+                    metadata={'p_bull': 0.5, 'p_bear': 0.5, 'p_neutral': 0.0}
+                )
 
-    def update_online(self, features: Dict, label: int) -> None:
-        if _RIVER_OK and self._online is not None:
-            try:
-                self._online.learn_one(features, label)
-            except Exception:
-                pass
+            p_bull = float(self._lgb_bull.predict_proba(last)[0, 1])
+            p_bear = float(self._lgb_bear.predict_proba(last)[0, 1])
 
-    def _passthrough(self, df_1d: pd.DataFrame) -> AgentResult:
-        """SMA200 fallback when not trained."""
-        close = df_1d['close']
-        sma200 = close.rolling(200).mean()
-        if sma200.isna().iloc[-1]:
-            return AgentResult(agent='context', state='not_ready', score=0.0,
-                               passed=False, ready=False, blocked_by_readiness=True,
-                               reason='SMA200 warmup')
-        diff = (close.iloc[-1] - sma200.iloc[-1]) / sma200.iloc[-1]
-        if diff > 0.02:
-            state = 'bullish'
-        elif diff < -0.02:
-            state = 'bearish'
-        else:
-            state = 'neutral'
-        return AgentResult(agent='context', state=state, score=0.5,
-                           passed=(state != 'neutral'), ready=True,
-                           reason=f'Passthrough SMA200 diff={diff:.2%}')
+            # River blend
+            feats_dict = last.iloc[0].to_dict()
+            if self._n_online >= 20:
+                p_bull = 0.7 * p_bull + 0.3 * _river_predict(self._online, feats_dict)
+
+            p_neutral = max(0.0, 1.0 - p_bull - p_bear)
+            # Renormalize
+            total = p_bull + p_bear + p_neutral
+            p_bull /= total; p_bear /= total; p_neutral /= total
+
+            if p_bull > p_bear and p_bull > p_neutral:
+                state, score = 'bullish', p_bull
+            elif p_bear > p_bull and p_bear > p_neutral:
+                state, score = 'bearish', p_bear
+            else:
+                state, score = 'neutral', p_neutral
+
+            return AgentResult(
+                agent='context', state=state, score=float(score),
+                passed=(state != 'neutral'), ready=True,
+                reason=f'MLContextAgent: P(bull)={p_bull:.3f} P(bear)={p_bear:.3f}',
+                metadata={'p_bull': p_bull, 'p_bear': p_bear, 'p_neutral': p_neutral}
+            )
+
+        except Exception as e:
+            return AgentResult(
+                agent='context', state=pt_state, score=0.5,
+                passed=(pt_state != 'neutral'), ready=True,
+                reason=f'MLContextAgent: inference error ({e}), pass-through',
+                metadata={'p_bull': 0.5, 'p_bear': 0.5, 'p_neutral': 0.0}
+            )
+
+    def update_online(self, features_dict: Dict, label: int) -> None:
+        _river_update(self._online, features_dict, label)
+        self._n_online += 1
+
+    # ------------------------------------------------------------------
+    # Persistence
+    # ------------------------------------------------------------------
 
     def _save(self):
-        with open(self.CACHE_PATH, 'wb') as f:
-            pickle.dump({'lgb_bull': self.lgb_bull, 'lgb_bear': self.lgb_bear,
-                         'feat_cols': self._feat_cols}, f)
+        payload = {
+            'lgb_bull': self._lgb_bull,
+            'lgb_bear': self._lgb_bear,
+            'feat_names': self._feat_names,
+        }
+        with open(self.CACHE_FILE, 'wb') as f:
+            pickle.dump(payload, f, protocol=4)
 
-    def _load(self) -> bool:
-        if not self.CACHE_PATH.exists():
-            return False
-        try:
-            p = pickle.load(open(self.CACHE_PATH, 'rb'))
-            self.lgb_bull   = p['lgb_bull']
-            self.lgb_bear   = p['lgb_bear']
-            self._feat_cols = p['feat_cols']
-            self._trained   = True
-            return True
-        except Exception:
-            return False
+    def _load(self):
+        with open(self.CACHE_FILE, 'rb') as f:
+            p = pickle.load(f)
+        self._lgb_bull   = p['lgb_bull']
+        self._lgb_bear   = p['lgb_bear']
+        self._feat_names = p['feat_names']
+        self._trained    = True
 
 
 # ---------------------------------------------------------------------------
-# MLRegimeAgent  (1H data + HSMM probs)
+# MLRegimeAgent
 # ---------------------------------------------------------------------------
 
 class MLRegimeAgent:
     """
-    Augments the HSMM regime signal with LightGBM.
-    HSMM probabilities become features — the model learns which combinations
-    of HSMM probs + microstructure actually predict profitable direction.
+    1H regime classifier using HSMM probs + price micro-features.
+    Binary: 1=bullish (price up >1% in next 4h), 0=bearish/neutral.
     """
 
-    CACHE_PATH = CACHE_DIR / 'regime_ml.pkl'
+    MIN_BARS   = 100
+    CACHE_FILE = CACHE_DIR / 'regime_ml.pkl'
 
     def __init__(self):
-        self.lgb: Optional[lgb.LGBMClassifier] = None
-        self._online  = None
-        self._trained = False
-        self._feat_cols: List[str] = []
+        self._lgb:        Optional[lgb.LGBMClassifier] = None
+        self._trained     = False
+        self._feat_names: Optional[List[str]] = None
+        self._online      = _build_river_pipeline()
+        self._n_online    = 0
 
-        if _RIVER_OK:
-            self._online = compose.Pipeline(
-                preprocessing.StandardScaler(),
-                linear_model.LogisticRegression()
-            )
+    # ------------------------------------------------------------------
+    # Feature computation
+    # ------------------------------------------------------------------
 
     def compute_features(self, df_1h: pd.DataFrame,
                          hsmm_probs: np.ndarray) -> pd.DataFrame:
-        f = _momentum_features(df_1h['close'], [4, 12, 48])
-        vol = _vol_features(df_1h, [8, 24, 96])
-        f = pd.concat([f, vol], axis=1)
-        f = _add_hsmm_features(f, hsmm_probs)
+        """
+        hsmm_probs: (T, 6) array aligned with df_1h rows.
+        """
+        f  = pd.DataFrame(index=df_1h.index)
+        c  = df_1h['close']
+        h  = df_1h['high']
+        l  = df_1h['low']
+        v  = df_1h['volume']
+        ret = c.pct_change()
 
-        # RSI 14
-        delta = df_1h['close'].diff()
-        g = delta.clip(lower=0).ewm(alpha=1/14, adjust=False).mean()
-        l = (-delta.clip(upper=0)).ewm(alpha=1/14, adjust=False).mean()
-        f['rsi_14'] = 100 - 100 / (1 + g / (l + 1e-9))
+        # Momentum (4h, 12h, 48h)
+        for w in [4, 12, 48]:
+            f[f'mom_{w}h'] = c / c.shift(w) - 1
 
-        # Vol regime: vol of vol
-        ret = df_1h['close'].pct_change()
-        f['vov_24'] = ret.rolling(24).std().rolling(24).std()
+        # Volatility (8h, 24h, 96h)
+        for w in [8, 24, 96]:
+            f[f'rv_{w}h'] = ret.rolling(w).std()
+
+        # Vol ratio
+        f['vol_ratio'] = f['rv_8h'] / (f['rv_96h'] + 1e-9)
+
+        # Buy pressure
+        denom = (h - l).replace(0, np.nan)
+        f['buy_pressure'] = (c - l) / denom
+
+        # Amihud
+        dollar_vol = c * v
+        f['amihud'] = (ret.abs() / (dollar_vol.rolling(20).mean() + 1e-9)).rolling(20).mean()
+
+        # Kyle lambda: |ret| / sqrt(volume)
+        f['kyle_lambda'] = ret.abs() / (np.sqrt(v + 1e-9))
+
+        # Effective spread
+        f['eff_spread'] = (h - l) / (c + 1e-9)
+
+        # HSMM probabilities
+        T = len(df_1h)
+        for i, col in enumerate(HSMM_COL_NAMES):
+            if hsmm_probs is not None and len(hsmm_probs) == T:
+                f[col] = hsmm_probs[:, i]
+            else:
+                f[col] = 1.0 / 6.0
 
         return f
+
+    # ------------------------------------------------------------------
+    # Labels
+    # ------------------------------------------------------------------
 
     def create_labels(self, df_1h: pd.DataFrame,
                       forward_bars: int = 4,
                       thr: float = 0.01) -> pd.Series:
-        """Binary: 1 = bullish (max future high > close*(1+thr) within 4h)"""
-        close = df_1h['close']
-        fut_high = df_1h['high'].rolling(forward_bars).max().shift(-forward_bars)
-        return ((fut_high / close - 1) > thr).astype(int)
+        """
+        1 if max high in next forward_bars > close*(1+thr), else 0.
+        """
+        labels = pd.Series(0, index=df_1h.index)
+        c = df_1h['close'].values
+        h = df_1h['high'].values
+        n = len(df_1h)
+        for i in range(n - forward_bars):
+            future_max = h[i + 1: i + 1 + forward_bars].max()
+            if future_max > c[i] * (1 + thr):
+                labels.iloc[i] = 1
+        return labels
+
+    # ------------------------------------------------------------------
+    # Training
+    # ------------------------------------------------------------------
 
     def pretrain(self, df_1h: pd.DataFrame,
                  hsmm_gamma: np.ndarray,
                  n_splits: int = 5) -> Dict:
-        X = self.compute_features(df_1h, hsmm_gamma)
-        y = self.create_labels(df_1h)
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        if self.CACHE_FILE.exists():
+            self._load()
+            print('  [MLRegimeAgent] Loaded from cache.')
+            return {'from_cache': True, 'deployed': True}
 
-        valid = X.dropna().index.intersection(y.dropna().index)
-        X = X.loc[valid].dropna()
-        y = y.loc[X.index]
-        self._feat_cols = list(X.columns)
+        try:
+            X = self.compute_features(df_1h, hsmm_gamma)
+            y = self.create_labels(df_1h)
 
-        if len(X) < 200:
-            print('  [RegimeML] Not enough data')
-            return {}
+            mask = X.notna().all(axis=1) & y.notna()
+            mask.iloc[-4:] = False
+            X, y = X[mask], y[mask]
 
-        params = dict(num_leaves=31, learning_rate=0.05, n_estimators=300,
-                      min_child_samples=50, verbose=-1, n_jobs=-1,
-                      class_weight='balanced')
+            if len(X) < 300:
+                print(f'  [MLRegimeAgent] Not enough data ({len(X)} rows)')
+                return {'deployed': False, 'reason': 'not_enough_data'}
 
-        tscv = TimeSeriesSplit(n_splits=n_splits)
-        scores = []
-        for tr, va in tscv.split(X):
-            m = lgb.LGBMClassifier(**params)
-            m.fit(X.iloc[tr], y.iloc[tr])
-            if y.iloc[va].sum() > 0:
-                scores.append(roc_auc_score(y.iloc[va], m.predict_proba(X.iloc[va])[:, 1]))
+            self._feat_names = X.columns.tolist()
+            params = dict(num_leaves=31, learning_rate=0.05, n_estimators=300,
+                          min_child_samples=50, verbose=-1, n_jobs=-1)
 
-        self.lgb = lgb.LGBMClassifier(**params)
-        self.lgb.fit(X, y)
-        self._trained = True
+            tscv = TimeSeriesSplit(n_splits=n_splits)
+            fold_aucs = []
 
-        result = {'auc': float(np.mean(scores)) if scores else 0.0, 'n_samples': len(X)}
-        self._save()
-        print(f'  [RegimeML]  AUC={result["auc"]:.3f}  n={result["n_samples"]}')
-        return result
+            for tr_idx, val_idx in tscv.split(X):
+                Xtr, ytr = X.iloc[tr_idx], y.iloc[tr_idx]
+                Xval, yval = X.iloc[val_idx], y.iloc[val_idx]
+                if ytr.sum() < 10 or yval.sum() < 5:
+                    continue
+                m = lgb.LGBMClassifier(**params)
+                m.fit(Xtr, ytr, eval_set=[(Xval, yval)],
+                      callbacks=[lgb.early_stopping(40, verbose=False),
+                                 lgb.log_evaluation(-1)])
+                pred = m.predict_proba(Xval)[:, 1]
+                try:
+                    fold_aucs.append(roc_auc_score(yval, pred))
+                except Exception:
+                    pass
+
+            self._lgb = lgb.LGBMClassifier(**params)
+            self._lgb.fit(X, y, callbacks=[lgb.log_evaluation(-1)])
+            self._trained = True
+            self._save()
+
+            mean_auc = float(np.mean(fold_aucs)) if fold_aucs else 0.5
+            print(f'  [MLRegimeAgent] Trained. AUC={mean_auc:.3f} n={len(X)}')
+            return {'deployed': True, 'mean_auc': mean_auc, 'fold_aucs': fold_aucs}
+
+        except Exception as e:
+            print(f'  [MLRegimeAgent] Training failed: {e}')
+            return {'deployed': False, 'reason': str(e)}
+
+    # ------------------------------------------------------------------
+    # Inference
+    # ------------------------------------------------------------------
 
     def analyze(self, df_1h: pd.DataFrame,
                 hsmm_probs_row: np.ndarray) -> AgentResult:
-        """
-        hsmm_probs_row : (6,) array for the current 1H bar
-        """
-        if not self._trained and not self._load():
-            return self._passthrough(hsmm_probs_row)
+        if len(df_1h) < self.MIN_BARS:
+            return AgentResult(
+                agent='regime', state='not_ready', score=0.0,
+                passed=False, ready=False, blocked_by_readiness=True,
+                reason=f'MLRegimeAgent: need {self.MIN_BARS} bars, got {len(df_1h)}'
+            )
 
-        # Build single-row feature vector from last bar
-        if len(df_1h) < 100:
-            return self._passthrough(hsmm_probs_row)
+        # Pass-through: argmax of HSMM probs
+        if hsmm_probs_row is not None and len(hsmm_probs_row) == 6:
+            dom_idx   = int(np.argmax(hsmm_probs_row))
+            dom_state = HSMM_STATE_NAMES[dom_idx].lower().replace('+', '_plus').replace('-', '_minus').replace(' ', '_')
+            dom_prob  = float(hsmm_probs_row[dom_idx])
+        else:
+            dom_state, dom_prob = 'range', 0.5
 
-        hsmm_2d = np.tile(hsmm_probs_row, (len(df_1h), 1))
-        X = self.compute_features(df_1h, hsmm_2d)
-        last = X[self._feat_cols].iloc[-1:].fillna(0)
-        p_bull = float(self.lgb.predict_proba(last)[0, 1])
+        if not self._trained:
+            passed = (dom_state not in ('liquidation',)) and dom_prob > 0.40
+            return AgentResult(
+                agent='regime', state=dom_state, score=dom_prob,
+                passed=passed, ready=True,
+                reason='MLRegimeAgent: pass-through (not trained)',
+                metadata={'hsmm_probs': hsmm_probs_row.tolist() if hsmm_probs_row is not None else []}
+            )
 
-        dom_idx  = int(np.argmax(hsmm_probs_row))
-        dom_name = HSMM_STATES[dom_idx]
-        dom_prob = float(hsmm_probs_row[dom_idx])
+        try:
+            # Build single-row feature with HSMM probs broadcast
+            T = len(df_1h)
+            hsmm_full = np.tile(hsmm_probs_row, (T, 1))
+            X = self.compute_features(df_1h, hsmm_full)
+            last = X.iloc[[-1]]
+            if last.isna().any().any():
+                passed = dom_prob > 0.40 and dom_state != 'liquidation'
+                return AgentResult(
+                    agent='regime', state=dom_state, score=dom_prob,
+                    passed=passed, ready=True,
+                    reason='MLRegimeAgent: NaN features, pass-through'
+                )
 
-        state_map = {
-            'Trend+': 'trend_plus', 'Range': 'range', 'Trend-': 'trend_minus',
-            'Squeeze': 'squeeze', 'Distribution': 'distribution', 'Liquidation': 'liquidation'
-        }
-        state = state_map.get(dom_name, 'range')
-        passed = p_bull > 0.50 and state != 'liquidation'
+            p_bull = float(self._lgb.predict_proba(last)[0, 1])
 
-        return AgentResult(
-            agent='regime', state=state,
-            score=p_bull, passed=passed, ready=True,
-            reason=f'MLRegime: P(bull)={p_bull:.2f} dom={dom_name}({dom_prob:.2f})',
-            metadata={
-                'p_bull': p_bull,
-                'dominant_state': dom_name,
-                'dominant_prob': dom_prob,
-                'hsmm_probs': {s: float(hsmm_probs_row[i]) for i, s in enumerate(HSMM_STATES)},
-            }
-        )
+            feats_dict = last.iloc[0].to_dict()
+            if self._n_online >= 20:
+                p_bull = 0.7 * p_bull + 0.3 * _river_predict(self._online, feats_dict)
 
-    def update_online(self, features: Dict, label: int) -> None:
-        if _RIVER_OK and self._online is not None:
-            try:
-                self._online.learn_one(features, label)
-            except Exception:
-                pass
+            confidence = p_bull
+            # Map to dominant state using HSMM for labelling
+            state = dom_state
+            passed = confidence > 0.55 and dom_state != 'liquidation'
 
-    def _passthrough(self, hsmm_probs_row: np.ndarray) -> AgentResult:
-        dom_idx  = int(np.argmax(hsmm_probs_row))
-        dom_name = HSMM_STATES[dom_idx]
-        dom_prob = float(hsmm_probs_row[dom_idx])
-        state_map = {
-            'Trend+': 'trend_plus', 'Range': 'range', 'Trend-': 'trend_minus',
-            'Squeeze': 'squeeze', 'Distribution': 'distribution', 'Liquidation': 'liquidation'
-        }
-        state  = state_map.get(dom_name, 'range')
-        passed = dom_prob > 0.45 and state != 'liquidation'
-        return AgentResult(
-            agent='regime', state=state, score=dom_prob,
-            passed=passed, ready=True,
-            reason=f'Passthrough HSMM dom={dom_name}({dom_prob:.2f})',
-            metadata={'dominant_state': dom_name, 'dominant_prob': dom_prob}
-        )
+            return AgentResult(
+                agent='regime', state=state, score=float(confidence),
+                passed=passed, ready=True,
+                reason=f'MLRegimeAgent: P(bull)={p_bull:.3f} dom={dom_state}',
+                metadata={
+                    'p_bull': p_bull,
+                    'hsmm_dominant': dom_state,
+                    'hsmm_dominant_prob': dom_prob,
+                    'hsmm_probs': hsmm_probs_row.tolist() if hsmm_probs_row is not None else []
+                }
+            )
+
+        except Exception as e:
+            passed = dom_prob > 0.40 and dom_state != 'liquidation'
+            return AgentResult(
+                agent='regime', state=dom_state, score=dom_prob,
+                passed=passed, ready=True,
+                reason=f'MLRegimeAgent: inference error ({e}), pass-through'
+            )
+
+    def update_online(self, features_dict: Dict, label: int) -> None:
+        _river_update(self._online, features_dict, label)
+        self._n_online += 1
+
+    # ------------------------------------------------------------------
+    # Persistence
+    # ------------------------------------------------------------------
 
     def _save(self):
-        with open(self.CACHE_PATH, 'wb') as f:
-            pickle.dump({'lgb': self.lgb, 'feat_cols': self._feat_cols}, f)
+        with open(self.CACHE_FILE, 'wb') as f:
+            pickle.dump({'lgb': self._lgb, 'feat_names': self._feat_names}, f, protocol=4)
 
-    def _load(self) -> bool:
-        if not self.CACHE_PATH.exists():
-            return False
-        try:
-            p = pickle.load(open(self.CACHE_PATH, 'rb'))
-            self.lgb        = p['lgb']
-            self._feat_cols = p['feat_cols']
-            self._trained   = True
-            return True
-        except Exception:
-            return False
+    def _load(self):
+        with open(self.CACHE_FILE, 'rb') as f:
+            p = pickle.load(f)
+        self._lgb        = p['lgb']
+        self._feat_names = p['feat_names']
+        self._trained    = True
 
 
 # ---------------------------------------------------------------------------
-# MLSetupAgent  (15M data + HSMM probs + SMC patterns)
+# MLSetupAgent
 # ---------------------------------------------------------------------------
 
 class MLSetupAgent:
     """
-    Predicts P(valid_setup) from 15M features, HSMM probs, SMC patterns,
-    and the outputs of the upstream agents (regime + context).
+    15M setup quality classifier.
+    Binary: 1 = valid setup (price moved in context direction by thr within forward_bars).
     """
 
-    CACHE_PATH = CACHE_DIR / 'setup_ml.pkl'
+    MIN_BARS   = 80
+    CACHE_FILE = CACHE_DIR / 'setup_ml.pkl'
 
     def __init__(self):
-        self.lgb: Optional[lgb.LGBMClassifier] = None
-        self._online  = None
-        self._trained = False
-        self._feat_cols: List[str] = []
+        self._lgb:        Optional[lgb.LGBMClassifier] = None
+        self._trained     = False
+        self._feat_names: Optional[List[str]] = None
+        self._online      = _build_river_pipeline()
+        self._n_online    = 0
 
-        if _RIVER_OK:
-            self._online = compose.Pipeline(
-                preprocessing.StandardScaler(),
-                linear_model.LogisticRegression()
-            )
+    # ------------------------------------------------------------------
+    # Feature computation
+    # ------------------------------------------------------------------
 
-    def compute_features(self, df_15m: pd.DataFrame,
+    def compute_features(self,
+                         df_15m: pd.DataFrame,
                          hsmm_probs: np.ndarray,
-                         smc_patterns: Dict,
-                         regime_score: float = 0.5,
-                         context_dir: float = 0.0) -> pd.DataFrame:
+                         smc_patterns: Any,   # list of dicts or single dict
+                         regime_result: Optional['AgentResult'] = None,
+                         context_result: Optional['AgentResult'] = None
+                         ) -> pd.DataFrame:
         """
-        context_dir : 1.0=bullish, -1.0=bearish, 0.0=neutral
+        hsmm_probs  : (T, 6) array aligned with df_15m
+        smc_patterns: list[dict] aligned with df_15m, OR single dict for last row only
         """
-        f = _momentum_features(df_15m['close'], [4, 8, 16, 32])
-        vol = _vol_features(df_15m, [8, 32, 96])
-        f = pd.concat([f, vol], axis=1)
-        f = _add_hsmm_features(f, hsmm_probs)
+        f   = pd.DataFrame(index=df_15m.index)
+        c   = df_15m['close']
+        h   = df_15m['high']
+        l   = df_15m['low']
+        v   = df_15m['volume']
+        ret = c.pct_change()
+        T   = len(df_15m)
 
-        # SMC pattern features (constant over the df, from the last bar's patterns)
-        smc_keys = ['bullish_ob', 'bearish_ob', 'bullish_fvg', 'bearish_fvg',
+        # Momentum (4, 8, 16, 32 bars in 15m = 1h, 2h, 4h, 8h)
+        for w in [4, 8, 16, 32]:
+            f[f'mom_{w}'] = c / c.shift(w) - 1
+
+        # Vol
+        for w in [4, 8, 16, 32]:
+            f[f'rv_{w}'] = ret.rolling(w).std()
+
+        f['vol_ratio'] = f['rv_4'] / (f['rv_32'] + 1e-9)
+
+        # Buy pressure
+        denom = (h - l).replace(0, np.nan)
+        f['buy_pressure'] = (c - l) / denom
+
+        # Amihud
+        dollar_vol = c * v
+        f['amihud'] = (ret.abs() / (dollar_vol.rolling(20).mean() + 1e-9)).rolling(20).mean()
+
+        # Effective spread
+        f['eff_spread'] = (h - l) / (c + 1e-9)
+
+        # HSMM probs
+        for i, col in enumerate(HSMM_COL_NAMES):
+            if hsmm_probs is not None and len(hsmm_probs) == T:
+                f[col] = hsmm_probs[:, i]
+            else:
+                f[col] = 1.0 / 6.0
+
+        # SMC binary features
+        smc_cols = ['bullish_ob', 'bearish_ob', 'bullish_fvg', 'bearish_fvg',
                     'bullish_choch', 'bearish_choch', 'smc_score_bullish', 'smc_score_bearish']
-        for k in smc_keys:
-            val = float(smc_patterns.get(k, 0.0))
-            if isinstance(val, bool):
-                val = float(val)
-            f[f'smc_{k}'] = val
 
-        # Upstream agent scores (cross-agent features)
-        f['regime_score']  = regime_score
-        f['context_dir']   = context_dir
+        if isinstance(smc_patterns, list) and len(smc_patterns) == T:
+            for col in smc_cols:
+                f[col] = [float(bool(p.get(col, False))) if col not in ('smc_score_bullish', 'smc_score_bearish')
+                          else float(p.get(col, 0.0)) for p in smc_patterns]
+        else:
+            # Single dict (inference time) — broadcast to all rows
+            single = smc_patterns if isinstance(smc_patterns, dict) else {}
+            for col in smc_cols:
+                val = float(bool(single.get(col, False))) if col not in ('smc_score_bullish', 'smc_score_bearish') \
+                      else float(single.get(col, 0.0))
+                f[col] = val
 
-        # Interaction: regime × direction alignment
-        f['regime_context_align'] = regime_score * context_dir
+        # Regime score
+        if regime_result is not None:
+            if isinstance(regime_result, (list, np.ndarray)):
+                f['regime_score'] = float(np.mean(regime_result))
+            else:
+                f['regime_score'] = float(getattr(regime_result, 'score', 0.5))
+        else:
+            f['regime_score'] = 0.5
+
+        # Context direction
+        if context_result is not None:
+            if isinstance(context_result, str):
+                ctx_str = context_result
+            else:
+                ctx_str = getattr(context_result, 'state', 'neutral')
+            ctx_val = 1.0 if ctx_str == 'bullish' else -1.0 if ctx_str == 'bearish' else 0.0
+            f['context_dir'] = ctx_val
+        else:
+            f['context_dir'] = 0.0
 
         return f
+
+    # ------------------------------------------------------------------
+    # Labels
+    # ------------------------------------------------------------------
 
     def create_labels(self, df_15m: pd.DataFrame,
                       context: str = 'bullish',
                       forward_bars: int = 8,
                       thr: float = 0.008) -> pd.Series:
-        """1 = price moved in context direction by thr within forward_bars"""
-        close = df_15m['close']
-        if context == 'bullish':
-            fut = df_15m['high'].rolling(forward_bars).max().shift(-forward_bars)
-            return ((fut / close - 1) > thr).astype(int)
-        else:
-            fut = df_15m['low'].rolling(forward_bars).min().shift(-forward_bars)
-            return ((close / fut - 1) > thr).astype(int)
+        """
+        1 if price moved in context direction by thr within forward_bars.
+        """
+        labels = pd.Series(0, index=df_15m.index)
+        c = df_15m['close'].values
+        h = df_15m['high'].values
+        lo = df_15m['low'].values
+        n  = len(df_15m)
+
+        for i in range(n - forward_bars):
+            if context == 'bullish':
+                future_max = h[i + 1: i + 1 + forward_bars].max()
+                if future_max > c[i] * (1 + thr):
+                    labels.iloc[i] = 1
+            else:  # bearish
+                future_min = lo[i + 1: i + 1 + forward_bars].min()
+                if future_min < c[i] * (1 - thr):
+                    labels.iloc[i] = 1
+        return labels
+
+    # ------------------------------------------------------------------
+    # Training
+    # ------------------------------------------------------------------
 
     def pretrain(self, df_15m: pd.DataFrame,
                  hsmm_gamma_15m: np.ndarray,
                  smc_list: List[Dict],
                  context_series: pd.Series,
-                 smc_start_iloc: int = 0,
                  n_splits: int = 5) -> Dict:
-        """
-        hsmm_gamma_15m : (T, 6) array aligned with df_15m
-        smc_list       : list[dict] from precomputed_runner
-        smc_start_iloc : offset for smc_list indexing
-        context_series : pd.Series of 'bullish'/'bearish'/'neutral' aligned to df_15m
-        """
-        all_X, all_y = [], []
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        if self.CACHE_FILE.exists():
+            self._load()
+            print('  [MLSetupAgent] Loaded from cache.')
+            return {'from_cache': True, 'deployed': True}
 
-        for ctx_str, ctx_dir in [('bullish', 1.0), ('bearish', -1.0)]:
-            mask = (context_series == ctx_str)
-            if mask.sum() < 200:
-                continue
+        try:
+            # Build context_dir series
+            ctx_dir = context_series.map(
+                lambda x: 1.0 if x == 'bullish' else -1.0 if x == 'bearish' else 0.0
+            )
 
-            df_ctx  = df_15m[mask]
-            iloc_arr = np.where(mask.values)[0]
+            X = self.compute_features(df_15m, hsmm_gamma_15m, smc_list,
+                                      regime_result=None, context_result=None)
+            # Overwrite context_dir with actual series
+            if len(ctx_dir) == len(X):
+                X['context_dir'] = ctx_dir.values
 
-            rows = []
-            for abs_iloc in iloc_arr:
-                smc_idx = abs_iloc - smc_start_iloc
-                smc_pat = smc_list[smc_idx] if 0 <= smc_idx < len(smc_list) else {}
-                hsmm_row = hsmm_gamma_15m[abs_iloc]
+            # Create mixed labels (use majority context)
+            ctx_mode = 'bullish' if (context_series == 'bullish').sum() >= (context_series == 'bearish').sum() else 'bearish'
+            y = self.create_labels(df_15m, context=ctx_mode)
 
-                # Build feature vector for this bar
-                start = max(0, abs_iloc - 200)
-                df_sl = df_15m.iloc[start:abs_iloc + 1]
-                hsmm_2d = np.tile(hsmm_row, (len(df_sl), 1))
-                X_sl = self.compute_features(df_sl, hsmm_2d, smc_pat,
-                                             regime_score=0.5, context_dir=ctx_dir)
-                rows.append(X_sl.iloc[-1])
+            mask = X.notna().all(axis=1) & y.notna()
+            mask.iloc[-8:] = False
+            X, y = X[mask], y[mask]
 
-            if not rows:
-                continue
+            if len(X) < 300:
+                print(f'  [MLSetupAgent] Not enough data ({len(X)} rows)')
+                return {'deployed': False, 'reason': 'not_enough_data'}
 
-            X_ctx = pd.DataFrame(rows).reset_index(drop=True)
-            y_ctx = self.create_labels(df_ctx, context=ctx_str).reset_index(drop=True)
+            self._feat_names = X.columns.tolist()
+            params = dict(num_leaves=31, learning_rate=0.05, n_estimators=300,
+                          min_child_samples=50, verbose=-1, n_jobs=-1,
+                          class_weight='balanced')
 
-            valid = X_ctx.dropna().index
-            all_X.append(X_ctx.loc[valid])
-            all_y.append(y_ctx.iloc[valid])
+            tscv = TimeSeriesSplit(n_splits=n_splits)
+            fold_aucs = []
 
-        if not all_X:
-            print('  [SetupML] Not enough data')
-            return {}
+            for tr_idx, val_idx in tscv.split(X):
+                Xtr, ytr = X.iloc[tr_idx], y.iloc[tr_idx]
+                Xval, yval = X.iloc[val_idx], y.iloc[val_idx]
+                if ytr.sum() < 10 or yval.sum() < 5:
+                    continue
+                m = lgb.LGBMClassifier(**params)
+                m.fit(Xtr, ytr, eval_set=[(Xval, yval)],
+                      callbacks=[lgb.early_stopping(40, verbose=False),
+                                 lgb.log_evaluation(-1)])
+                pred = m.predict_proba(Xval)[:, 1]
+                try:
+                    fold_aucs.append(roc_auc_score(yval, pred))
+                except Exception:
+                    pass
 
-        X = pd.concat(all_X, ignore_index=True)
-        y = pd.concat(all_y, ignore_index=True)
-        self._feat_cols = list(X.columns)
+            self._lgb = lgb.LGBMClassifier(**params)
+            self._lgb.fit(X, y, callbacks=[lgb.log_evaluation(-1)])
+            self._trained = True
+            self._save()
 
-        # Sort by time (all_X rows are already time-ordered within each context)
-        params = dict(num_leaves=31, learning_rate=0.05, n_estimators=400,
-                      min_child_samples=50, verbose=-1, n_jobs=-1,
-                      class_weight='balanced')
+            mean_auc = float(np.mean(fold_aucs)) if fold_aucs else 0.5
+            print(f'  [MLSetupAgent] Trained. AUC={mean_auc:.3f} n={len(X)}')
+            return {'deployed': True, 'mean_auc': mean_auc, 'fold_aucs': fold_aucs}
 
-        tscv = TimeSeriesSplit(n_splits=n_splits)
-        scores = []
-        for tr, va in tscv.split(X):
-            m = lgb.LGBMClassifier(**params)
-            m.fit(X.iloc[tr], y.iloc[tr])
-            if y.iloc[va].sum() > 0:
-                scores.append(roc_auc_score(y.iloc[va], m.predict_proba(X.iloc[va])[:, 1]))
+        except Exception as e:
+            print(f'  [MLSetupAgent] Training failed: {e}')
+            return {'deployed': False, 'reason': str(e)}
 
-        self.lgb = lgb.LGBMClassifier(**params)
-        self.lgb.fit(X, y)
-        self._trained = True
+    # ------------------------------------------------------------------
+    # Inference
+    # ------------------------------------------------------------------
 
-        result = {'auc': float(np.mean(scores)) if scores else 0.0, 'n_samples': len(X)}
-        self._save()
-        print(f'  [SetupML]   AUC={result["auc"]:.3f}  n={result["n_samples"]}')
-        return result
-
-    def analyze(self, df_15m: pd.DataFrame,
+    def analyze(self,
+                df_15m: pd.DataFrame,
                 hsmm_probs_row: np.ndarray,
                 smc_patterns: Dict,
-                regime_result: AgentResult,
-                context_result: AgentResult) -> AgentResult:
-        if not self._trained and not self._load():
-            return self._passthrough(hsmm_probs_row, smc_patterns, context_result)
+                regime_result: Optional[AgentResult] = None,
+                context_result: Optional[AgentResult] = None) -> AgentResult:
 
-        if len(df_15m) < 50:
-            return self._passthrough(hsmm_probs_row, smc_patterns, context_result)
+        if len(df_15m) < self.MIN_BARS:
+            return AgentResult(
+                agent='setup', state='not_ready', score=0.0,
+                passed=False, ready=False, blocked_by_readiness=True,
+                reason=f'MLSetupAgent: need {self.MIN_BARS} bars, got {len(df_15m)}'
+            )
 
-        ctx_dir = {'bullish': 1.0, 'bearish': -1.0, 'neutral': 0.0}.get(
-            context_result.state, 0.0)
+        # Pass-through: linear combination of HSMM probs
+        if hsmm_probs_row is not None and len(hsmm_probs_row) == 6:
+            ctx_str = getattr(context_result, 'state', 'neutral') if context_result else 'neutral'
+            p_tp   = float(hsmm_probs_row[0])
+            p_rng  = float(hsmm_probs_row[1])
+            p_tm   = float(hsmm_probs_row[2])
+            p_sq   = float(hsmm_probs_row[3])
+            p_dist = float(hsmm_probs_row[4])
+            p_liq  = float(hsmm_probs_row[5])
 
-        hsmm_2d = np.tile(hsmm_probs_row, (len(df_15m), 1))
-        X = self.compute_features(df_15m, hsmm_2d, smc_patterns,
-                                  regime_score=regime_result.score,
-                                  context_dir=ctx_dir)
-        last = X[self._feat_cols].iloc[-1:].fillna(0)
-        p_setup = float(self.lgb.predict_proba(last)[0, 1])
+            bull_score = p_tp + 0.5 * p_sq + 0.25 * p_rng
+            bear_score = p_tm + p_dist
+            pt_score   = bull_score if ctx_str == 'bullish' else \
+                         bear_score if ctx_str == 'bearish' else \
+                         max(bull_score, bear_score)
+            pt_score   = float(np.clip(pt_score, 0.0, 1.0))
+        else:
+            pt_score = 0.5
 
-        passed = p_setup > 0.45
-        has_pat = bool(
-            smc_patterns.get('bullish_ob') or smc_patterns.get('bullish_fvg') or
-            smc_patterns.get('bullish_choch') if ctx_dir > 0 else
-            smc_patterns.get('bearish_ob') or smc_patterns.get('bearish_fvg') or
-            smc_patterns.get('bearish_choch')
-        )
-        state = 'valid_setup' if (passed and has_pat) else \
-                'misaligned' if not passed else 'no_pattern'
+        if not self._trained:
+            if pt_score > 0.45:
+                state = 'valid_setup'
+            else:
+                state = 'misaligned'
+            return AgentResult(
+                agent='setup', state=state, score=pt_score,
+                passed=(pt_score > 0.45), ready=True,
+                reason='MLSetupAgent: pass-through (not trained)'
+            )
 
-        return AgentResult(
-            agent='setup', state=state,
-            score=p_setup, passed=passed, ready=True,
-            reason=f'MLSetup: P(setup)={p_setup:.2f} SMC={has_pat}',
-            metadata={'p_setup': p_setup, 'has_pattern': has_pat, 'smc': smc_patterns}
-        )
+        try:
+            T = len(df_15m)
+            hsmm_full = np.tile(hsmm_probs_row, (T, 1))
+            X = self.compute_features(df_15m, hsmm_full, smc_patterns,
+                                      regime_result, context_result)
+            last = X.iloc[[-1]]
+            if last.isna().any().any():
+                state = 'valid_setup' if pt_score > 0.45 else 'misaligned'
+                return AgentResult(
+                    agent='setup', state=state, score=pt_score,
+                    passed=(pt_score > 0.45), ready=True,
+                    reason='MLSetupAgent: NaN features, pass-through'
+                )
 
-    def update_online(self, features: Dict, label: int) -> None:
-        if _RIVER_OK and self._online is not None:
-            try:
-                self._online.learn_one(features, label)
-            except Exception:
-                pass
+            score = float(self._lgb.predict_proba(last)[0, 1])
+            feats_dict = last.iloc[0].to_dict()
+            if self._n_online >= 20:
+                score = 0.7 * score + 0.3 * _river_predict(self._online, feats_dict)
 
-    def _passthrough(self, hsmm_probs_row: np.ndarray,
-                     smc_patterns: Dict,
-                     context_result: AgentResult) -> AgentResult:
-        ctx = context_result.state if context_result else 'neutral'
-        ctx_dir = {'bullish': 1.0, 'bearish': -1.0}.get(ctx, 0.0)
+            if score > 0.6:
+                state = 'valid_setup'
+            elif score < 0.35:
+                state = 'misaligned'
+            else:
+                state = 'no_pattern'
 
-        p_tp   = float(hsmm_probs_row[0])
-        p_rng  = float(hsmm_probs_row[1])
-        p_tm   = float(hsmm_probs_row[2])
-        p_sq   = float(hsmm_probs_row[3])
+            return AgentResult(
+                agent='setup', state=state, score=float(score),
+                passed=(score > 0.45), ready=True,
+                reason=f'MLSetupAgent: P(setup)={score:.3f}',
+                metadata={'p_setup': score, 'hsmm_pt_score': pt_score}
+            )
 
-        bull_score = p_tp + 0.5 * p_sq + 0.25 * p_rng
-        bear_score = p_tm + float(hsmm_probs_row[4])  # Trend- + Distribution
+        except Exception as e:
+            state = 'valid_setup' if pt_score > 0.45 else 'misaligned'
+            return AgentResult(
+                agent='setup', state=state, score=pt_score,
+                passed=(pt_score > 0.45), ready=True,
+                reason=f'MLSetupAgent: inference error ({e}), pass-through'
+            )
 
-        alignment  = bull_score if ctx_dir > 0 else bear_score if ctx_dir < 0 else max(bull_score, bear_score)
-        passed     = alignment > 0.40
-        state      = 'valid_setup' if passed else 'misaligned'
+    def update_online(self, features_dict: Dict, label: int) -> None:
+        _river_update(self._online, features_dict, label)
+        self._n_online += 1
 
-        return AgentResult(
-            agent='setup', state=state, score=alignment,
-            passed=passed, ready=True,
-            reason=f'Passthrough HSMM align={alignment:.2f}',
-        )
+    # ------------------------------------------------------------------
+    # Persistence
+    # ------------------------------------------------------------------
 
     def _save(self):
-        with open(self.CACHE_PATH, 'wb') as f:
-            pickle.dump({'lgb': self.lgb, 'feat_cols': self._feat_cols}, f)
+        with open(self.CACHE_FILE, 'wb') as f:
+            pickle.dump({'lgb': self._lgb, 'feat_names': self._feat_names}, f, protocol=4)
 
-    def _load(self) -> bool:
-        if not self.CACHE_PATH.exists():
-            return False
-        try:
-            p = pickle.load(open(self.CACHE_PATH, 'rb'))
-            self.lgb        = p['lgb']
-            self._feat_cols = p['feat_cols']
-            self._trained   = True
-            return True
-        except Exception:
-            return False
+    def _load(self):
+        with open(self.CACHE_FILE, 'rb') as f:
+            p = pickle.load(f)
+        self._lgb        = p['lgb']
+        self._feat_names = p['feat_names']
+        self._trained    = True
