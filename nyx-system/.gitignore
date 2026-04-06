@@ -36,6 +36,7 @@ env/
 data/raw/*
 data/processed/*
 data/results/*
+data/pretrain_cache/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !data/results/.gitkeep
