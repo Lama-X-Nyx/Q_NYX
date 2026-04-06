@@ -102,17 +102,51 @@ class MLFeatureEngine:
         f['vol_change']     = volume.pct_change()
         f['vol_ratio_6_24'] = volume / (volume.rolling(96).mean() + 1e-9)
 
-        # Microstructure: Amihud illiquidity
-        f['amihud'] = (
-            ret.abs() / (volume * close + 1e-9)
-        ).rolling(32).mean()
+        # ---- GARCH-like (EWMA variance) ----
+        # Two decay factors: ~daily (0.94) and ~weekly (0.97)
+        for lam, tag in [(0.94, '94'), (0.97, '97')]:
+            ewma_var = ret.ewm(alpha=1 - lam, adjust=False).var()
+            f[f'ewma_vol_{tag}'] = np.sqrt(ewma_var.clip(lower=0))
+        # Ratio EWMA short/long — vol regime signal
+        f['ewma_vol_ratio'] = f['ewma_vol_94'] / (f['ewma_vol_97'] + 1e-9)
 
-        # Effective spread proxy (uses OHLC)
-        mid = (high + low) / 2
-        f['eff_spread'] = (2 * (close - mid).abs() / (close + 1e-9)).rolling(8).mean()
+        # ---- Order-book proxies (from OHLCV) ----
+        dollar_vol = volume * close
+
+        # Buy pressure: close near high → buying, near low → selling [0, 1]
+        hl_range = (high - low).replace(0, np.nan)
+        f['buy_pressure']     = (close - low) / hl_range
+        f['buy_pressure_ma8'] = f['buy_pressure'].rolling(8).mean()
+        # Delta: change in buy pressure (momentum of order flow)
+        f['buy_pressure_d']   = f['buy_pressure'].diff(4)
+
+        # Amihud illiquidity: |return| / dollar_volume — price impact per $ traded
+        f['amihud'] = (ret.abs() / (dollar_vol + 1e-9)).rolling(32).mean()
+        f['amihud_z'] = (f['amihud'] - f['amihud'].rolling(96).mean()) / (
+            f['amihud'].rolling(96).std() + 1e-9)   # z-score vs recent history
+
+        # Kyle's lambda (price impact): |return| / sqrt(volume)
+        f['kyle_lambda'] = (ret.abs() / (np.sqrt(volume) + 1e-9)).rolling(16).mean()
+
+        # Effective spread proxy: (high - low) / close
+        f['eff_spread']       = (high - low) / (close + 1e-9)
+        f['eff_spread_ma16']  = f['eff_spread'].rolling(16).mean()
+        f['eff_spread_ratio'] = f['eff_spread'] / (f['eff_spread_ma16'] + 1e-9)
+
+        # Volume surprise: current vs 32-bar average
+        f['vol_surprise'] = volume / (volume.rolling(32).mean() + 1e-9)
 
         # Garman-Klass volatility (more efficient than realized vol)
         f['gk_24h'] = self._garman_klass(high, low, close, df['open'], 96)
+
+        # ---- Intraday seasonality (sin/cos encoding) ----
+        if hasattr(df.index, 'hour'):
+            h = df.index.hour
+            f['hour_sin'] = np.sin(2 * np.pi * h / 24)
+            f['hour_cos'] = np.cos(2 * np.pi * h / 24)
+            dow = df.index.dayofweek
+            f['dow_sin'] = np.sin(2 * np.pi * dow / 7)
+            f['dow_cos'] = np.cos(2 * np.pi * dow / 7)
 
         # ---- Context direction (0=bearish, 0.5=neutral, 1=bullish) ----
         ctx_map = {'bullish': 1.0, 'neutral': 0.5, 'bearish': 0.0}
