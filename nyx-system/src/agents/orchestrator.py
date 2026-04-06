@@ -102,15 +102,20 @@ class Orchestrator:
         )
 
         # Step 2: Call Regime Agent on its operational TF (1H) with context
+        # Pass 4H as HTF so RegimeAgent can see higher-timeframe position
+        structure_tf = fractal_config.get('structure_tf', '4h')
         regime_result = self.regime_agent.analyze(
             mtf_data.get(regime_tf, pd.DataFrame()),
-            context_state=context_result.state
+            context_state=context_result.state,
+            df_htf=mtf_data.get(structure_tf)
         )
-        
+
         # Step 3: Call Setup Agent (with context)
+        # Pass 1H as HTF so SetupAgent can see higher-timeframe position
         setup_result = self.setup_agent.analyze(
             mtf_data.get(setup_tf, pd.DataFrame()),
-            context_state=context_result.state
+            context_state=context_result.state,
+            df_htf=mtf_data.get(regime_tf)
         )
         
         # Aggregate results (3 agents only)

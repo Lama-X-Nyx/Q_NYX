@@ -127,6 +127,16 @@ class SemiMarkovHMM:
             else:
                 self.emission_params[state] = self._default_emission(state)
 
+            # Optional HTF context feature
+            if 'htf_pos' in data.columns:
+                htf_vals = state_data['htf_pos'].dropna()
+                if len(htf_vals) > 5:
+                    self.emission_params[state]['context_mu']    = float(htf_vals.mean())
+                    self.emission_params[state]['context_sigma'] = float(max(htf_vals.std(), 0.001))
+                else:
+                    self.emission_params[state]['context_mu']    = 0.0
+                    self.emission_params[state]['context_sigma'] = 0.02
+
         # Duration parameters (geometric)
         self.duration_params = {}
         for state in self.states:
@@ -389,6 +399,20 @@ class SemiMarkovHMM:
                 scale=atr_sigma[np.newaxis, :]
             )
 
+        # Optional HTF context feature
+        contexts = np.array([obs.get('context', np.nan) for obs in observations])
+        has_context = all('context_mu' in self.emission_params.get(s, {}) for s in self.states)
+        if has_context:
+            context_mu    = np.array([self.emission_params[s].get('context_mu',    0.0)  for s in self.states])
+            context_sigma = np.array([self.emission_params[s].get('context_sigma', 0.02) for s in self.states])
+            valid_c = ~np.isnan(contexts)
+            if valid_c.any():
+                log_B[valid_c] += stats.norm.logpdf(
+                    contexts[valid_c, np.newaxis],
+                    loc=context_mu[np.newaxis, :],
+                    scale=context_sigma[np.newaxis, :]
+                )
+
         return log_B
 
     def forward_backward(self, observations: List[Dict]) -> np.ndarray:
@@ -417,7 +441,7 @@ class SemiMarkovHMM:
         # the gamma matrix is unchanged — return cached result immediately.
         tail = observations[-min(5, T):]
         fb_fp = hash(tuple(
-            (o.get('price', 0.0), o.get('atr', 0.0)) for o in tail
+            (o.get('price', 0.0), o.get('atr', 0.0), o.get('context', 0.0)) for o in tail
         ))
         if fb_fp == self._fb_fingerprint and self._fb_cache is not None:
             # Cache hit — shape may differ if T changed; validate
@@ -491,11 +515,15 @@ class SemiMarkovHMM:
         obs = []
         returns_col = data['returns'].values if 'returns' in data.columns else np.full(len(data), np.nan)
         atr_col     = data['atr_14'].values  if 'atr_14'   in data.columns else np.full(len(data), np.nan)
-        for r, a in zip(returns_col, atr_col):
-            obs.append({
+        htf_col     = data['htf_pos'].values if 'htf_pos'  in data.columns else np.full(len(data), np.nan)
+        for idx, (r, a, c) in enumerate(zip(returns_col, atr_col, htf_col)):
+            o = {
                 'price': float(r) if not np.isnan(r) else np.nan,
                 'atr':   float(a) if not np.isnan(a) else np.nan,
-            })
+            }
+            if not np.isnan(c):
+                o['context'] = float(c)
+            obs.append(o)
         return obs
 
     def _compute_xi(

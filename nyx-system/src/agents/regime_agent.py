@@ -44,7 +44,8 @@ class RegimeAgent:
         self.sdc_min = mtf_conditions.get('sdc_min', 5.0)
         self.stability_min = mtf_conditions.get('stability_4h_min', 0.60)
     
-    def pretrain(self, df: pd.DataFrame, n_iter: int = 30, tol: float = 1e-4) -> list:
+    def pretrain(self, df: pd.DataFrame, n_iter: int = 30, tol: float = 1e-4,
+                 df_htf: pd.DataFrame = None) -> list:
         """
         Train HSMM via Baum-Welch EM on historical data.
 
@@ -52,32 +53,35 @@ class RegimeAgent:
         Afterwards, forward_backward() uses the learned parameters.
 
         Args:
-            df: Historical OHLCV DataFrame (at regime timeframe)
+            df: Historical OHLCV DataFrame (at regime timeframe, i.e. 1H)
             n_iter: Maximum EM iterations
             tol: Convergence tolerance on log-likelihood
+            df_htf: Optional higher-timeframe DataFrame (4H) for htf_pos feature
 
         Returns:
             List of log-likelihoods per EM iteration
         """
-        df_prepared = self._prepare_data(df)
+        df_prepared = self._prepare_data(df, df_htf=df_htf)
         return self.hsmm.initialize_parameters_with_em(df_prepared, n_iter=n_iter, tol=tol)
 
-    def analyze(self, df: pd.DataFrame, context_state: str = None) -> AgentResult:
+    def analyze(self, df: pd.DataFrame, context_state: str = None,
+                df_htf: pd.DataFrame = None) -> AgentResult:
         """
         Analyze market regime using HSMM
-        
+
         Args:
-            df: DataFrame for regime timeframe (4H or 1H)
+            df: DataFrame for regime timeframe (1H)
             context_state: Optional context bias from Context Agent
-        
+            df_htf: Optional higher-timeframe DataFrame (4H) for htf_pos feature
+
         Returns:
             AgentResult with regime decision
         """
-        
+
         # Get minimum bars from config
         readiness_config = self.config.get('fractal_readiness', {})
         min_bars = readiness_config.get('regime_min_bars', 100)
-        
+
         # Readiness check - CRITICAL: Check this FIRST
         if len(df) < min_bars:
             return AgentResult(
@@ -90,28 +94,30 @@ class RegimeAgent:
                 reason=f'Insufficient data for HSMM ({len(df)} bars, need {min_bars})',
                 metadata={'timeframe': self.timeframe, 'bars': len(df), 'min_bars': min_bars}
             )
-        
+
         # Agent is READY - now do HSMM logic
-        
+
         # Store for metadata
         bars_count = len(df)
-        
+
         # Prepare data for HSMM
-        df_prepared = self._prepare_data(df)
-        
+        df_prepared = self._prepare_data(df, df_htf=df_htf)
+
         # Initialize HSMM with data
         self.hsmm.initialize_parameters(df_prepared)
-        
+
         # Build observations (last 50 bars)
         window_size = min(50, len(df_prepared))
         window = df_prepared.tail(window_size)
-        
+
         observations = []
         for idx in range(len(window)):
             obs = {
                 'price': window.iloc[idx]['returns'] if 'returns' in window.columns else 0.0,
                 'atr': window.iloc[idx]['atr_14'] if 'atr_14' in window.columns else window.iloc[idx]['close'] * 0.02
             }
+            if 'htf_pos' in window.columns and not np.isnan(window.iloc[idx]['htf_pos']):
+                obs['context'] = float(window.iloc[idx]['htf_pos'])
             observations.append(obs)
         
         try:
@@ -235,38 +241,45 @@ class RegimeAgent:
                 metadata={'timeframe': self.timeframe, 'error': str(e)}
             )
     
-    def _prepare_data(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _prepare_data(self, df: pd.DataFrame, df_htf: pd.DataFrame = None) -> pd.DataFrame:
         """
-        Prepare data for HSMM (add returns, ATR, and moving averages)
-        
+        Prepare data for HSMM (add returns, ATR, and moving averages).
+
         CRITICAL: HSMM._label_states_heuristic() requires sma_20 and sma_50
         for proper initialization. Without them, HSMM defaults to Range state,
         causing structural bias in regime detection.
+
+        Args:
+            df:     OHLCV DataFrame at the regime timeframe (1H).
+            df_htf: Optional higher-timeframe (4H) OHLCV DataFrame. When
+                    provided, an 'htf_pos' column is added: the normalised
+                    distance of the current 1H close from the 4H SMA20.
+                    Uses merge_asof to avoid any look-ahead.
         """
         df_prepared = df.copy()
-        
+
         # Add returns
         if 'returns' not in df_prepared.columns:
             df_prepared['returns'] = df_prepared['close'].pct_change()
-        
+
         # Add ATR
         if 'atr_14' not in df_prepared.columns:
             high = df_prepared['high'].values
             low = df_prepared['low'].values
             close = df_prepared['close'].values
-            
-            tr = np.maximum(high - low, 
+
+            tr = np.maximum(high - low,
                            np.maximum(np.abs(high - np.roll(close, 1)),
                                      np.abs(low - np.roll(close, 1))))
             tr[0] = high[0] - low[0]
-            
+
             atr = pd.Series(tr).rolling(14).mean().values
             df_prepared['atr_14'] = atr
-        
+
         # Add SMA_20 (required by HSMM heuristic labeling)
         if 'sma_20' not in df_prepared.columns:
             df_prepared['sma_20'] = df_prepared['close'].rolling(window=20).mean()
-        
+
         # Add SMA_50 (required by HSMM heuristic labeling)
         if 'sma_50' not in df_prepared.columns:
             df_prepared['sma_50'] = df_prepared['close'].rolling(window=50).mean()
@@ -278,6 +291,28 @@ class RegimeAgent:
         # Add volume_ma20 — needed for Distribution detection (P4a)
         if 'volume_ma20' not in df_prepared.columns and 'volume' in df_prepared.columns:
             df_prepared['volume_ma20'] = df_prepared['volume'].rolling(window=20).mean()
+
+        # Add HTF context feature: (close - htf_sma20) / htf_sma20
+        # Uses pd.merge_asof for O(n log n) alignment without look-ahead.
+        if df_htf is not None and not df_htf.empty and 'htf_pos' not in df_prepared.columns:
+            htf_sma20 = df_htf['close'].rolling(20).mean().rename('_htf_sma20')
+            htf_ref = htf_sma20.reset_index()
+            htf_ref.columns = ['_ts', '_htf_sma20']
+            htf_ref = htf_ref.dropna(subset=['_htf_sma20']).sort_values('_ts')
+
+            cur_ref = df_prepared[['close']].copy().reset_index()
+            cur_ref.columns = ['_ts', '_close']
+            cur_ref = cur_ref.sort_values('_ts')
+
+            merged = pd.merge_asof(
+                cur_ref, htf_ref,
+                on='_ts',
+                direction='backward'   # strictly use the last completed HTF bar
+            )
+            merged.index = df_prepared.index
+            with np.errstate(invalid='ignore', divide='ignore'):
+                htf_pos = (merged['_close'] - merged['_htf_sma20']) / merged['_htf_sma20'].replace(0, np.nan)
+            df_prepared['htf_pos'] = htf_pos.values
 
         return df_prepared
 

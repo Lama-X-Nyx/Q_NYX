@@ -41,7 +41,7 @@ CACHE_DIR = Path('data/pretrain_cache')
 def _pretrain_cache_key(pair: str, pretrain_end: str,
                          pretrain_months: int, em_iters: int) -> str:
     """Deterministic hex key for this exact training config."""
-    blob = f"{pair}|{pretrain_end}|{pretrain_months}|{em_iters}"
+    blob = f"{pair}|{pretrain_end}|{pretrain_months}|{em_iters}|v2_htf"
     return hashlib.md5(blob.encode()).hexdigest()[:16]
 
 
@@ -307,25 +307,34 @@ def pretrain_agents(orchestrator: Orchestrator, mtf_all: dict,
         if _load_pretrain_cache(orchestrator, cache_path):
             return   # parameters restored from disk — skip EM
 
-    # ---- Regime agent — 4H data ----
-    regime_tf = '4h' if '4h' in mtf_all else '1h'
+    # ---- Regime agent — 1H data (matches inference TF), HTF = 4H ----
+    regime_tf = '1h' if '1h' in mtf_all else list(mtf_all.keys())[0]
+    htf_tf = '4h' if '4h' in mtf_all else None
     df_regime = mtf_all[regime_tf]
     regime_window = df_regime[(df_regime.index >= start_ts) & (df_regime.index < end_ts)]
+    df_regime_htf = None
+    if htf_tf:
+        df_htf_full = mtf_all[htf_tf]
+        df_regime_htf = df_htf_full[(df_htf_full.index >= start_ts) & (df_htf_full.index < end_ts)]
     if len(regime_window) >= 100:
-        ll = orchestrator.regime_agent.pretrain(regime_window, n_iter=em_iters)
+        ll = orchestrator.regime_agent.pretrain(regime_window, n_iter=em_iters, df_htf=df_regime_htf)
         msg = f"{len(ll)} EM iters  LL={ll[-1]:.0f}" if ll else "EM skipped"
-        print(f"    RegimeAgent  ({regime_tf})  {len(regime_window)} bars  {msg}")
+        print(f"    RegimeAgent  ({regime_tf}+htf={htf_tf})  {len(regime_window)} bars  {msg}")
     else:
         print(f"    RegimeAgent  SKIP ({len(regime_window)} bars < 100)")
 
-    # ---- Setup agent — 15M data ----
+    # ---- Setup agent — 15M data, HTF = 1H ----
     setup_tf = '15m' if '15m' in mtf_all else '1h'
     df_setup = mtf_all[setup_tf]
     setup_window = df_setup[(df_setup.index >= start_ts) & (df_setup.index < end_ts)]
+    df_setup_htf = None
+    if '1h' in mtf_all:
+        df_1h_full = mtf_all['1h']
+        df_setup_htf = df_1h_full[(df_1h_full.index >= start_ts) & (df_1h_full.index < end_ts)]
     if len(setup_window) >= 100:
-        ll = orchestrator.setup_agent.pretrain(setup_window, n_iter=em_iters)
+        ll = orchestrator.setup_agent.pretrain(setup_window, n_iter=em_iters, df_htf=df_setup_htf)
         msg = f"{len(ll)} EM iters  LL={ll[-1]:.0f}" if ll else "EM skipped"
-        print(f"    SetupAgent   ({setup_tf})  {len(setup_window)} bars  {msg}")
+        print(f"    SetupAgent   ({setup_tf}+htf=1h)  {len(setup_window)} bars  {msg}")
     else:
         print(f"    SetupAgent   SKIP ({len(setup_window)} bars < 100)")
 

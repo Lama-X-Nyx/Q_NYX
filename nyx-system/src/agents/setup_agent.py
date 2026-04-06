@@ -61,12 +61,19 @@ class SetupAgent:
         mtf_conditions = config.get('strategy', {}).get('mtf_conditions', {})
         self.alignment_min = mtf_conditions.get('alignment_15m_min', 0.28)
 
-    def _prepare_data(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _prepare_data(self, df: pd.DataFrame, df_htf: pd.DataFrame = None) -> pd.DataFrame:
         """
         Prepare 15M data for HSMM (add returns, ATR, sma_20, sma_50).
 
         Mirrors RegimeAgent._prepare_data() — HSMM heuristic labeling requires
         sma_20 and sma_50.
+
+        Args:
+            df:     OHLCV DataFrame at the setup timeframe (15M).
+            df_htf: Optional higher-timeframe (1H) OHLCV DataFrame. When
+                    provided, an 'htf_pos' column is added: the normalised
+                    distance of the current 15M close from the 1H SMA20.
+                    Uses merge_asof to avoid any look-ahead.
         """
         df_prepared = df.copy()
 
@@ -101,9 +108,32 @@ class SetupAgent:
         if 'volume_ma20' not in df_prepared.columns and 'volume' in df_prepared.columns:
             df_prepared['volume_ma20'] = df_prepared['volume'].rolling(window=20).mean()
 
+        # Add HTF context feature: (close - htf_sma20) / htf_sma20
+        # Uses pd.merge_asof for O(n log n) alignment without look-ahead.
+        if df_htf is not None and not df_htf.empty and 'htf_pos' not in df_prepared.columns:
+            htf_sma20 = df_htf['close'].rolling(20).mean().rename('_htf_sma20')
+            htf_ref = htf_sma20.reset_index()
+            htf_ref.columns = ['_ts', '_htf_sma20']
+            htf_ref = htf_ref.dropna(subset=['_htf_sma20']).sort_values('_ts')
+
+            cur_ref = df_prepared[['close']].copy().reset_index()
+            cur_ref.columns = ['_ts', '_close']
+            cur_ref = cur_ref.sort_values('_ts')
+
+            merged = pd.merge_asof(
+                cur_ref, htf_ref,
+                on='_ts',
+                direction='backward'   # strictly use the last completed HTF bar
+            )
+            merged.index = df_prepared.index
+            with np.errstate(invalid='ignore', divide='ignore'):
+                htf_pos = (merged['_close'] - merged['_htf_sma20']) / merged['_htf_sma20'].replace(0, np.nan)
+            df_prepared['htf_pos'] = htf_pos.values
+
         return df_prepared
 
-    def pretrain(self, df: pd.DataFrame, n_iter: int = 30, tol: float = 1e-4) -> list:
+    def pretrain(self, df: pd.DataFrame, n_iter: int = 30, tol: float = 1e-4,
+                 df_htf: pd.DataFrame = None) -> list:
         """
         Train the alignment HSMM via Baum-Welch EM on historical 15M data.
 
@@ -112,17 +142,19 @@ class SetupAgent:
         and skips re-initialization (fingerprint cache hit).
 
         Args:
-            df: Historical OHLCV DataFrame (15M timeframe)
+            df:     Historical OHLCV DataFrame (15M timeframe)
             n_iter: Maximum EM iterations
-            tol: Convergence tolerance on log-likelihood
+            tol:    Convergence tolerance on log-likelihood
+            df_htf: Optional higher-timeframe (1H) DataFrame for htf_pos feature
 
         Returns:
             List of log-likelihoods per EM iteration
         """
-        df_prepared = self._prepare_data(df)
+        df_prepared = self._prepare_data(df, df_htf=df_htf)
         return self.hsmm.initialize_parameters_with_em(df_prepared, n_iter=n_iter, tol=tol)
 
-    def _compute_hsmm_alignment(self, df: pd.DataFrame, context_state: str) -> Dict:
+    def _compute_hsmm_alignment(self, df: pd.DataFrame, context_state: str,
+                                 df_htf: pd.DataFrame = None) -> Dict:
         """
         Run HSMM Forward-Backward on 15M data and return alignment probability.
 
@@ -209,13 +241,15 @@ class SetupAgent:
         except Exception:
             return fallback
 
-    def analyze(self, df: pd.DataFrame, context_state: str = None) -> AgentResult:
+    def analyze(self, df: pd.DataFrame, context_state: str = None,
+                df_htf: pd.DataFrame = None) -> AgentResult:
         """
         Analyze SMC patterns and alignment
 
         Args:
             df: DataFrame for setup timeframe (15M)
             context_state: Context bias from Context Agent
+            df_htf: Higher-timeframe DataFrame (1H) for HTF context feature
 
         Returns:
             AgentResult with setup decision
@@ -282,7 +316,7 @@ class SetupAgent:
 
         # Context provided - compute real HSMM alignment
         elif context_state in ('bullish', 'bearish'):
-            hsmm_result = self._compute_hsmm_alignment(df, context_state)
+            hsmm_result = self._compute_hsmm_alignment(df, context_state, df_htf=df_htf)
             alignment = hsmm_result['alignment']
             score = alignment
 
