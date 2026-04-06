@@ -23,6 +23,7 @@ from dateutil.relativedelta import relativedelta
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.agents.orchestrator import Orchestrator
+from src.core.precomputed_runner import PrecomputedStates
 
 
 # ---------------------------------------------------------------------------
@@ -430,8 +431,10 @@ class MTFBacktest:
     # Core loop
     # -----------------------------------------------------------------------
 
-    def run(self, mtf_all: dict, start: str, end: str) -> dict:
+    def run(self, mtf_all: dict, start: str, end: str,
+            precomputed_states: 'PrecomputedStates | None' = None) -> dict:
         import time as _time
+        _precomputed = precomputed_states is not None and precomputed_states._ready
 
         risk_cfg = self.config['risk']
         fee      = risk_cfg['fee_pct']
@@ -580,17 +583,30 @@ class MTFBacktest:
                 continue
 
             # ----------------------------------------------------------------
-            # 4. Build look-ahead-free MTF slices
+            # 4. Build look-ahead-free MTF slices (skipped in precomputed mode)
             # ----------------------------------------------------------------
-            slices = slice_from_pos(mtf_all, aligned_idx[bar_i])
-            if any(len(v) == 0 for v in slices.values()):
-                continue
+            if _precomputed:
+                # Need only the last 20 15m bars for entry filters
+                _end_15m   = period_iloc_start + bar_i + 1
+                _start_15m = max(0, _end_15m - 20)
+                df_15m_filter = bars_15m.iloc[_start_15m:_end_15m]
+                slices = None    # not used in precomputed mode
+            else:
+                slices = slice_from_pos(mtf_all, aligned_idx[bar_i])
+                if any(len(v) == 0 for v in slices.values()):
+                    continue
+                df_15m_filter = slices.get('15m', pd.DataFrame())
 
             # ----------------------------------------------------------------
             # 5. Orchestrator decision
             # ----------------------------------------------------------------
             try:
-                decision = self.orchestrator.decide(slices, current_price=current_price)
+                if _precomputed:
+                    decision = precomputed_states.decide_fast(
+                        aligned_idx[bar_i], current_price
+                    )
+                else:
+                    decision = self.orchestrator.decide(slices, current_price=current_price)
             except Exception as exc:
                 self.decision_log.append({'ts': ts, 'price': current_price,
                                           'action': 'ERROR', 'reason': str(exc)[:80],
@@ -615,7 +631,7 @@ class MTFBacktest:
                     reason = 'DD kill switch active'
 
                 else:
-                    df_15m = slices.get('15m', pd.DataFrame())
+                    df_15m = df_15m_filter
 
                     # --- Filter 1: 15m momentum confirmation ---
                     # Last bar must agree with trade direction to avoid entering
@@ -1024,6 +1040,10 @@ def main():
                         help='EM iterations for pre-training (default: 30)')
     parser.add_argument('--use-cache', action='store_true',
                         help='Load/save EM pre-training from disk cache (~data/pretrain_cache/)')
+    parser.add_argument('--precompute', action='store_true',
+                        help='Precompute HSMM states + SMC for entire period (~70x faster hot loop)')
+    parser.add_argument('--precompute-cache', action='store_true',
+                        help='Load/save precomputed states from disk (~data/pretrain_cache/)')
     args = parser.parse_args()
 
     import time as _time
@@ -1058,8 +1078,20 @@ def main():
             use_cache=args.use_cache,
         )
 
+    # ---- Precomputed states (optional speedup) ----
+    precomp = None
+    if args.precompute:
+        precomp = PrecomputedStates(bt.orchestrator)
+        precomp_key = ''
+        if args.precompute_cache:
+            import hashlib as _hlib
+            blob = f"{args.pair}|{args.start}|{args.end}|precomp_v1"
+            precomp_key = _hlib.md5(blob.encode()).hexdigest()[:16]
+        precomp.precompute(mtf_all, cache_key=precomp_key,
+                           start_ts=args.start, end_ts=args.end)
+
     t0 = _time.time()
-    results = bt.run(mtf_all, args.start, args.end)
+    results = bt.run(mtf_all, args.start, args.end, precomputed_states=precomp)
     elapsed = _time.time() - t0
     print(f"\n  Durée backtest : {elapsed:.1f}s  ({elapsed/60:.1f} min)")
     print_report(results, args.start, args.end)
