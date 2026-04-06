@@ -36,8 +36,10 @@ class RegimeAgent:
         timeframes = mtf_config.get('timeframes', {})
         self.timeframe = timeframes.get('regime', '4h')
         
-        # Initialize HSMM — P4a: 5-state (Trend+, Range, Trend-, Squeeze, Distribution)
-        self.hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution'])
+        # Initialize HSMM — P4b: 6-state (+ Liquidation for black swan / crash isolation)
+        # Liquidation captures extreme drawdown events (2022 crash, flash crashes) so that
+        # Trend- is trained on "normal" bearish dynamics only, not panic-sell contamination.
+        self.hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution', 'Liquidation'])
         
         # Thresholds from config
         mtf_conditions = config.get('strategy', {}).get('mtf_conditions', {})
@@ -149,7 +151,7 @@ class RegimeAgent:
             current_state_idx = int(np.argmax(current_probs))
             stability = float(self.hsmm.transition_matrix[current_state_idx, current_state_idx])
             
-            # Map to standardized state names (P4a: 5-state)
+            # Map to standardized state names (P4b: 6-state)
             state_mapping = {
                 'Trend+':       'trend_plus',
                 'Range':        'range',
@@ -159,11 +161,35 @@ class RegimeAgent:
                 'Liquidation':  'liquidation',
             }
             state = state_mapping.get(state_name, 'range')
-            
+
+            # Liquidation = black swan / crash event → HARD BLOCK on all entries.
+            # The nearly-absorbing self-transition (0.95) means once detected the
+            # model stays in this state, preventing re-entry until the crash passes.
+            if state == 'liquidation':
+                return AgentResult(
+                    agent=self.name,
+                    state='liquidation',
+                    score=0.0,
+                    passed=False,
+                    ready=True,
+                    blocked_by_readiness=False,
+                    reason=f'LIQUIDATION detected (SdC={sdc:.1f}) — all entries blocked',
+                    metadata={
+                        'timeframe': self.timeframe,
+                        'sdc': sdc,
+                        'stability': stability,
+                        'hsmm_states': hsmm_states,
+                        'transition_matrix': self.hsmm.transition_matrix.tolist(),
+                        'context_aligned': False,
+                        'bars': len(df),
+                        'min_bars': min_bars,
+                    }
+                )
+
             # Check conditions
             sdc_passed = sdc > self.sdc_min
 
-            # State-specific stability thresholds (P4a: 5-state model)
+            # State-specific stability thresholds (P4b: 6-state model)
             # Squeeze and Distribution are TRANSIENT by design — their prior
             # self-transitions (0.42 / 0.18) are lower than the 3-state threshold.
             # Squeeze is a pre-breakout state → do not require high persistence.
@@ -173,10 +199,9 @@ class RegimeAgent:
             else:
                 stability_min_effective = self.stability_min
             stability_passed = stability >= stability_min_effective
-            
+
             # Context alignment (if provided)
-            # Strict alignment: in bullish context only trend_plus or squeeze pass
-            # (range is allowed as neutral but not as a directional confirmation).
+            # Strict alignment: in bullish context only trend_plus or squeeze pass.
             # In bearish context only trend_minus or distribution pass.
             context_aligned = True
             if context_state:
@@ -186,7 +211,7 @@ class RegimeAgent:
                     context_aligned = False
                 elif context_state == 'neutral' and state not in ('range', 'squeeze'):
                     context_aligned = False
-            
+
             # Overall pass
             passed = sdc_passed and stability_passed and context_aligned
             

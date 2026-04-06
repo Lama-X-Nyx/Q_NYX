@@ -48,10 +48,10 @@ class SetupAgent:
             liquidity_lookback=smc_config.get('liquidity_lookback', 20)
         )
 
-        # HSMM for real alignment probability — P4a: 5-state (matches RegimeAgent)
+        # HSMM for real alignment probability — P4b: 6-state (matches RegimeAgent)
         # Squeeze on 15M = pre-breakout compression → partially bullish
         # Distribution on 15M = bearish exhaustion → blocks bullish setups
-        self.hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution'])
+        self.hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution', 'Liquidation'])
 
         # Threshold — calibrated for 5-state model:
         #   3-state base P ≈ 0.33 → was 0.60 (1.8× base)
@@ -210,14 +210,26 @@ class SetupAgent:
 
             # Index lookup by state name — robust for 3, 5, or 6-state models
             s2i = self.hsmm.state_to_idx
-            p_trend_plus  = float(latest[s2i['Trend+']])
-            p_range       = float(latest[s2i['Range']])
-            p_trend_minus = float(latest[s2i['Trend-']])
-            p_squeeze     = float(latest[s2i['Squeeze']])     if 'Squeeze'      in s2i else 0.0
+            p_trend_plus   = float(latest[s2i['Trend+']])
+            p_range        = float(latest[s2i['Range']])
+            p_trend_minus  = float(latest[s2i['Trend-']])
+            p_squeeze      = float(latest[s2i['Squeeze']])      if 'Squeeze'      in s2i else 0.0
             p_distribution = float(latest[s2i['Distribution']]) if 'Distribution' in s2i else 0.0
+            p_liquidation  = float(latest[s2i['Liquidation']])  if 'Liquidation'  in s2i else 0.0
+
+            # Liquidation = black swan event on 15M TF → block all entries
+            if p_liquidation > 0.5:
+                return {
+                    'alignment': 0.0, 'p_trend_plus': p_trend_plus,
+                    'p_trend_minus': p_trend_minus, 'p_range': p_range,
+                    'p_squeeze': p_squeeze, 'p_distribution': p_distribution,
+                    'p_liquidation': p_liquidation, 'hsmm_ok': True,
+                    'liquidation_block': True
+                }
 
             # Nuanced alignment: Squeeze partially supports bullish (pre-breakout)
             # Distribution reinforces bearish (exhaustion → continuation down)
+            # Liquidation probability drains from both sides proportionally
             bullish_score = p_trend_plus  + 0.5 * p_squeeze
             bearish_score = p_trend_minus + p_distribution
 
@@ -229,13 +241,15 @@ class SetupAgent:
                 alignment = max(bullish_score, bearish_score)
 
             return {
-                'alignment':      alignment,
-                'p_trend_plus':   p_trend_plus,
-                'p_trend_minus':  p_trend_minus,
-                'p_range':        p_range,
-                'p_squeeze':      p_squeeze,
-                'p_distribution': p_distribution,
-                'hsmm_ok':        True
+                'alignment':       alignment,
+                'p_trend_plus':    p_trend_plus,
+                'p_trend_minus':   p_trend_minus,
+                'p_range':         p_range,
+                'p_squeeze':       p_squeeze,
+                'p_distribution':  p_distribution,
+                'p_liquidation':   p_liquidation,
+                'hsmm_ok':         True,
+                'liquidation_block': False
             }
 
         except Exception:
@@ -317,6 +331,26 @@ class SetupAgent:
         # Context provided - compute real HSMM alignment
         elif context_state in ('bullish', 'bearish'):
             hsmm_result = self._compute_hsmm_alignment(df, context_state, df_htf=df_htf)
+
+            # Liquidation detected on 15M → hard block (crash/flash-crash event)
+            if hsmm_result.get('liquidation_block', False):
+                return AgentResult(
+                    agent=self.name,
+                    state='liquidation',
+                    score=0.0,
+                    passed=False,
+                    ready=True,
+                    blocked_by_readiness=False,
+                    reason=f'LIQUIDATION detected on 15M (P={hsmm_result.get("p_liquidation", 0):.2f}) — all entries blocked',
+                    metadata={
+                        'timeframe': self.timeframe,
+                        'liquidation_block': True,
+                        'p_liquidation': hsmm_result.get('p_liquidation', 0),
+                        'bars': len(df),
+                        'min_bars': min_bars,
+                    }
+                )
+
             alignment = hsmm_result['alignment']
             score = alignment
 

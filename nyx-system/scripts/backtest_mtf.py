@@ -41,7 +41,7 @@ CACHE_DIR = Path('data/pretrain_cache')
 def _pretrain_cache_key(pair: str, pretrain_end: str,
                          pretrain_months: int, em_iters: int) -> str:
     """Deterministic hex key for this exact training config."""
-    blob = f"{pair}|{pretrain_end}|{pretrain_months}|{em_iters}|v2_htf"
+    blob = f"{pair}|{pretrain_end}|{pretrain_months}|{em_iters}|v3_6state"
     return hashlib.md5(blob.encode()).hexdigest()[:16]
 
 
