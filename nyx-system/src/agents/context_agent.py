@@ -123,36 +123,39 @@ class ContextAgent:
 
     def _compute_intent_from_sma(self, df: pd.DataFrame) -> Tuple[str, float, str]:
         """
-        SMA10/SMA30 heuristic for Intent_1D.
+        Macro bias from price position relative to SMA200 (1D).
 
-        Uses faster-responding SMAs (10/30 vs legacy 20/50) so the context
-        signal adapts within ~2 weeks of a trend change rather than ~5 weeks.
-        This prevents the strategy from being stuck in "bearish" at the start
-        of bull runs when the slow SMA50 still reflects prior bear market prices.
+        SMA200 is the industry-standard macro trend filter.  Price above SMA200
+        = bull market; price below = bear market.  Much more stable than SMA10/30
+        which whipsaws on short-term corrections inside a bull year.
+
+        In BTC 2023 (+156%), price stayed above SMA200 for most of the year
+        after the February golden cross — this avoids the cascade of false
+        SHORT signals that SMA10/30 produced during intra-year pullbacks.
 
         Returns (state, score, reason)
         """
         close = df['close'].values
-        sma_10 = pd.Series(close).rolling(10).mean().values[-1]
-        sma_30 = pd.Series(close).rolling(30).mean().values[-1]
+        sma_200 = pd.Series(close).rolling(200).mean().values[-1]
 
-        if np.isnan(sma_10) or np.isnan(sma_30):
-            return 'neutral', 0.0, 'SMA NaN — insufficient data'
+        if np.isnan(sma_200):
+            return 'neutral', 0.0, 'SMA200 NaN — insufficient data (need 200 bars)'
 
-        diff_pct = (sma_10 - sma_30) / sma_30
+        current_close = float(close[-1])
+        diff_pct = (current_close - sma_200) / sma_200
 
         if diff_pct > self.trend_threshold:
             state = 'bullish'
-            score = min(0.5 + diff_pct * 10, 1.0)
-            reason = f'SMA10/30: SMA10 {diff_pct:.1%} above SMA30'
+            score = min(0.5 + diff_pct * 5, 1.0)
+            reason = f'Price {diff_pct:.1%} above SMA200 — macro BULLISH'
         elif diff_pct < -self.trend_threshold:
             state = 'bearish'
-            score = min(0.5 + abs(diff_pct) * 10, 1.0)
-            reason = f'SMA10/30: SMA10 {abs(diff_pct):.1%} below SMA30'
+            score = min(0.5 + abs(diff_pct) * 5, 1.0)
+            reason = f'Price {abs(diff_pct):.1%} below SMA200 — macro BEARISH'
         else:
             state = 'neutral'
             score = 0.4
-            reason = f'SMA10/30: SMA10 within {self.trend_threshold:.1%} of SMA30'
+            reason = f'Price within {self.trend_threshold:.1%} of SMA200 — neutral'
 
         return state, score, reason
 

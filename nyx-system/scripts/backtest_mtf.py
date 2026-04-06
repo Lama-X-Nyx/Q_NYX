@@ -41,7 +41,7 @@ CACHE_DIR = Path('data/pretrain_cache')
 def _pretrain_cache_key(pair: str, pretrain_end: str,
                          pretrain_months: int, em_iters: int) -> str:
     """Deterministic hex key for this exact training config."""
-    blob = f"{pair}|{pretrain_end}|{pretrain_months}|{em_iters}|v3_6state"
+    blob = f"{pair}|{pretrain_end}|{pretrain_months}|{em_iters}|v6_calibrate"
     return hashlib.md5(blob.encode()).hexdigest()[:16]
 
 
@@ -121,23 +121,25 @@ BASE_CONFIG = {
     },
     'strategy': {
         'mtf_conditions': {
-            'sdc_min':            5.5,   # raised from 5.0: require stronger regime conviction
-            'stability_4h_min':   0.63,  # raised from 0.60: require more persistent regime
-            # alignment_15m_min: threshold for SetupAgent 5-state HSMM alignment.
-            # Formula: P(Trend+) + 0.5×P(Squeeze) for bullish context.
-            # Base P ≈ 0.20 per state (5-state). Threshold 0.55 requires ≈2.75× base
-            # probability in the bullish states — only clear trend signals pass.
-            # Also: SetupAgent now REQUIRES an SMC pattern (OB/FVG) in the trade
-            # direction in addition to meeting this alignment threshold.
-            'alignment_15m_min':  0.55,  # raised from 0.48
+            # 6-state HSMM calibration (P4b): equal prior = 1/6 ≈ 0.17.
+            # Thresholds are ~2.6-3× baseline (vs ~2× for 3-state).
+            # sdc_min 4.5 → dominant state prob > 0.45 (2.7× baseline)
+            # stability 0.55 → self-transition > 0.55 (still meaningful persistence)
+            'sdc_min':            4.5,
+            'stability_4h_min':   0.55,
+            # alignment_15m_min: SetupAgent 6-state HSMM threshold.
+            # Bullish formula: P(Trend+) + 0.5×P(Squeeze) + 0.25×P(Range)
+            # (Range = consolidation in bull trend, partial credit)
+            # 0.40 requires clear directional signal over neutral noise.
+            'alignment_15m_min':  0.40,
         },
         'intent_daily_projection_steps': 2,
         # Minimum aggregate score to enter a trade.
-        # Raised from 0.82 to 0.84 to further reduce over-trading.
-        'min_entry_score': 0.84,
+        # Recalibrated for 6-state HSMM (lower per-state probs → lower component scores).
+        'min_entry_score': 0.78,
     },
     'fractal_readiness': {
-        'context_min_bars': 50,
+        'context_min_bars': 200,   # SMA200 requires 200 bars minimum
         'regime_min_bars':  100,
         'setup_min_bars':   50,
     },
@@ -663,38 +665,44 @@ class MTFBacktest:
                             reason = f'Low volume ({vol_now/vol_avg:.2f}× avg, need 1.2×)'
 
 
-                    regime_comp = decision.components.get('regime')
-                    dominant    = (regime_comp.metadata.get('dominant_state', 'Range')
-                                   if regime_comp else 'Range')
-                    k = k_regime.get(dominant, risk_cfg['atr_sl_multiplier'])
-
-                    notional, lev = self._compute_position_size(current_price, atr_now, k)
-
-                    # Apply entry friction (fee + slippage worsens fill)
-                    eff_entry = current_price * (1 + friction) if action == 'BUY' \
-                                else current_price * (1 - friction)
-                    entry_cost = notional * friction
-                    self.capital      -= entry_cost
-                    self._total_friction += entry_cost
-
-                    self.entry_price = eff_entry
-                    self.entry_atr   = atr_now
-                    self.entry_k     = k
-                    self.notional    = notional
-
-                    stop_dist = k * atr_now
-                    if action == 'BUY':
-                        self.trail_sl   = eff_entry - stop_dist
-                        self.high_water = eff_entry
-                        self.position   = 'LONG'
-                        self.fixed_tp   = eff_entry + 2.5 * stop_dist   # 2.5:1 R:R target
+                    # Guard: filters above may have changed action to 'WAIT'.
+                    # Only enter if still BUY or SELL — never fall through to SHORT
+                    # when a filtered-out BUY hits the else branch.
+                    if action not in ('BUY', 'SELL'):
+                        pass  # filtered out — skip entry silently
                     else:
-                        self.trail_sl   = eff_entry + stop_dist
-                        self.high_water = eff_entry
-                        self.position   = 'SHORT'
-                        self.fixed_tp   = eff_entry - 2.5 * stop_dist   # 2.5:1 R:R target
+                        regime_comp = decision.components.get('regime')
+                        dominant    = (regime_comp.metadata.get('dominant_state', 'Range')
+                                       if regime_comp else 'Range')
+                        k = k_regime.get(dominant, risk_cfg['atr_sl_multiplier'])
 
-                    self._log_entry(ts, eff_entry, decision, lev, k, atr_now)
+                        notional, lev = self._compute_position_size(current_price, atr_now, k)
+
+                        # Apply entry friction (fee + slippage worsens fill)
+                        eff_entry = current_price * (1 + friction) if action == 'BUY' \
+                                    else current_price * (1 - friction)
+                        entry_cost = notional * friction
+                        self.capital      -= entry_cost
+                        self._total_friction += entry_cost
+
+                        self.entry_price = eff_entry
+                        self.entry_atr   = atr_now
+                        self.entry_k     = k
+                        self.notional    = notional
+
+                        stop_dist = k * atr_now
+                        if action == 'BUY':
+                            self.trail_sl   = eff_entry - stop_dist
+                            self.high_water = eff_entry
+                            self.position   = 'LONG'
+                            self.fixed_tp   = eff_entry + 2.5 * stop_dist   # 2.5:1 R:R target
+                        else:
+                            self.trail_sl   = eff_entry + stop_dist
+                            self.high_water = eff_entry
+                            self.position   = 'SHORT'
+                            self.fixed_tp   = eff_entry - 2.5 * stop_dist   # 2.5:1 R:R target
+
+                        self._log_entry(ts, eff_entry, decision, lev, k, atr_now)
 
             self.decision_log.append({
                 'ts':     ts,

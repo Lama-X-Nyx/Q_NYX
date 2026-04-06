@@ -227,10 +227,12 @@ class SetupAgent:
                     'liquidation_block': True
                 }
 
-            # Nuanced alignment: Squeeze partially supports bullish (pre-breakout)
-            # Distribution reinforces bearish (exhaustion → continuation down)
-            # Liquidation probability drains from both sides proportionally
-            bullish_score = p_trend_plus  + 0.5 * p_squeeze
+            # Nuanced alignment (6-state P4b):
+            # Bullish: Trend+ full credit, Squeeze 50% (pre-breakout), Range 25%
+            #          (consolidation in a bull market is acceptable backdrop for LONGs)
+            # Bearish: Trend- full credit, Distribution full (exhaustion continuation)
+            # Liquidation drains from both sides proportionally.
+            bullish_score = p_trend_plus + 0.5 * p_squeeze + 0.25 * p_range
             bearish_score = p_trend_minus + p_distribution
 
             if context_state == 'bullish':
@@ -310,9 +312,17 @@ class SetupAgent:
                 }
             )
 
-        # Check pattern existence
-        has_bullish = patterns.get('bullish_ob', False) or patterns.get('bullish_fvg', False)
-        has_bearish = patterns.get('bearish_ob', False) or patterns.get('bearish_fvg', False)
+        # Check pattern existence — v2 includes ChoCH and price-at-zone
+        has_bullish = (patterns.get('bullish_ob', False)
+                       or patterns.get('bullish_fvg', False)
+                       or patterns.get('bullish_choch', False))
+        has_bearish = (patterns.get('bearish_ob', False)
+                       or patterns.get('bearish_fvg', False)
+                       or patterns.get('bearish_choch', False))
+
+        # SMC quality score from aggregate (0-1); falls back to 0 for v1 dicts
+        smc_bull_score = float(patterns.get('smc_score_bullish', 0.0))
+        smc_bear_score = float(patterns.get('smc_score_bearish', 0.0))
 
         # No context provided - neutral
         if not context_state:
@@ -372,21 +382,28 @@ class SetupAgent:
                     state = 'misaligned'
                 pattern_aligned = has_bearish   # SMC pattern in trade direction required
 
-            # HSMM alignment must meet threshold.  SMC pattern in the trade
-            # direction boosts the effective score but is not a hard requirement —
-            # making it a hard gate reduced 839 → 8 trades (too aggressive).
-            # "misaligned" setups (no matching pattern) still pass but with a
-            # 15% score penalty applied to the returned score.
+            # Score = HSMM alignment + SMC quality bonus (additive, capped at 1.0).
+            # SMC can only LIFT the score (ChoCH, at-zone, OB confluence),
+            # never reduce it — prevents filtering valid HSMM setups.
+            # Bonus weight 0.15 means: excellent SMC (+0.15) brings a 0.70 HSMM
+            # trade to 0.85, just past the 0.84 entry threshold.
+            smc_quality = smc_bull_score if context_state == 'bullish' else smc_bear_score
+            score = min(alignment + 0.15 * smc_quality, 1.0)
+
+            # Soft penalty only when NO pattern exists in trade direction
             if not pattern_aligned:
-                score = score * 0.85   # penalise no-pattern setups
+                score = score * 0.85
+
             passed = alignment >= self.alignment_min
 
             direction_label = 'P(Trend+)' if context_state == 'bullish' else 'P(Trend-)'
-            hsmm_tag = '' if hsmm_result['hsmm_ok'] else ' [hsmm_fallback]'
-            pattern_tag = '' if pattern_aligned else ' [no SMC pattern -15% score]'
+            hsmm_tag    = '' if hsmm_result['hsmm_ok'] else ' [hsmm_fallback]'
+            pattern_tag = '' if pattern_aligned else ' [no SMC -15%]'
+            choch_tag   = ' [ChoCH]' if patterns.get(f'{context_state}_choch') else ''
+            zone_tag    = ' [at-zone]' if patterns.get(f'{context_state}_at_zone') else ''
             reason = (
-                f'{state} | HSMM {direction_label}={alignment:.3f}'
-                f' (threshold={self.alignment_min}){hsmm_tag}{pattern_tag}'
+                f'{state} | HSMM={alignment:.3f} SMC={smc_quality:.2f}'
+                f' score={score:.3f}{hsmm_tag}{pattern_tag}{choch_tag}{zone_tag}'
             )
 
         else:  # neutral

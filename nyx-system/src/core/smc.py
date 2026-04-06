@@ -1,433 +1,546 @@
 """
-Smart Money Concepts (SMC) Detection
-Order Blocks, Fair Value Gaps, Liquidity Zones
+Smart Money Concepts (SMC) Detection - v2
+Wraps the `smartmoneyconcepts` library for production-grade pattern detection
+with a custom ChoCH/structure layer and a clean quality-score API.
+
+Library (numba-accelerated):
+  pip install smartmoneyconcepts
+
+Patterns detected:
+  Order Blocks (OB)         — swing-structure aware, volume-weighted
+  Fair Value Gaps (FVG)     — with mitigation tracking
+  Liquidity sweeps          — stop-hunt detection
+  Break of Structure (BOS)  — trend continuation
+  Change of Character (ChoCH) — trend reversal (first opposing structure break)
+  Price-at-zone             — current price touching an unmitigated zone
+
+Public API (backwards-compatible with v1):
+  detect_all(df)  → dict with bool flags + smc_score_bullish/bearish
+  smc_score(df, context) → float 0-1
+  get_ob_zones(df, lookback) → list[dict]
+  get_fvg_zones(df, lookback) → list[dict]
 """
 
-import pandas as pd
 import numpy as np
-from typing import Dict, List, Tuple, Optional
+import pandas as pd
+from typing import Dict, List, Optional
+
+try:
+    from smartmoneyconcepts import smc as _smc_lib
+    _LIB_AVAILABLE = True
+except ImportError:
+    _LIB_AVAILABLE = False
+
 
 class SMCDetector:
     """
-    Smart Money Concepts pattern detection
-    
-    Patterns:
-    - Order Blocks (OB): Institutional demand/supply zones
-    - Fair Value Gaps (FVG): Imbalance zones
-    - Liquidity Sweeps: Stop hunts
-    - Break of Structure (BOS): Trend continuation
-    - Change of Character (ChoCH): Trend reversal
-    
-    Usage:
-        smc = SMCDetector()
-        patterns = smc.detect_all(data)
-        if patterns['bullish_ob']:
-            # Entry signal
+    SMC v2 — Smart Money Concepts detector.
+
+    Uses the `smartmoneyconcepts` library (numba-accelerated) when available
+    for OB and FVG detection, with a vectorized fallback implementation.
+
+    detect_all() returns:
+      Boolean flags (backwards-compatible with v1):
+        bullish_ob, bearish_ob, bullish_fvg, bearish_fvg,
+        bos_bullish, bos_bearish, liquidity_sweep
+        bullish_choch, bearish_choch       ← NEW
+        bullish_at_zone, bearish_at_zone   ← NEW
+
+      Aggregate scores:
+        smc_score_bullish   float 0-1
+        smc_score_bearish   float 0-1
     """
-    
-    def __init__(self, 
-                 ob_range_threshold: float = 0.015,
-                 fvg_min_gap: float = 0.005,
-                 liquidity_lookback: int = 20):
-        """
-        Initialize SMC Detector
-        
-        Args:
-            ob_range_threshold: Minimum range for Order Block (1.5% default)
-            fvg_min_gap: Minimum gap for FVG (0.5% default)
-            liquidity_lookback: Bars to look back for liquidity (20 default)
-        
-        Raises:
-            TypeError: If parameters are not numeric types
-        """
-        # Type validation - defensive programming
+
+    def __init__(
+        self,
+        ob_range_threshold: float = 0.015,
+        fvg_min_gap: float = 0.005,
+        liquidity_lookback: int = 20,
+        ob_lookback: int = 30,
+        fvg_lookback: int = 30,
+        swing_lookback: int = 5,
+        displacement_atr_mult: float = 0.7,
+        mitigation_tolerance: float = 0.003,
+    ):
         if not isinstance(ob_range_threshold, (int, float)):
-            raise TypeError(
-                f"ob_range_threshold must be numeric (int or float), "
-                f"got {type(ob_range_threshold).__name__}"
-            )
-        
+            raise TypeError(f"ob_range_threshold must be numeric, got {type(ob_range_threshold).__name__}")
         if not isinstance(fvg_min_gap, (int, float)):
-            raise TypeError(
-                f"fvg_min_gap must be numeric (int or float), "
-                f"got {type(fvg_min_gap).__name__}"
-            )
-        
+            raise TypeError(f"fvg_min_gap must be numeric, got {type(fvg_min_gap).__name__}")
         if not isinstance(liquidity_lookback, int):
-            raise TypeError(
-                f"liquidity_lookback must be int, "
-                f"got {type(liquidity_lookback).__name__}"
-            )
-        
-        self.ob_range_threshold = float(ob_range_threshold)
-        self.fvg_min_gap = float(fvg_min_gap)
-        self.liquidity_lookback = int(liquidity_lookback)
-        
-        # INSTRUMENTATION: Track candidate flow (diagnostic only, no logic change)
-        self.diagnostics = {
-            'fvg_candidates_seen': 0,
-            'fvg_rejected_gap': 0,
-            'fvg_rejected_structure': 0,
-            'fvg_kept': 0,
-            'ob_candidates_seen': 0,
-            'ob_rejected_range': 0,
-            'ob_rejected_structure': 0,
-            'ob_kept': 0
-        }
-    
-    def reset_diagnostics(self):
-        """Reset diagnostic counters (call before each detect_all)"""
-        self.diagnostics = {
-            'fvg_candidates_seen': 0,
-            'fvg_rejected_gap': 0,
-            'fvg_rejected_structure': 0,
-            'fvg_kept': 0,
-            'ob_candidates_seen': 0,
-            'ob_rejected_range': 0,
-            'ob_rejected_structure': 0,
-            'ob_kept': 0
-        }
-    
-    def detect_all(self, data: pd.DataFrame) -> Dict[str, bool]:
+            raise TypeError(f"liquidity_lookback must be int, got {type(liquidity_lookback).__name__}")
+
+        self.ob_range_threshold    = float(ob_range_threshold)
+        self.fvg_min_gap           = float(fvg_min_gap)
+        self.liquidity_lookback    = int(liquidity_lookback)
+        self.ob_lookback           = int(ob_lookback)
+        self.fvg_lookback          = int(fvg_lookback)
+        self.swing_lookback        = int(swing_lookback)
+        self.displacement_atr_mult = float(displacement_atr_mult)
+        self.mitigation_tolerance  = float(mitigation_tolerance)
+
+        self.diagnostics: Dict = {}
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def detect_all(self, data: pd.DataFrame) -> Dict:
         """
-        Detect all SMC patterns
-        
-        Args:
-            data: DataFrame with OHLCV
-        
-        Returns:
-            Dict with pattern flags
-        """
-        # Reset diagnostics for new detection cycle
-        self.reset_diagnostics()
-        
-        patterns = {
-            'bullish_ob': self.detect_order_block(data, bullish=True),
-            'bearish_ob': self.detect_order_block(data, bullish=False),
-            'bullish_fvg': self.detect_fvg(data, bullish=True),
-            'bearish_fvg': self.detect_fvg(data, bullish=False),
-            'liquidity_sweep': self.detect_liquidity_sweep(data),
-            'bos_bullish': self.detect_bos(data, bullish=True),
-            'bos_bearish': self.detect_bos(data, bullish=False)
-        }
-        
-        return patterns
-    
-    def detect_order_block(self, data: pd.DataFrame, bullish: bool = True) -> bool:
-        """
-        Detect Order Block pattern
-        
-        OB = Strong move after consolidation
-        Bullish OB: Last down candle before strong rally
-        Bearish OB: Last up candle before strong selloff
-        
-        Args:
-            data: DataFrame with OHLC
-            bullish: True for bullish OB, False for bearish
-        
-        Returns:
-            True if OB detected
-        """
-        if len(data) < 5:
-            return False
-        
-        # Get recent candles
-        recent = data.tail(5)
-        
-        if bullish:
-            # Look for down candle followed by strong rally
-            for i in range(len(recent) - 2):
-                candle = recent.iloc[i]
-                next_candle = recent.iloc[i+1]
-                
-                # Down candle
-                is_down = candle['close'] < candle['open']
-                
-                # Strong rally after
-                rally = (next_candle['close'] - next_candle['open']) / next_candle['open']
-                is_strong_rally = rally > self.ob_range_threshold
-                
-                if is_down and is_strong_rally:
-                    return True
-        
-        else:
-            # Look for up candle followed by strong selloff
-            for i in range(len(recent) - 2):
-                candle = recent.iloc[i]
-                next_candle = recent.iloc[i+1]
-                
-                # Up candle
-                is_up = candle['close'] > candle['open']
-                
-                # Strong selloff after
-                selloff = (next_candle['open'] - next_candle['close']) / next_candle['open']
-                is_strong_selloff = selloff > self.ob_range_threshold
-                
-                if is_up and is_strong_selloff:
-                    return True
-        
-        return False
-    
-    def detect_fvg(self, data: pd.DataFrame, bullish: bool = True) -> bool:
-        """
-        Detect Fair Value Gap
-        
-        FVG = Gap between candles (imbalance)
-        Bullish FVG: Gap up (high[i-1] < low[i+1])
-        Bearish FVG: Gap down (low[i-1] > high[i+1])
-        
-        Args:
-            data: DataFrame with OHLC
-            bullish: True for bullish FVG
-        
-        Returns:
-            True if FVG detected
-        """
-        if len(data) < 3:
-            return False
-        
-        # Check last 3 candles
-        recent = data.tail(3)
-        
-        if len(recent) < 3:
-            return False
-        
-        prev = recent.iloc[0]
-        mid = recent.iloc[1]
-        curr = recent.iloc[2]
-        
-        if bullish:
-            # Bullish FVG: high[i-1] < low[i+1]
-            gap = (curr['low'] - prev['high']) / prev['high']
-            if gap > self.fvg_min_gap:
-                return True
-        
-        else:
-            # Bearish FVG: low[i-1] > high[i+1]
-            gap = (prev['low'] - curr['high']) / prev['low']
-            if gap > self.fvg_min_gap:
-                return True
-        
-        return False
-    
-    def detect_liquidity_sweep(self, data: pd.DataFrame) -> bool:
-        """
-        Detect Liquidity Sweep (stop hunt)
-        
-        Pattern:
-        - Price breaks recent high/low
-        - Immediately reverses
-        - Indicates stop hunt before real move
-        
-        Args:
-            data: DataFrame with OHLC
-        
-        Returns:
-            True if sweep detected
-        """
-        if len(data) < self.liquidity_lookback + 2:
-            return False
-        
-        recent = data.tail(self.liquidity_lookback + 2)
-        
-        # Find recent high/low
-        recent_high = recent['high'].iloc[:-1].max()
-        recent_low = recent['low'].iloc[:-1].min()
-        
-        # Last candle
-        last = recent.iloc[-1]
-        prev = recent.iloc[-2]
-        
-        # Check for sweep and reversal
-        swept_high = last['high'] > recent_high and last['close'] < prev['close']
-        swept_low = last['low'] < recent_low and last['close'] > prev['close']
-        
-        # Explicitly convert to Python bool
-        result = swept_high or swept_low
-        return bool(result)
-    
-    def detect_bos(self, data: pd.DataFrame, bullish: bool = True) -> bool:
-        """
-        Detect Break of Structure (BOS)
-        
-        BOS = Breaking previous swing high/low
-        Indicates trend continuation
-        
-        Args:
-            data: DataFrame with OHLC
-            bullish: True for bullish BOS
-        
-        Returns:
-            True if BOS detected
+        Detect all SMC patterns. Returns dict with bool flags and quality scores.
         """
         if len(data) < 10:
-            return False
-        
-        recent = data.tail(10)
-        
-        if bullish:
-            # Find previous swing high
-            swing_high = recent['high'].iloc[:-2].max()
-            
-            # Check if recent close breaks it
-            current_close = recent['close'].iloc[-1]
-            
-            if current_close > swing_high:
+            return self._empty_result()
+
+        if _LIB_AVAILABLE:
+            try:
+                return self._detect_with_library(data)
+            except Exception:
+                pass   # silent fallback
+
+        return self._detect_fallback(data)
+
+    def smc_score(self, data: pd.DataFrame, context: str) -> float:
+        """float 0-1 directional quality score. context: 'bullish'|'bearish'|'neutral'"""
+        r = self.detect_all(data)
+        if context == 'bullish':
+            return float(r['smc_score_bullish'])
+        elif context == 'bearish':
+            return float(r['smc_score_bearish'])
+        return float(max(r['smc_score_bullish'], r['smc_score_bearish']))
+
+    # ------------------------------------------------------------------
+    # Library-backed detection
+    # ------------------------------------------------------------------
+
+    def _detect_with_library(self, data: pd.DataFrame) -> Dict:
+        """
+        Use smartmoneyconcepts (numba) for OB and FVG, custom code for ChoCH.
+        """
+        # Library requires integer-indexed DataFrame
+        df = data.reset_index(drop=True)
+        T = len(df)
+        cur_price = float(df['close'].iloc[-1])
+
+        # ---- Swing detection (shared prerequisite) ----
+        swings = _smc_lib.swing_highs_lows(df, swing_length=self.swing_lookback)
+
+        # ---- Order Blocks ----
+        ob_df = _smc_lib.ob(df, swings, close_mitigation=False)
+        bull_obs, bear_obs = self._extract_active_zones(ob_df, T)
+
+        # ---- Fair Value Gaps ----
+        fvg_df = _smc_lib.fvg(df, join_consecutive=True)
+        bull_fvgs, bear_fvgs = self._extract_active_zones(fvg_df, T)
+
+        # ---- Price-at-zone ----
+        bull_at_zone = self._price_in_any_zone(cur_price, bull_obs + bull_fvgs)
+        bear_at_zone = self._price_in_any_zone(cur_price, bear_obs + bear_fvgs)
+
+        # ---- BOS / ChoCH (custom vectorized) ----
+        h = df['high'].values.astype(float)
+        l = df['low'].values.astype(float)
+        c = df['close'].values.astype(float)
+        sh_idx, sl_idx = self._find_swings(h, l, self.swing_lookback)
+
+        bos_bull  = self._detect_bos(c, sh_idx, bullish=True)
+        bos_bear  = self._detect_bos(c, sl_idx, bullish=False)
+        choch_bull = self._detect_choch(c, sh_idx, sl_idx, bullish=True)
+        choch_bear = self._detect_choch(c, sh_idx, sl_idx, bullish=False)
+
+        # ---- Liquidity sweep ----
+        liq_sweep = self._detect_liquidity_sweep_np(h, l, c)
+
+        # ---- Volume spike ----
+        vol = df['volume'].values.astype(float) if 'volume' in df.columns else None
+        vol_ok = self._volume_spike(vol)
+
+        # ---- Aggregate scores ----
+        bull_score = self._aggregate_score(
+            has_ob=bool(bull_obs), has_fvg=bool(bull_fvgs),
+            at_zone=bull_at_zone, choch=choch_bull, bos=bos_bull,
+            sweep=liq_sweep, vol_ok=vol_ok,
+        )
+        bear_score = self._aggregate_score(
+            has_ob=bool(bear_obs), has_fvg=bool(bear_fvgs),
+            at_zone=bear_at_zone, choch=choch_bear, bos=bos_bear,
+            sweep=liq_sweep, vol_ok=vol_ok,
+        )
+
+        self.diagnostics = {
+            'backend': 'smartmoneyconcepts',
+            'bull_obs': len(bull_obs), 'bear_obs': len(bear_obs),
+            'bull_fvgs': len(bull_fvgs), 'bear_fvgs': len(bear_fvgs),
+        }
+
+        return {
+            'bullish_ob':        bool(bull_obs),
+            'bearish_ob':        bool(bear_obs),
+            'bullish_fvg':       bool(bull_fvgs),
+            'bearish_fvg':       bool(bear_fvgs),
+            'liquidity_sweep':   liq_sweep,
+            'bos_bullish':       bos_bull,
+            'bos_bearish':       bos_bear,
+            'bullish_choch':     choch_bull,
+            'bearish_choch':     choch_bear,
+            'bullish_at_zone':   bull_at_zone,
+            'bearish_at_zone':   bear_at_zone,
+            'smc_score_bullish': bull_score,
+            'smc_score_bearish': bear_score,
+        }
+
+    def _extract_active_zones(self, df: pd.DataFrame, T: int):
+        """
+        From an OB or FVG DataFrame, extract unmitigated zones in the last
+        `ob_lookback` / `fvg_lookback` bars.
+
+        A zone is "active" (unmitigated) when MitigatedIndex == 0.0 in the
+        smartmoneyconcepts convention (0 = not yet mitigated).
+
+        Returns (bull_zones, bear_zones) as list of {'high', 'low'} dicts.
+        """
+        if df is None or df.empty:
+            return [], []
+
+        is_ob = 'OB' in df.columns
+        signal_col = 'OB' if is_ob else 'FVG'
+        top_col    = 'Top'
+        bot_col    = 'Bottom'
+
+        lookback = self.ob_lookback if is_ob else self.fvg_lookback
+        start = max(0, T - lookback)
+
+        recent = df.iloc[start:]
+
+        bull_zones, bear_zones = [], []
+        for idx, row in recent.iterrows():
+            sig = row.get(signal_col)
+            if pd.isna(sig) or sig == 0:
+                continue
+            top = row.get(top_col)
+            bot = row.get(bot_col)
+            if pd.isna(top) or pd.isna(bot):
+                continue
+            mit = row.get('MitigatedIndex', 0)
+            is_unmitigated = (pd.isna(mit) or mit == 0.0)
+            if not is_unmitigated:
+                continue
+
+            zone = {'high': float(top), 'low': float(bot)}
+            if sig == 1:
+                bull_zones.append(zone)
+            elif sig == -1:
+                bear_zones.append(zone)
+
+        return bull_zones, bear_zones
+
+    # ------------------------------------------------------------------
+    # Fallback detection (pure numpy, no external library)
+    # ------------------------------------------------------------------
+
+    def _detect_fallback(self, data: pd.DataFrame) -> Dict:
+        """Pure-numpy fallback when smartmoneyconcepts is unavailable."""
+        o = data['open'].values.astype(float)
+        h = data['high'].values.astype(float)
+        l = data['low'].values.astype(float)
+        c = data['close'].values.astype(float)
+        vol = data['volume'].values.astype(float) if 'volume' in data.columns else None
+
+        cur_price = c[-1]
+        atr = self._atr(h, l, c, 14)
+        sh_idx, sl_idx = self._find_swings(h, l, self.swing_lookback)
+
+        bull_obs  = self._find_order_blocks(o, h, l, c, vol, atr, bullish=True)
+        bear_obs  = self._find_order_blocks(o, h, l, c, vol, atr, bullish=False)
+        bull_fvgs = self._find_fvgs(h, l, c, bullish=True)
+        bear_fvgs = self._find_fvgs(h, l, c, bullish=False)
+
+        bull_at_zone = self._price_in_any_zone(cur_price, bull_obs + bull_fvgs)
+        bear_at_zone = self._price_in_any_zone(cur_price, bear_obs + bear_fvgs)
+
+        bos_bull   = self._detect_bos(c, sh_idx, bullish=True)
+        bos_bear   = self._detect_bos(c, sl_idx, bullish=False)
+        choch_bull = self._detect_choch(c, sh_idx, sl_idx, bullish=True)
+        choch_bear = self._detect_choch(c, sh_idx, sl_idx, bullish=False)
+        liq_sweep  = self._detect_liquidity_sweep_np(h, l, c)
+        vol_ok     = self._volume_spike(vol)
+
+        bull_score = self._aggregate_score(
+            has_ob=bool(bull_obs), has_fvg=bool(bull_fvgs),
+            at_zone=bull_at_zone, choch=choch_bull, bos=bos_bull,
+            sweep=liq_sweep, vol_ok=vol_ok,
+        )
+        bear_score = self._aggregate_score(
+            has_ob=bool(bear_obs), has_fvg=bool(bear_fvgs),
+            at_zone=bear_at_zone, choch=choch_bear, bos=bos_bear,
+            sweep=liq_sweep, vol_ok=vol_ok,
+        )
+
+        self.diagnostics = {
+            'backend': 'fallback',
+            'bull_obs': len(bull_obs), 'bear_obs': len(bear_obs),
+            'bull_fvgs': len(bull_fvgs), 'bear_fvgs': len(bear_fvgs),
+        }
+
+        return {
+            'bullish_ob':        bool(bull_obs),
+            'bearish_ob':        bool(bear_obs),
+            'bullish_fvg':       bool(bull_fvgs),
+            'bearish_fvg':       bool(bear_fvgs),
+            'liquidity_sweep':   liq_sweep,
+            'bos_bullish':       bos_bull,
+            'bos_bearish':       bos_bear,
+            'bullish_choch':     choch_bull,
+            'bearish_choch':     choch_bear,
+            'bullish_at_zone':   bull_at_zone,
+            'bearish_at_zone':   bear_at_zone,
+            'smc_score_bullish': bull_score,
+            'smc_score_bearish': bear_score,
+        }
+
+    # ------------------------------------------------------------------
+    # Swing detection
+    # ------------------------------------------------------------------
+
+    def _find_swings(self, h: np.ndarray, l: np.ndarray, n: int):
+        """Vectorized pivot detection: swing high/low indices."""
+        T = len(h)
+        if T < 2 * n + 1:
+            return np.array([], dtype=int), np.array([], dtype=int)
+        sh_idx, sl_idx = [], []
+        for i in range(n, T - n):
+            if h[i] == h[i - n: i + n + 1].max():
+                sh_idx.append(i)
+            if l[i] == l[i - n: i + n + 1].min():
+                sl_idx.append(i)
+        return np.array(sh_idx, dtype=int), np.array(sl_idx, dtype=int)
+
+    # ------------------------------------------------------------------
+    # Fallback OB / FVG
+    # ------------------------------------------------------------------
+
+    def _find_order_blocks(self, o, h, l, c, vol, atr, bullish: bool) -> List[Dict]:
+        T = len(c)
+        end, start = T, max(0, T - self.ob_lookback - 2)
+        obs = []
+        for i in range(start, end - 1):
+            atr_here = float(atr[min(i+1, len(atr)-1)])
+            imp_body = abs(c[i+1] - o[i+1])
+            if bullish:
+                if not (c[i] < o[i] and c[i+1] > o[i+1] and imp_body > atr_here * self.displacement_atr_mult):
+                    continue
+                zh, zl = o[i], c[i]
+            else:
+                if not (c[i] > o[i] and c[i+1] < o[i+1] and imp_body > atr_here * self.displacement_atr_mult):
+                    continue
+                zh, zl = c[i], o[i]
+            if zh <= zl:
+                continue
+            post = slice(i+2, T)
+            mitigated = (l[post].min() <= zh) if bullish else (h[post].max() >= zl)
+            if mitigated:
+                continue  # skip already-mitigated zones
+            obs.append({'high': float(zh), 'low': float(zl)})
+        return obs
+
+    def _find_fvgs(self, h, l, c, bullish: bool) -> List[Dict]:
+        T = len(c)
+        end, start = T, max(1, T - self.fvg_lookback - 1)
+        fvgs = []
+        for i in range(start, end - 1):
+            if bullish:
+                gap_pct = (l[i+1] - h[i-1]) / max(h[i-1], 1e-6)
+                if gap_pct <= self.fvg_min_gap:
+                    continue
+                fh, fl = l[i+1], h[i-1]
+            else:
+                gap_pct = (l[i-1] - h[i+1]) / max(l[i-1], 1e-6)
+                if gap_pct <= self.fvg_min_gap:
+                    continue
+                fh, fl = l[i-1], h[i+1]
+            if fh <= fl:
+                continue
+            post = slice(i+2, T)
+            mitigated = (l[post].min() <= fh) if bullish else (h[post].max() >= fl)
+            if mitigated:
+                continue
+            fvgs.append({'high': float(fh), 'low': float(fl)})
+        return fvgs
+
+    # ------------------------------------------------------------------
+    # Price at zone
+    # ------------------------------------------------------------------
+
+    def _price_in_any_zone(self, cur_price: float, zones: List[Dict]) -> bool:
+        """True if current price is within any zone (with small tolerance)."""
+        for z in zones:
+            tol = (z['high'] - z['low']) * 0.1  # 10% of zone width tolerance
+            if z['low'] - tol <= cur_price <= z['high'] + tol:
                 return True
-        
-        else:
-            # Find previous swing low
-            swing_low = recent['low'].iloc[:-2].min()
-            
-            # Check if recent close breaks it
-            current_close = recent['close'].iloc[-1]
-            
-            if current_close < swing_low:
-                return True
-        
         return False
-    
+
+    # ------------------------------------------------------------------
+    # BOS / ChoCH
+    # ------------------------------------------------------------------
+
+    def _detect_bos(self, c: np.ndarray, swing_indices: np.ndarray, bullish: bool) -> bool:
+        """Break of Structure: close exceeds the last swing high/low (continuation)."""
+        relevant = swing_indices[swing_indices < len(c) - 1] if len(swing_indices) > 0 else np.array([])
+        if len(relevant) == 0:
+            return False
+        level = float(c[relevant[-1]])
+        return bool(c[-1] > level) if bullish else bool(c[-1] < level)
+
+    def _detect_choch(self, c: np.ndarray, sh_idx: np.ndarray, sl_idx: np.ndarray,
+                      bullish: bool) -> bool:
+        """
+        Change of Character: first structural break AGAINST the prevailing trend.
+
+        Bullish ChoCH: descending swing highs (downtrend) + close breaks last swing HIGH
+        Bearish ChoCH: ascending swing lows  (uptrend)   + close breaks last swing LOW
+        """
+        T = len(c)
+        if T < 4:
+            return False
+        if bullish:
+            rel = sh_idx[sh_idx < T - 1]
+            if len(rel) < 2:
+                return False
+            if c[rel[-2]] <= c[rel[-1]]:   # not descending → no downtrend
+                return False
+            return bool(c[-1] > c[rel[-1]])
+        else:
+            rel = sl_idx[sl_idx < T - 1]
+            if len(rel) < 2:
+                return False
+            if c[rel[-2]] >= c[rel[-1]]:   # not ascending → no uptrend
+                return False
+            return bool(c[-1] < c[rel[-1]])
+
+    # ------------------------------------------------------------------
+    # Liquidity sweep
+    # ------------------------------------------------------------------
+
+    def _detect_liquidity_sweep_np(self, h, l, c) -> bool:
+        n = self.liquidity_lookback
+        if len(c) < n + 2:
+            return False
+        hist_h = h[-(n+2):-1]
+        hist_l = l[-(n+2):-1]
+        swept_high = bool(h[-1] > hist_h.max() and c[-1] < c[-2])
+        swept_low  = bool(l[-1] < hist_l.min() and c[-1] > c[-2])
+        return swept_high or swept_low
+
+    # ------------------------------------------------------------------
+    # Volume & ATR helpers
+    # ------------------------------------------------------------------
+
+    def _volume_spike(self, vol: Optional[np.ndarray]) -> bool:
+        if vol is None or len(vol) < 20:
+            return False
+        vol_ma = vol[-21:-1].mean()
+        return bool(vol_ma > 0 and vol[-1] > 1.5 * vol_ma)
+
+    def _atr(self, h, l, c, period: int = 14) -> np.ndarray:
+        T = len(c)
+        if T < 2:
+            return np.full(T, float(h[0] - l[0]) if T > 0 else 1.0)
+        tr = np.maximum(h[1:] - l[1:],
+             np.maximum(np.abs(h[1:] - c[:-1]), np.abs(l[1:] - c[:-1])))
+        atr = np.empty(T)
+        atr[0] = tr[0] if len(tr) > 0 else (h[0] - l[0])
+        k = 1.0 / period
+        for i in range(1, T):
+            atr[i] = atr[i-1] * (1 - k) + (tr[i-1] * k if i <= len(tr) else 0)
+        return atr
+
+    # ------------------------------------------------------------------
+    # Aggregate score
+    # ------------------------------------------------------------------
+
+    def _aggregate_score(self, has_ob, has_fvg, at_zone, choch, bos, sweep, vol_ok) -> float:
+        """
+        Weighted SMC quality score 0→1.
+          at_zone  0.30  — price in unmitigated zone (strongest confluence)
+          ob       0.20  — supply/demand zone exists
+          choch    0.20  — structural reversal signal
+          fvg      0.15  — imbalance zone exists
+          bos      0.10  — trend continuation
+          sweep    0.03  — stop hunt confirmation
+          vol      0.02  — institutional volume
+        """
+        s = 0.0
+        if at_zone:  s += 0.30
+        if has_ob:   s += 0.20
+        if choch:    s += 0.20
+        if has_fvg:  s += 0.15
+        if bos:      s += 0.10
+        if sweep:    s += 0.03
+        if vol_ok:   s += 0.02
+        return float(min(s, 1.0))
+
+    # ------------------------------------------------------------------
+    # Backwards-compatible zone getters
+    # ------------------------------------------------------------------
+
     def get_ob_zones(self, data: pd.DataFrame, lookback: int = 50) -> List[Dict]:
-        """
-        Get all Order Block zones
-        
-        Args:
-            data: DataFrame with OHLC
-            lookback: Bars to analyze
-        
-        Returns:
-            List of OB zones with {type, high, low, strength}
-        """
-        zones = []
-        
-        recent = data.tail(lookback)
-        
-        for i in range(len(recent) - 2):
-            candle = recent.iloc[i]
-            next_candle = recent.iloc[i+1]
-            
-            # Bullish OB
-            if candle['close'] < candle['open']:
-                rally = (next_candle['close'] - next_candle['open']) / next_candle['open']
-                
-                if rally > self.ob_range_threshold:
-                    zones.append({
-                        'type': 'bullish',
-                        'high': candle['high'],
-                        'low': candle['low'],
-                        'strength': rally,
-                        'index': i
-                    })
-            
-            # Bearish OB
-            elif candle['close'] > candle['open']:
-                selloff = (next_candle['open'] - next_candle['close']) / next_candle['open']
-                
-                if selloff > self.ob_range_threshold:
-                    zones.append({
-                        'type': 'bearish',
-                        'high': candle['high'],
-                        'low': candle['low'],
-                        'strength': selloff,
-                        'index': i
-                    })
-        
-        return zones
-    
+        if _LIB_AVAILABLE:
+            try:
+                df = data.reset_index(drop=True)
+                swings = _smc_lib.swing_highs_lows(df, swing_length=self.swing_lookback)
+                ob_df = _smc_lib.ob(df, swings)
+                bull, bear = self._extract_active_zones(ob_df, len(df))
+                for z in bull: z['type'] = 'bullish'
+                for z in bear: z['type'] = 'bearish'
+                return bull + bear
+            except Exception:
+                pass
+        o = data['open'].values.astype(float)
+        h = data['high'].values.astype(float)
+        l = data['low'].values.astype(float)
+        c = data['close'].values.astype(float)
+        vol = data['volume'].values.astype(float) if 'volume' in data.columns else None
+        atr = self._atr(h, l, c)
+        orig = self.ob_lookback; self.ob_lookback = lookback
+        bull = self._find_order_blocks(o, h, l, c, vol, atr, bullish=True)
+        bear = self._find_order_blocks(o, h, l, c, vol, atr, bullish=False)
+        self.ob_lookback = orig
+        for z in bull: z['type'] = 'bullish'
+        for z in bear: z['type'] = 'bearish'
+        return bull + bear
+
     def get_fvg_zones(self, data: pd.DataFrame, lookback: int = 50) -> List[Dict]:
-        """
-        Get all FVG zones
-        
-        Args:
-            data: DataFrame with OHLC
-            lookback: Bars to analyze
-        
-        Returns:
-            List of FVG zones
-        """
-        zones = []
-        
-        recent = data.tail(lookback)
-        
-        for i in range(1, len(recent) - 1):
-            prev = recent.iloc[i-1]
-            curr = recent.iloc[i+1]
-            
-            # Bullish FVG
-            gap_up = (curr['low'] - prev['high']) / prev['high']
-            if gap_up > self.fvg_min_gap:
-                zones.append({
-                    'type': 'bullish',
-                    'high': curr['low'],
-                    'low': prev['high'],
-                    'gap': gap_up,
-                    'index': i
-                })
-            
-            # Bearish FVG
-            gap_down = (prev['low'] - curr['high']) / prev['low']
-            if gap_down > self.fvg_min_gap:
-                zones.append({
-                    'type': 'bearish',
-                    'high': prev['low'],
-                    'low': curr['high'],
-                    'gap': gap_down,
-                    'index': i
-                })
-        
-        return zones
+        if _LIB_AVAILABLE:
+            try:
+                df = data.reset_index(drop=True)
+                fvg_df = _smc_lib.fvg(df)
+                bull, bear = self._extract_active_zones(fvg_df, len(df))
+                for z in bull: z['type'] = 'bullish'
+                for z in bear: z['type'] = 'bearish'
+                return bull + bear
+            except Exception:
+                pass
+        h = data['high'].values.astype(float)
+        l = data['low'].values.astype(float)
+        c = data['close'].values.astype(float)
+        orig = self.fvg_lookback; self.fvg_lookback = lookback
+        bull = self._find_fvgs(h, l, c, bullish=True)
+        bear = self._find_fvgs(h, l, c, bullish=False)
+        self.fvg_lookback = orig
+        for z in bull: z['type'] = 'bullish'
+        for z in bear: z['type'] = 'bearish'
+        return bull + bear
 
+    # ------------------------------------------------------------------
+    # Empty result
+    # ------------------------------------------------------------------
 
-if __name__ == "__main__":
-    # Example usage
-    print("="*80)
-    print("SMC Detector - Example Usage")
-    print("="*80)
-    
-    # Create synthetic price data
-    np.random.seed(42)
-    n = 100
-    
-    data = pd.DataFrame({
-        'open': 10000 + np.cumsum(np.random.randn(n) * 50),
-        'high': 10000 + np.cumsum(np.random.randn(n) * 50) + np.random.rand(n) * 100,
-        'low': 10000 + np.cumsum(np.random.randn(n) * 50) - np.random.rand(n) * 100,
-        'close': 10000 + np.cumsum(np.random.randn(n) * 50),
-        'volume': 1000000 + np.random.rand(n) * 500000
-    })
-    
-    # Ensure high/low logic
-    data['high'] = data[['open', 'close', 'high']].max(axis=1)
-    data['low'] = data[['open', 'close', 'low']].min(axis=1)
-    
-    print(f"\n✓ Created {len(data)} candles of synthetic data")
-    
-    # Initialize SMC detector
-    smc = SMCDetector()
-    print(f"✓ Initialized SMC Detector")
-    
-    # Detect patterns
-    patterns = smc.detect_all(data)
-    
-    print(f"\nPattern Detection Results:")
-    for pattern, detected in patterns.items():
-        status = "✓ DETECTED" if detected else "✗ Not found"
-        print(f"  {pattern:20s}: {status}")
-    
-    # Get OB zones
-    ob_zones = smc.get_ob_zones(data, lookback=50)
-    print(f"\nOrder Block Zones: {len(ob_zones)} found")
-    if ob_zones:
-        for zone in ob_zones[:3]:
-            print(f"  {zone['type']:8s} OB: {zone['low']:.0f}-{zone['high']:.0f} (strength: {zone['strength']:.2%})")
-    
-    # Get FVG zones
-    fvg_zones = smc.get_fvg_zones(data, lookback=50)
-    print(f"\nFair Value Gaps: {len(fvg_zones)} found")
-    if fvg_zones:
-        for zone in fvg_zones[:3]:
-            print(f"  {zone['type']:8s} FVG: {zone['low']:.0f}-{zone['high']:.0f} (gap: {zone['gap']:.2%})")
-    
-    print("\n" + "="*80)
-    print("✅ SMC Module Working")
-    print("="*80)
+    def _empty_result(self) -> Dict:
+        return {
+            'bullish_ob': False, 'bearish_ob': False,
+            'bullish_fvg': False, 'bearish_fvg': False,
+            'liquidity_sweep': False,
+            'bos_bullish': False, 'bos_bearish': False,
+            'bullish_choch': False, 'bearish_choch': False,
+            'bullish_at_zone': False, 'bearish_at_zone': False,
+            'smc_score_bullish': 0.0, 'smc_score_bearish': 0.0,
+        }

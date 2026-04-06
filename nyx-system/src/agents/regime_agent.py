@@ -201,13 +201,18 @@ class RegimeAgent:
             stability_passed = stability >= stability_min_effective
 
             # Context alignment (if provided)
-            # Strict alignment: in bullish context only trend_plus or squeeze pass.
-            # In bearish context only trend_minus or distribution pass.
+            # Directional conflict: block when the regime OPPOSES the macro context.
+            # Allow range in any directional context — consolidation in a bull/bear
+            # trend is a valid backdrop for directional entries.
+            # Only block when regime explicitly contradicts the direction:
+            #   bullish context → block trend_minus / distribution (bearish regimes)
+            #   bearish context → block trend_plus / squeeze (bullish regimes)
+            #   neutral context → block trending states (require range or squeeze only)
             context_aligned = True
             if context_state:
-                if context_state == 'bullish' and state not in ('trend_plus', 'squeeze'):
+                if context_state == 'bullish' and state in ('trend_minus', 'distribution'):
                     context_aligned = False
-                elif context_state == 'bearish' and state not in ('trend_minus', 'distribution'):
+                elif context_state == 'bearish' and state in ('trend_plus', 'squeeze'):
                     context_aligned = False
                 elif context_state == 'neutral' and state not in ('range', 'squeeze'):
                     context_aligned = False
