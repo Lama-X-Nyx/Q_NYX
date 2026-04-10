@@ -151,28 +151,95 @@ def load_or_train_hsmm(mtf_all, cache_dir, em_iters, force):
 # SMC precomputation helper
 # ---------------------------------------------------------------------------
 
-def load_or_compute_smc(df_15m, cache_dir, force, orchestrator=None):
-    """Compute or load SMC patterns for all 15M bars."""
-    from src.core.precomputed_runner import _prepare_features_full, _precompute_smc
+def load_or_compute_smc(df_15m, cache_dir, force, max_bars: int = 50_000):
+    """
+    Compute or load SMC patterns for training.
+
+    To avoid multi-hour runtimes, limits precomputation to the last
+    `max_bars` 15M bars (default 50K ≈ 13 months). Saves a checkpoint
+    every CHUNK_SIZE bars so the job can resume if killed mid-run.
+    """
+    from src.core.precomputed_runner import _prepare_features_full
     from src.core.smc import SMCDetector
 
-    cache_path = Path(cache_dir) / 'smc_all_train.pkl'
+    CHUNK_SIZE  = 5_000   # save checkpoint every 5K bars (~50 s)
+    cache_path  = Path(cache_dir) / 'smc_all_train.pkl'
+    ckpt_path   = Path(cache_dir) / 'smc_ckpt.pkl'
+
     if not force and cache_path.exists():
         print('  [SMC] Loading from cache...')
         with open(cache_path, 'rb') as f:
             d = pickle.load(f)
         return d['smc_list'], d['smc_start_iloc']
 
-    print('  [SMC] Precomputing all 15M bars (this may take a while)...')
-    smc = SMCDetector()
+    smc      = SMCDetector()
     prep_15m = _prepare_features_full(df_15m)
+    n        = len(prep_15m)
+
+    # Restrict to last max_bars for training (faster, still representative)
+    start_iloc = max(0, n - max_bars)
+
+    empty = {
+        'bullish_ob': False, 'bearish_ob': False,
+        'bullish_fvg': False, 'bearish_fvg': False,
+        'bullish_choch': False, 'bearish_choch': False,
+        'bullish_at_zone': False, 'bearish_at_zone': False,
+        'smc_score_bullish': 0.0, 'smc_score_bearish': 0.0,
+    }
+
+    # Resume from checkpoint if available
+    resume_i = start_iloc
+    smc_list = []
+    if not force and ckpt_path.exists():
+        try:
+            with open(ckpt_path, 'rb') as f:
+                ckpt = pickle.load(f)
+            if ckpt.get('start_iloc') == start_iloc:
+                smc_list = ckpt['smc_list']
+                resume_i = start_iloc + len(smc_list)
+                print(f'  [SMC] Resuming from checkpoint at bar {resume_i} '
+                      f'({len(smc_list)} already done)')
+        except Exception:
+            smc_list = []
+            resume_i = start_iloc
+
+    total = n - start_iloc
+    print(f'  [SMC] Computing {total:,} bars (last {max_bars:,} of {n:,})...')
     t0 = time.time()
-    smc_list, smc_start = _precompute_smc(prep_15m, smc, window=200,
-                                          start_iloc=0, end_iloc=len(prep_15m))
-    print(f'  [SMC] Done in {time.time()-t0:.1f}s — {len(smc_list)} patterns computed')
+
+    for i in range(resume_i, n):
+        ctx_start = max(0, i + 1 - 200)
+        slice_df  = prep_15m.iloc[ctx_start: i + 1]
+        if len(slice_df) < 50:
+            smc_list.append(empty.copy())
+        else:
+            try:
+                smc_list.append(smc.detect_all(slice_df))
+            except Exception:
+                smc_list.append(empty.copy())
+
+        # Checkpoint every CHUNK_SIZE bars
+        done = i - start_iloc + 1
+        if done % CHUNK_SIZE == 0:
+            elapsed = time.time() - t0
+            rate    = done / elapsed
+            remain  = (total - done) / rate if rate > 0 else 0
+            print(f'  [SMC] {done:,}/{total:,} bars  '
+                  f'({elapsed:.0f}s elapsed, ~{remain:.0f}s remaining)  '
+                  f'[checkpoint saved]')
+            with open(ckpt_path, 'wb') as f:
+                pickle.dump({'smc_list': smc_list, 'start_iloc': start_iloc}, f, protocol=4)
+
+    elapsed = time.time() - t0
+    print(f'  [SMC] Done in {elapsed:.1f}s — {len(smc_list)} patterns computed')
+
+    # Save final cache, remove checkpoint
     with open(cache_path, 'wb') as f:
-        pickle.dump({'smc_list': smc_list, 'smc_start_iloc': smc_start}, f, protocol=4)
-    return smc_list, smc_start
+        pickle.dump({'smc_list': smc_list, 'smc_start_iloc': start_iloc}, f, protocol=4)
+    if ckpt_path.exists():
+        ckpt_path.unlink()
+
+    return smc_list, start_iloc
 
 
 # ---------------------------------------------------------------------------
