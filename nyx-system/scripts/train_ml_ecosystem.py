@@ -105,12 +105,15 @@ def load_or_train_hsmm(mtf_all, cache_dir, em_iters, force):
     hsmm_1h = SemiMarkovHMM(states=states)
     init_data = prep_1h.dropna().tail(min(2000, len(prep_1h) // 2))
     hsmm_1h.initialize_parameters(init_data)
-    # EM training
+    # EM training — build obs list then call fit() once with n_iter
     t0 = time.time()
-    for it in range(em_iters):
-        hsmm_1h.fit(prep_1h.dropna().tail(5000), max_iter=1)
-        if (it + 1) % 10 == 0:
-            print(f'    1H EM iter {it+1}/{em_iters}  ({time.time()-t0:.1f}s)')
+    prep_1h_train = prep_1h.dropna().tail(5000)
+    obs_1h_train  = _build_obs_arrays(prep_1h_train)
+    obs_list_1h   = [{'price': float(obs_1h_train['price'][i]),
+                      'atr':   float(obs_1h_train['atr'][i])}
+                     for i in range(len(obs_1h_train['price']))]
+    hsmm_1h.fit(obs_list_1h, n_iter=em_iters)
+    print(f'    1H EM done  ({time.time()-t0:.1f}s)')
 
     obs_1h   = _build_obs_arrays(prep_1h)
     log_B_1h = _compute_log_B_from_arrays(hsmm_1h, obs_1h)
@@ -125,10 +128,13 @@ def load_or_train_hsmm(mtf_all, cache_dir, em_iters, force):
     init_15m = prep_15m.dropna().tail(min(4000, len(prep_15m) // 2))
     hsmm_15m.initialize_parameters(init_15m)
     t0 = time.time()
-    for it in range(em_iters):
-        hsmm_15m.fit(prep_15m.dropna().tail(10000), max_iter=1)
-        if (it + 1) % 10 == 0:
-            print(f'    15M EM iter {it+1}/{em_iters}  ({time.time()-t0:.1f}s)')
+    prep_15m_train = prep_15m.dropna().tail(10000)
+    obs_15m_train  = _build_obs_arrays(prep_15m_train)
+    obs_list_15m   = [{'price': float(obs_15m_train['price'][i]),
+                       'atr':   float(obs_15m_train['atr'][i])}
+                      for i in range(len(obs_15m_train['price']))]
+    hsmm_15m.fit(obs_list_15m, n_iter=em_iters)
+    print(f'    15M EM done  ({time.time()-t0:.1f}s)')
 
     obs_15m   = _build_obs_arrays(prep_15m)
     log_B_15m = _compute_log_B_from_arrays(hsmm_15m, obs_15m)
