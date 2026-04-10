@@ -1,632 +1,195 @@
-# NYX Fractal Agent Architecture
+# NYX — ML Ecosystem Architecture
 
-**Version:** 1.0  
-**Date:** 2025-03-29  
-**Status:** Implementation
-
----
-
-## 📐 **ARCHITECTURE OVERVIEW**
-
-NYX is a **fractal multi-timeframe trading system** where each timeframe serves a distinct role in the decision process.
-
-Instead of a monolithic engine, NYX uses **3 specialized agents** coordinated by **1 orchestrator**.
-
-**CURRENT BASELINE: 3-LAYER FRACTAL (Active)**
-- Context Agent (1D)
-- Regime Agent (1H) 
-- Setup Agent (15M)
-- Orchestrator
-
-**DEFERRED: Entry Agent (5M)**
-- Status: Not yet implemented
-- Reason: No 5M data currently available
-- No fallback to 15M - cleanly disabled
-- Will be added when 5M data pipeline is ready
+**Version:** 1.0 — Avril 2026  
+**Statut:** Implémenté, agents en mode pass-through (non entraînés)
 
 ---
 
-## 🎯 **DESIGN PRINCIPLES**
+## Principe fondamental
 
-1. **One Agent = One Role = One Timeframe**
-2. **No Duplicate Logic** - Reuse existing components (HSMM, SMC, Risk)
-3. **Single Responsibility** - Each agent answers ONE question
-4. **Centralized Risk** - Only orchestrator accesses risk/execution
-5. **Clear Diagnostics** - Know exactly which agent blocked a decision
-
----
-
-## 🏗️ **ARCHITECTURE DIAGRAM**
-
-**CURRENT ACTIVE BASELINE (3-LAYER FRACTAL):**
+Chaque agent répond à **une seule question** sur **un seul timeframe**.
+Les sorties s'empilent en features pour les agents suivants (stacking).
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      MTF Data Loader                        │
-│         (Loads & Aligns: 1D, 1H, 15M - Closed Candles)     │
-└────────┬────────────────────────────────────────────────────┘
-         │
-         ├─────► Context Agent (1D)  → "Bullish bias?"
-         │
-         ├─────► Regime Agent (1H)   → "Trend+ regime?"
-         │
-         ├─────► Setup Agent (15M)   → "Valid SMC pattern?"
-         │
-         └─────► Orchestrator
-                    │
-                    ├─→ Aggregate Results (3 agents)
-                    ├─→ Apply AND Logic
-                    ├─→ Check Risk (centralized)
-                    │
-                    └─→ Decision: BUY / SELL / WAIT
-                           │
-                           └─→ Execution (if approved)
-```
-
-**DEFERRED (Not Yet Active):**
-- Entry Agent (5M) - awaiting 5M data pipeline
-- No fallback to 15M - cleanly disabled
-
----
-
-## 🤖 **AGENT SPECIFICATIONS**
-
-**ACTIVE AGENTS (Current Baseline):**
-
-### **1. Context Agent** ✅ ACTIVE
-
-**Timeframe:** 1D  
-**Role:** Determine macro bias and structural direction
-
-**Inputs:**
-- DataFrame (1D or 4H OHLCV)
-- Historical bars (≥ 100)
-
-**Responsibilities:**
-- Identify higher timeframe trend
-- Determine favored/unfavored direction
-- Provide strategic context score
-
-**Output:**
-```python
-{
-    "agent": "context",
-    "state": "bullish" | "bearish" | "neutral",
-    "score": 0.72,  # [0, 1]
-    "passed": True,
-    "reason": "Higher timeframe structure intact",
-    "metadata": {
-        "timeframe": "1d",
-        "trend_strength": 0.72,
-        "structure": "uptrend"
-    }
-}
-```
-
-**Decision Gate:**
-- `passed = True` if state aligns with intended direction
-- For long: requires state = "bullish"
-- For short: requires state = "bearish"
-
-**Implementation:**
-- Uses simple SMA/EMA analysis (no HSMM needed here)
-- Looks for higher timeframe structure
-- Returns bias score
-
----
-
-### **2. Regime Agent** ✅ ACTIVE
-
-**Timeframe:** 1H  
-**Role:** Detect current market regime with confidence
-
-**Inputs:**
-- DataFrame (4H or 1H OHLCV)
-- Historical bars (≥ 200 for HSMM)
-
-**Responsibilities:**
-- Run HSMM to detect regime
-- Calculate Stability (persistence probability)
-- Provide regime confidence (SdC)
-
-**Output:**
-```python
-{
-    "agent": "regime",
-    "state": "trend_plus" | "range" | "trend_minus",
-    "score": 0.81,  # SdC / 10
-    "passed": True,
-    "reason": "HSMM Trend+ with 81% confidence, Stability 0.75",
-    "metadata": {
-        "timeframe": "4h",
-        "sdc": 8.1,
-        "stability": 0.75,
-        "hsmm_states": {
-            "Trend+": 0.81,
-            "Range": 0.12,
-            "Trend-": 0.07
-        }
-    }
-}
-```
-
-**Decision Gate:**
-- `passed = True` if:
-  - SdC > 5.0
-  - Stability ≥ 0.60
-  - State matches Context direction
-
-**Implementation:**
-- Wraps existing `SemiMarkovHMM`
-- Computes stability from transition matrix
-- Returns Intent_Daily equivalent
-
----
-
-### **3. Setup Agent** ✅ ACTIVE
-
-**Timeframe:** 15M  
-**Role:** Detect and validate SMC patterns
-
-**Inputs:**
-- DataFrame (15M OHLCV)
-- Context bias (from Context Agent)
-- Historical bars (≥ 100)
-
-**Responsibilities:**
-- Run SMC detector (OB, FVG, BoS/CHoCH)
-- Check pattern alignment with Context
-- Validate pattern quality
-
-**Output:**
-```python
-{
-    "agent": "setup",
-    "state": "valid_setup" | "no_pattern" | "misaligned",
-    "score": 0.66,  # alignment score
-    "passed": True,
-    "reason": "Bullish FVG aligned with Context",
-    "metadata": {
-        "timeframe": "15m",
-        "patterns": {
-            "bullish_ob": False,
-            "bearish_ob": False,
-            "bullish_fvg": True,
-            "bearish_fvg": False
-        },
-        "alignment": 0.66,
-        "pattern_quality": "good"
-    }
-}
-```
-
-**Decision Gate:**
-- `passed = True` if:
-  - Pattern exists (OB or FVG)
-  - Pattern aligns with Context direction
-  - Alignment score ≥ 0.60
-
-**Implementation:**
-- Wraps existing `SMCDetector`
-- Compares patterns with Context state
-- Returns alignment score
-
----
-
-### **4. Entry Agent** ⏸️ DEFERRED
-
-**Timeframe:** 5M  
-**Status:** **NOT YET ACTIVE**  
-**Role:** Validate entry timing (when implemented)
-
-**Why Deferred:**
-- 5M data pipeline not yet available
-- Priority: Validate 3-layer baseline first
-- No fake 15M fallback - cleanly disabled
-
-**When Ready:**
-- Add 5M data to MTF loader
-- Enable `use_entry_agent: true` in config
-- Integrate into Orchestrator decision logic
-
-**Current Behavior:**
-- Orchestrator operates with 3 agents only
-- No entry timing validation
-- Direct decision from Context + Regime + Setup
-
----
-
-**Inputs:**
-- DataFrame (5M OHLCV)
-- Setup confirmation (from Setup Agent)
-- Historical bars (≥ 50)
-
-**Responsibilities:**
-- Check entry timing conditions
-- Validate execution readiness
-- Confirm micro-structure alignment
-
-**Output:**
-```python
-{
-    "agent": "entry",
-    "state": "ready" | "early" | "late",
-    "score": 0.58,
-    "passed": True,
-    "reason": "Timing conditions met on entry TF",
-    "metadata": {
-        "timeframe": "5m",
-        "micro_structure": "aligned",
-        "timing_quality": "good"
-    }
-}
-```
-
-**Decision Gate:**
-- `passed = True` if:
-  - Timing is "ready"
-  - No conflicting signals on 5M
-  - Micro-structure supports entry
-
-**Implementation:**
-- Simple momentum/structure check
-- Can be minimal initially
-- Confirms setup hasn't invalidated
-
----
-
-## 🎭 **ORCHESTRATOR**
-
-**Role:** Central decision maker - aggregates agents and applies final logic
-
-**Inputs:**
-- Results from 4 agents (AgentResult objects)
-- Current price
-- MTF data (for risk calculation)
-
-**Responsibilities:**
-1. Collect agent results
-2. Apply decision logic (AND gate)
-3. Check centralized risk
-4. Produce final decision
-5. Log which agent blocked/passed
-
-**Decision Logic (AND Gate):**
-```python
-def decide(agent_results):
-    context = agent_results['context']
-    regime = agent_results['regime']
-    setup = agent_results['setup']
-    entry = agent_results['entry']
-    
-    # All gates must pass
-    all_passed = all([
-        context.passed,
-        regime.passed,
-        setup.passed,
-        entry.passed
-    ])
-    
-    if not all_passed:
-        blocked_by = [name for name, result in agent_results.items() 
-                      if not result.passed]
-        return {
-            'action': 'WAIT',
-            'blocked_by': blocked_by,
-            'reason': f'Blocked by: {", ".join(blocked_by)}'
-        }
-    
-    # All passed - check risk
-    risk_ok = check_risk(...)
-    if not risk_ok:
-        return {
-            'action': 'WAIT',
-            'blocked_by': ['risk'],
-            'reason': 'Risk conditions not met'
-        }
-    
-    # Determine direction from Context
-    if context.state == 'bullish':
-        action = 'BUY'
-    elif context.state == 'bearish':
-        action = 'SELL'
-    else:
-        action = 'WAIT'
-    
-    return {
-        'action': action,
-        'score': calculate_aggregate_score(agent_results),
-        'reason': 'All agents approved',
-        'components': agent_results
-    }
-```
-
-**Output:**
-```python
-{
-    "action": "BUY" | "SELL" | "WAIT",
-    "score": 0.71,  # Aggregate score
-    "reason": "Context bullish + regime trend_plus + valid setup + entry ready",
-    "blocked_by": [],  # Empty if all passed
-    "components": {
-        "context": {...},
-        "regime": {...},
-        "setup": {...},
-        "entry": {...}
-    },
-    "risk_analysis": {...},  # From centralized risk manager
-    "timestamp": "2024-01-01T00:00:00"
-}
+Question              Agent              Timeframe  Modèle
+──────────────────────────────────────────────────────────
+Direction macro ?     MLContextAgent     1D         LGB (bull/bear/neutral)
+Quel régime ?         MLRegimeAgent      1H         LGB + HSMM proba features
+Setup valide ?        MLSetupAgent       15M        LGB + SMC + cross-agent
+Bon timing ?          MLEntryAgent       15M        LGB + River online
+P(profit) global ?    MLOrchestrator     --         meta-LGB (stacking)
 ```
 
 ---
 
-## 🔒 **CENTRALIZED RISK & EXECUTION**
+## MLContextAgent (1D)
 
-### **Why Centralized?**
+**Question** : "Quelle est la direction macro du marché ?"
 
-1. **Single Source of Truth** - No conflicting risk calculations
-2. **Simpler Testing** - Test risk logic once, not 4 times
-3. **Compliance** - Easier to audit/control
-4. **Performance** - No duplicate computation
+**Features** :
+- Momentum 5/20/60/200 jours + acceleration
+- Réalisée vol 5/20j + ratio court/long
+- EWMA vol GARCH (λ=0.94)
+- RSI(14) Wilder's EMA
+- Position vs SMA50 + SMA200 (trend strength)
+- Buy pressure (close - low) / (high - low)
+- Amihud illiquidity 20j
+- Garman-Klass vol 20j
 
-### **Risk Manager Responsibilities:**
+**Labels** :
+- bullish : max(close t+1..t+5) / close_t - 1 > 3% AND NOT bearish
+- bearish : close_t / min(close t+1..t+5) - 1 > 3% AND NOT bullish
+- neutral : sinon (pas de trade)
 
-- Compute P(hit -0.05), P(hit -0.10)
-- Calculate RR ratio from SMC levels
-- Position sizing
-- Risk gates (final check before execution)
+**Sortie** : AgentResult(agent='context', state='bullish'|'bearish'|'neutral', score=P(état))
 
-**Called by:** Orchestrator only (after agents approve)
-
-### **Execution Layer:**
-
-- Receives final decision from Orchestrator
-- Places orders
-- Manages stops/targets
-- Logs trades
-
-**Called by:** Orchestrator only (if risk approved)
+**Pass-through** : SMA200 rule-based si non entraîné.
 
 ---
 
-## 📊 **DATA FLOW**
+## MLRegimeAgent (1H)
 
-```
-1. MTF Loader
-   ↓
-   Provides aligned data per timeframe
-   
-2. Agent Execution (parallel possible)
-   Context Agent ← df_1d
-   Regime Agent  ← df_4h
-   Setup Agent   ← df_15m (+ Context state)
-   Entry Agent   ← df_5m (+ Setup state)
-   
-3. Orchestrator
-   ↓
-   Aggregates results → Apply AND logic
-   ↓
-   Check Risk (centralized)
-   ↓
-   Final Decision: BUY/SELL/WAIT
-   
-4. Execution (if approved)
-   ↓
-   Order placement
-```
+**Question** : "Quel est le régime de marché actuel ?"
+
+**Features** :
+- Momentum 4/12/48h
+- Vol réalisée 8/24/96h + EWMA GARCH
+- Buy pressure (raw + MA)
+- Amihud + Kyle's lambda
+- Eff. spread ratio
+- HSMM 6 états proba (p_trend_plus, p_range, p_trend_minus, p_squeeze, p_distribution, p_liquidation)
+- HSMM dominant state index + entropie Shannon
+- RSI(14) Wilder
+- Vol of vol (vov_24)
+
+**Labels** : 1 si max(high t+1..t+4) / close_t - 1 > 1% (direction haussière dans 4h)
+
+**Note clé** : Les probabilités HSMM deviennent des **features** pour LGB, pas des règles.
+LGB apprend quels états HSMM *en combinaison avec la microstructure* prédisent vraiment une direction.
+
+**Sortie** : AgentResult(agent='regime', state=dominant_state, score=P(bull), ...)
+
+**Pass-through** : argmax HSMM proba, dom_prob comme score.
 
 ---
 
-## 🔍 **DIAGNOSTICS**
+## MLSetupAgent (15M)
 
-### **Question: "Why did NYX not trade?"**
+**Question** : "Y a-t-il un setup d'entrée valide ?"
 
-**Before (Monolithic):**
-```
-Signal: HOLD
-Reasons: ['Some condition failed']
-```
-→ Unclear which component blocked
+**Features** :
+- Momentum 4/8/16/32 barres 15M
+- Vol + GARCH + OB proxies (buy pressure, Amihud, Kyle, spread)
+- HSMM 15M proba (6 états + dominant + entropie)
+- SMC patterns : bullish/bearish OB, FVG, CHoCH (binaires + scores)
+- Cross-agent : regime_score (float), context_dir (+1/-1/0)
+- Interaction : regime_score × context_dir
 
-**After (Fractal):**
-```json
-{
-  "action": "WAIT",
-  "blocked_by": ["setup", "entry"],
-  "components": {
-    "context": {"passed": true, "state": "bullish"},
-    "regime": {"passed": true, "state": "trend_plus"},
-    "setup": {"passed": false, "state": "no_pattern"},
-    "entry": {"passed": false, "state": "early"}
-  }
-}
-```
-→ Clear: Setup had no pattern, Entry was early
+**Labels** : 1 si prix > 0.8% dans la direction du contexte sur 8 barres 15M
 
-### **Diagnostic Metrics:**
+**Note clé** : regime_score et context_dir créent des **features cross-agents**.
+Le modèle apprend "setup valide si régime fort ET context bull ET SMC pattern présent".
 
-```python
-# Over N signals
-blocked_by_context: 12
-blocked_by_regime: 45
-blocked_by_setup: 187  # ← Main bottleneck
-blocked_by_entry: 34
-blocked_by_risk: 8
-approved_buy: 23
-approved_sell: 5
-wait_neutral: 686
-```
-
-→ Immediately see: **Setup is the bottleneck** (187 blocks)
+**Sortie** : AgentResult(agent='setup', state='valid_setup'|'misaligned'|'no_pattern', score=P(setup))
 
 ---
 
-## 🧪 **TESTING STRATEGY**
+## MLEntryAgent (15M)
 
-### **Unit Tests (Per Agent):**
+**Question** : "Est-ce le bon moment précis d'entrer ?"
 
-```python
-def test_context_agent():
-    agent = ContextAgent(config)
-    result = agent.analyze(df_1d)
-    
-    assert isinstance(result, AgentResult)
-    assert result.agent == 'context'
-    assert result.state in ['bullish', 'bearish', 'neutral']
-    assert 0 <= result.score <= 1
-    assert isinstance(result.passed, bool)
+**Features** : 47 features MLFeatureEngine (voir feature_engine.py)
 
-def test_regime_agent():
-    agent = RegimeAgent(config)
-    result = agent.analyze(df_4h)
-    
-    assert result.agent == 'regime'
-    assert 'sdc' in result.metadata
-    assert 'stability' in result.metadata
-```
+**Modèle** : blend 0.7×LGB + 0.3×River
+- LGB : walk-forward CV, structure lente (vol regime, momentum persistence)
+- River : adapte aux dynamics récentes (mise à jour après chaque trade résolu)
 
-### **Integration Test (Orchestrator):**
-
-```python
-def test_orchestrator_all_passed():
-    orch = Orchestrator(config, agents)
-    
-    # Mock all agents passing
-    agent_results = {
-        'context': AgentResult(agent='context', state='bullish', score=0.7, passed=True),
-        'regime': AgentResult(agent='regime', state='trend_plus', score=0.8, passed=True),
-        'setup': AgentResult(agent='setup', state='valid_setup', score=0.6, passed=True),
-        'entry': AgentResult(agent='entry', state='ready', score=0.5, passed=True)
-    }
-    
-    decision = orch.decide(agent_results, mtf_data, current_price)
-    
-    assert decision['action'] == 'BUY'
-    assert decision['blocked_by'] == []
-
-def test_orchestrator_setup_blocked():
-    # Mock setup blocking
-    agent_results = {
-        'context': AgentResult(..., passed=True),
-        'regime': AgentResult(..., passed=True),
-        'setup': AgentResult(..., passed=False),  # ← Blocks
-        'entry': AgentResult(..., passed=True)
-    }
-    
-    decision = orch.decide(agent_results, mtf_data, current_price)
-    
-    assert decision['action'] == 'WAIT'
-    assert 'setup' in decision['blocked_by']
-```
-
-### **End-to-End Test:**
-
-```python
-def test_fractal_pipeline():
-    from src.agents.fractal_pipeline import FractalPipeline
-    
-    pipeline = FractalPipeline(config)
-    mtf_data = load_mtf_sample('BTCUSDT', 1000)
-    
-    signal = pipeline.generate_signal(mtf_data, current_date)
-    
-    assert 'action' in signal
-    assert 'components' in signal
-    assert all(agent in signal['components'] for agent in 
-               ['context', 'regime', 'setup', 'entry'])
-```
+**Sortie** : AgentResult(agent='entry', score=ml_prob, passed=(ml_prob >= 0.55))
 
 ---
 
-## 🔄 **MIGRATION STRATEGY**
+## MLOrchestrator (meta-LGB)
 
-### **Phase 1: Parallel Implementation**
+**Question** : "Étant donné les 4 signaux, P(trade profitable) = ?"
 
-Keep existing `nyx_engine_mtf.py` working while building fractal architecture.
+**Features** :
+```
+# Agent signals
+p_context_bull, p_context_bear     # Direction proba
+p_regime_trend, p_regime_range, p_regime_squeeze  # Régime proba
+p_setup                             # Setup proba
+p_entry                             # Entry proba
 
-```python
-# Old (still works)
-signal = engine.generate_signal_mtf(pair, mtf_data, date)
+# Agreement metrics (key feature: détecte le consensus vs divergence)
+agent_std   = std([p_ctx, p_reg, p_setup, p_entry])  # bas = consensus
+agent_min   = min(...)   # signal le plus faible
+agent_mean  = mean(...)
 
-# New (fractal)
-signal = engine.generate_fractal_signal(pair, mtf_data, date)
+# Microstructure snapshot (dernière barre 15M)
+vol_ratio, buy_pressure, amihud, hour_sin/cos, dow_sin/cos
+
+# Flags individuels
+ctx_passed, reg_passed, stp_passed, ent_passed (booleans)
+is_trending, is_range, is_squeeze, has_smc_pattern
 ```
 
-### **Phase 2: Validation**
+**Label training** : prix > 0.8% dans la direction du contexte sur 8 barres
+→ bar-level labels → 50-100× plus d'échantillons que les trades réels
 
-Run both in parallel on same data, compare results.
-
-### **Phase 3: Deprecation**
-
-Once validated, deprecate old method with warning.
-
-### **Phase 4: Removal**
-
-Remove old MTF engine after full transition.
-
----
-
-## 📋 **IMPLEMENTATION CHECKLIST**
-
-- [ ] Contracts defined (`contracts.py`)
-- [ ] Context Agent implemented
-- [ ] Regime Agent implemented (wraps HSMM)
-- [ ] Setup Agent implemented (wraps SMC)
-- [ ] Entry Agent implemented
-- [ ] Orchestrator implemented
-- [ ] Risk remains centralized
-- [ ] Execution remains centralized
-- [ ] CLI mode `fractal_check` added
-- [ ] Tests for each agent
-- [ ] Test for orchestrator
-- [ ] Test for pipeline
-- [ ] Documentation complete
-- [ ] Migration plan documented
-
----
-
-## 🎯 **SUCCESS CRITERIA**
-
-After implementation, we should be able to:
-
-1. ✅ **Clearly see which agent blocked a decision**
-2. ✅ **Test each agent in isolation**
-3. ✅ **Reuse existing components (HSMM, SMC, Risk)**
-4. ✅ **Run diagnostics per agent** (blocked_by_setup count, etc.)
-5. ✅ **Understand data flow at a glance**
-6. ✅ **No duplicate risk/execution logic**
-
----
-
-## 📝 **APPENDIX: Standard Contract**
-
-```python
-from dataclasses import dataclass
-from typing import Dict, Any
-from datetime import datetime
-
-@dataclass
-class AgentResult:
-    """Standard output contract for all agents"""
-    
-    agent: str              # 'context', 'regime', 'setup', 'entry'
-    state: str              # Agent-specific state
-    score: float            # Confidence/quality score [0, 1]
-    passed: bool            # Decision gate (True = approved)
-    reason: str             # Human-readable explanation
-    metadata: Dict[str, Any]  # Agent-specific extra data
-    timestamp: datetime = None
-    
-    def __post_init__(self):
-        if self.timestamp is None:
-            self.timestamp = datetime.now()
-        
-        # Validation
-        assert 0 <= self.score <= 1, "Score must be in [0, 1]"
-        assert isinstance(self.passed, bool), "Passed must be boolean"
+**Size factor** (scaling de position) :
+```
+P(profit) >= 0.75  →  1.5×  (très haute conviction)
+P(profit) >= 0.65  →  1.2×
+P(profit) >= 0.60  →  1.0×  (baseline)
+P(profit) <  0.60  →  0.75× (basse conviction mais signal présent)
 ```
 
+**Fallback** si non entraîné : score = moyenne pondérée (context 30% + regime 30% + setup 25% + entry 15%), seuil 0.78.
+
 ---
 
-**This architecture transforms NYX from a monolithic MTF engine into a clear, diagnosable fractal system.**
+## Pipeline d'entraînement
+
+```
+2019 ──────────────────── 2022-12-31 | 2023 ──────────────────────► 
+     Train                           | OOS Validation
+```
+
+```bash
+python scripts/train_ml_ecosystem.py --train-end 2022-12-31
+```
+
+Ordre d'entraînement (chaque agent dépend du précédent) :
+1. HSMM EM → gamma_1h, gamma_15m (feature extractors)
+2. SMA200 → context_arr
+3. SMC rolling → smc_list
+4. MLContextAgent.pretrain(df_1d)
+5. MLRegimeAgent.pretrain(df_1h, gamma_1h)
+6. MLSetupAgent.pretrain(df_15m, gamma_15m, smc_list, context_series)
+7. MLOrchestrator.generate_training_data(...)
+8. MLOrchestrator.pretrain(meta_dataset)
+
+---
+
+## Mode pass-through (backward compatibility)
+
+Chaque agent fonctionne sans modèle entraîné :
+- MLContextAgent → SMA200 rule-based
+- MLRegimeAgent → argmax HSMM proba
+- MLSetupAgent → combinaison linéaire HSMM proba
+- MLEntryAgent → score=0.5, passed=True (ne bloque jamais)
+- MLOrchestrator → weighted average scores (seuil 0.78)
+
+Cela garantit la compatibilité avec l'historique des backtests.
+
+---
+
+## Performances actuelles (pass-through)
+
+Q1 2023 : 11 LONGs / 0 SHORTs | +13.03% | Sharpe 3.82 | MaxDD 6.94% | PF 4.02
+
+Avec ML entraîné (objectifs) :
+- Sharpe > 1.5 sur année OOS
+- MaxDD < 10%
+- Profit Factor > 1.8
+- t-stat Sharpe > 2.0

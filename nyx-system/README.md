@@ -1,196 +1,179 @@
-# NYX Trading System v0.8
+# NYX Trading System v1.0
 
-Professional algorithmic trading system combining Semi-Markov HMM, Smart Money Concepts, and advanced risk management.
-
-## 🎯 Features
-
-- **Semi-Markov Hidden Markov Model (HSMM)** - State detection with duration modeling
-- **Smart Money Concepts (SMC)** - Order Blocks, Fair Value Gaps
-- **Regime Detection** - Bull/Bear/Range market classification
-- **Position Pyramiding** - Dynamic position scaling
-- **Monte Carlo Validation** - Robust performance testing
-- **Multi-Asset Support** - BTC, ETH, SOL, and more
-- **Real-time Dashboard** - React-based interactive UI
-
-## 📊 Performance
-
-| Asset | Return | CAGR | Win Rate | Sharpe |
-|-------|--------|------|----------|--------|
-| BTC   | +34.41% | 7.10% | 34.5% | 0.89 |
-| ETH   | +58.86% | 12.00% | 36.2% | 0.91 |
-| SOL   | TBD | TBD | TBD | TBD |
-
-## 🚀 Quick Start
-
-### Installation
-
-```bash
-# Clone repository
-git clone https://github.com/yourusername/nyx-system.git
-cd nyx-system
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure
-cp config/config.yaml.example config/config.yaml
-# Edit config.yaml with your settings
-```
-
-### Download Data
-
-```bash
-# Download historical data for backtesting
-python scripts/download_data.py --pair BTCUSDT --timeframes 15m,1h,4h --since 2020-01-01
-```
-
-### Run Backtest
-
-```bash
-# Single pair backtest
-python scripts/run_backtest.py --pair ETHUSDT
-
-# Multi-pair backtest
-python scripts/run_backtest.py --all
-
-# With parameter optimization
-python scripts/optimize.py --pair BTCUSDT
-```
-
-### Launch Dashboard
-
-```bash
-# Start backend API
-uvicorn dashboard.api:app --reload
-
-# Start frontend (separate terminal)
-cd dashboard
-npm install
-npm start
-
-# Dashboard opens at http://localhost:3000
-```
-
-## 📁 Project Structure
-
-```
-nyx-system/
-├── config/          # Configuration files
-├── src/
-│   ├── core/        # Core components (HSMM, SMC, Indicators)
-│   ├── strategy/    # Trading strategies
-│   ├── data/        # Data management
-│   ├── backtest/    # Backtesting engine
-│   ├── risk/        # Risk management
-│   └── execution/   # Order execution
-├── dashboard/       # React dashboard
-├── tests/           # Unit tests
-├── scripts/         # Utility scripts
-└── data/            # Historical data
-```
-
-## 🔧 Configuration
-
-Edit `config/config.yaml` to customize:
-
-- **Strategy parameters** (SdC threshold, pyramiding, etc.)
-- **Risk settings** (position sizing, stop loss)
-- **Data sources** (Binance, local files)
-- **Execution** (live/paper trading)
-
-See `config/pairs.yaml` for pair-specific settings.
-
-## 📈 Usage Examples
-
-### Basic Backtest
-
-```python
-from src.backtest.engine import BacktestEngine
-from src.strategy.nyx_v05 import NYXStrategy
-
-# Initialize
-engine = BacktestEngine(config='config/config.yaml')
-strategy = NYXStrategy()
-
-# Run backtest
-results = engine.run(
-    strategy=strategy,
-    pair='ETHUSDT',
-    start_date='2020-01-01',
-    end_date='2024-01-01'
-)
-
-# Print results
-print(f"Return: {results.total_return:.2f}%")
-print(f"CAGR: {results.cagr:.2f}%")
-print(f"Win Rate: {results.win_rate:.1f}%")
-```
-
-### Live Trading (Paper)
-
-```python
-from src.execution.broker import BinanceBroker
-from src.strategy.nyx_v05 import NYXStrategy
-
-# Initialize
-broker = BinanceBroker(paper_trading=True)
-strategy = NYXStrategy()
-
-# Start trading
-strategy.run(broker=broker, pairs=['ETHUSDT'])
-```
-
-## 🧪 Testing
-
-```bash
-# Run all tests
-pytest tests/
-
-# With coverage
-pytest tests/ --cov=src --cov-report=html
-
-# Specific test
-pytest tests/test_hsmm.py
-```
-
-## 📊 Dashboard
-
-The React dashboard provides:
-
-- **Real-time monitoring** - Live prices, positions, P&L
-- **Performance analytics** - Equity curve, drawdown, metrics
-- **Parameter controls** - Backtest with different settings
-- **Trade execution** - Manual trading interface
-- **Multi-asset view** - Portfolio allocation
-
-## 🔐 Security
-
-- **Never commit credentials** - Use `.env` or `credentials.yaml` (gitignored)
-- **API keys** - Store in `config/credentials.yaml`
-- **Production** - Use environment variables
-
-## 📝 License
-
-MIT License - See LICENSE file
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open Pull Request
-
-## 📧 Contact
-
-- **Author**: Your Name
-- **Email**: your.email@example.com
-- **Discord**: NYX Trading Community
-
-## ⚠️ Disclaimer
-
-This software is for educational purposes only. Trading cryptocurrencies involves substantial risk of loss. Past performance does not guarantee future results. Always test thoroughly before live trading.
+Système de trading algorithmique institutionnel — BTC/USDT perpetual futures.  
+Décisions sur barres 15M avec contexte MTF aligné (1D / 4H / 1H / 15M). Aucun look-ahead.
 
 ---
 
-**Built with ❤️ by the NYX Team**
+## Principes de design
+
+| Principe | Implémentation |
+|----------|----------------|
+| No look-ahead | `searchsorted` strict avant chaque barre |
+| Un agent = un TF = une question | Context 1D / Regime 1H / Setup 15M / Entry 15M |
+| HSMM = feature extractor | Les proba HSMM sont des features ML, pas des décideurs |
+| Precompute max | O(T·N²) total au lieu de O(T·window·N²) par barre |
+| Online learning | River LogisticRegression après chaque trade résolu |
+
+---
+
+## Installation
+
+```bash
+pip install -r requirements.txt
+python -c "import lightgbm, river, scipy; print('OK')"
+```
+
+---
+
+## Usage
+
+### Backtest rapide (mode précompilé)
+
+```bash
+python scripts/backtest_mtf.py \
+    --start 2023-01-01 --end 2023-04-01 \
+    --pretrain-all --use-cache \
+    --precompute --precompute-cache
+```
+
+| Flag | Description |
+|------|-------------|
+| `--pretrain-all` | EM Baum-Welch sur tout l'historique avant `--start` |
+| `--use-cache` | Charge/sauve les params HSMM depuis `data/pretrain_cache/` |
+| `--precompute` | Active le PrecomputedRunner (streaming forward + SMC rolling) |
+| `--precompute-cache` | Cache le résultat precompute sur disque |
+
+### Entraîner le ML ecosystem
+
+```bash
+# Entraîne les 4 agents ML + orchestrateur sur 2019-2022
+python scripts/train_ml_ecosystem.py --train-end 2022-12-31
+
+# Avec force-retrain (ignore les caches)
+python scripts/train_ml_ecosystem.py --train-end 2022-12-31 --force-retrain
+```
+
+---
+
+## Architecture
+
+### Couches de décision
+
+```
+1D  →  MLContextAgent   → P(bullish / bearish / neutral)
+1H  →  MLRegimeAgent    → P(trend+) + HSMM 6 états comme features
+15M →  MLSetupAgent     → P(valid_setup) + SMC + scores agents amont
+15M →  MLEntryAgent     → P(entry_ok) LGB + River online
+         │
+         ▼  meta-features (4 proba + microstructure + agreement)
+     MLOrchestrator  →  P(profit) + BUY/SELL/WAIT + size_factor
+```
+
+### HSMM 6 états
+
+| État | Description |
+|------|-------------|
+| `Trend+` | Tendance haussière structurée |
+| `Range` | Consolidation / marché latéral |
+| `Trend-` | Tendance baissière structurée |
+| `Squeeze` | Volatilité compressée (pre-breakout) |
+| `Distribution` | Distribution institutionnelle (topping) |
+| `Liquidation` | Flush violent — entrées bloquées |
+
+### Features (47 total)
+
+**Momentum** : mom_4/8/16/32/96 barres + acceleration  
+**Volatilité** : RV rolling, Parkinson, Garman-Klass, EWMA λ=0.94/0.97, vol ratio  
+**Order-book proxies** : Amihud illiquidity (+ z-score), Kyle's lambda, buy pressure, eff. spread ratio, vol surprise  
+**Risk-adjusted** : Sharpe/Sortino rolling (Wilder's EMA, downside RMS)  
+**Momentum indicators** : RSI Wilder's EMA, MACD normalisé  
+**Saisonnalité** : hour_sin/cos, dow_sin/cos  
+**Context** : float direction encodé
+
+### PrecomputedRunner (40× speedup)
+
+| Étape | Méthode |
+|-------|---------|
+| HSMM 1H + 15M | Streaming causal forward O(T·N²) total |
+| SMC 15M | Restreint au window de backtest uniquement |
+| SMA200 1D | Vectorisé pandas sur dataset complet |
+| Hot loop | O(1) lookup numpy row |
+
+**Résultat** : 2.4s pour 8736 barres (Q1 2023) vs ~4min en mode standard.
+
+---
+
+## Performances backtests (pass-through — agents ML non entraînés)
+
+### Q1 2023
+
+```
+Capital        $10,000 → $11,303    (+13.03%)
+BTC B&H        +72.21%
+
+Sharpe   3.82  ✅    Sortino  1.48  ⚠️
+MaxDD    6.94% ✅    Profit Factor  4.02  ✅
+
+Trades : 11 LONGs / 0 SHORTs
+Win Rate : 54.5%  |  Gain moyen $319 / Perte moyenne $95
+```
+
+### Mars 2023
+
+```
+4 LONGs / 0 SHORTs  |  +11.48%  |  Sharpe 7.03  |  MaxDD 3.41%
+Runtime : 1.2s pour 3072 barres
+```
+
+---
+
+## Corrections critiques appliquées
+
+| Bug | Symptôme | Correction |
+|-----|----------|-----------|
+| `else: SHORT` dans backtest_mtf.py | 184 SHORTs en année bull | Guard `if action not in ('BUY','SELL'): pass` |
+| RSI = SMA | RSI biaisé | Wilder's EMA `ewm(alpha=1/period)` |
+| Sortino = `rolling.std()` subset | NaN-heavy | `clip(upper=0).pow(2).rolling().mean().pow(0.5)` |
+
+---
+
+## Structure fichiers
+
+```
+src/
+├── agents/
+│   ├── contracts.py         # AgentResult, OrchestratorDecision
+│   ├── orchestrator.py      # Orchestrateur pipeline séquentiel
+│   ├── context_agent.py     # SMA200 rule-based
+│   ├── regime_agent.py      # HSMM 1H
+│   └── setup_agent.py       # HSMM 15M + SMC
+├── core/
+│   ├── hsmm.py              # Semi-Markov HMM — forward-backward, EM
+│   ├── smc.py               # Order Blocks, FVG, CHoCH
+│   ├── precomputed_runner.py # Streaming forward + PrecomputedStates
+│   └── risk_manager_mtf.py  # Sizing vol-adjusted, R:R check
+└── ml/
+    ├── feature_engine.py    # MLFeatureEngine (47 feat) + Incremental
+    ├── ml_agents.py         # MLContextAgent, MLRegimeAgent, MLSetupAgent
+    ├── ml_entry_agent.py    # LGB batch + River online
+    ├── ml_orchestrator.py   # Meta-LGB + size_factor
+    └── model_monitor.py     # KS drift, calibration, rolling AUC
+
+scripts/
+├── backtest_mtf.py          # Runner principal MTF
+└── train_ml_ecosystem.py    # Pipeline entraînement ML complet
+
+data/
+├── raw/mtf/                 # BTCUSDT_1d/4h/1h/15m.csv
+└── pretrain_cache/          # HSMM params + ML models
+```
+
+---
+
+## Prochaines étapes
+
+1. Entraîner ML ecosystem sur 2019-2022 (`train_ml_ecosystem.py`)
+2. Backtest OOS 2023 avec agents ML entraînés
+3. Validation 2021/2022 (bull fort + bear fort)
+4. Intégration données order book réelles (L2)

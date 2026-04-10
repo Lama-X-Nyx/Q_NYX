@@ -1,335 +1,104 @@
-# 📑 NYX SYSTEM - INDEX COMPLET DES FICHIERS
+# NYX v1.0 — Index des fichiers
 
-## 🗂️ INDEX PAR CATÉGORIE
-
-### **📚 DOCUMENTATION (5 fichiers)**
-
-1. **README.md** (racine)
-   - Documentation principale du projet
-   - Quick start, usage, examples
-   - ~300 lignes
-
-2. **COMPLETE_ARCHITECTURE_SUMMARY.md** (racine)
-   - Document récapitulatif COMPLET
-   - Checklist de tous les composants
-   - Guide d'utilisation détaillé
-   - ~800 lignes
-
-3. **dashboard/README.md**
-   - Guide du dashboard
-   - API endpoints
-   - Troubleshooting
-   - ~200 lignes
-
-4. **requirements.txt**
-   - Dépendances Python
-   - ~25 lignes
-
-5. **setup.py**
-   - Configuration du package
-   - Console scripts
-   - ~50 lignes
+> Mis à jour : Avril 2026
 
 ---
 
-### **⚙️ CONFIGURATION (3 fichiers)**
+## Scripts principaux
 
-6. **config/config.yaml**
-   - Configuration principale
-   - Strategy, Risk, Backtest settings
-   - ~80 lignes
-
-7. **config/pairs.yaml**
-   - Configuration des paires
-   - BTCUSDT, ETHUSDT, SOLUSDT, AVAXUSDT
-   - ~50 lignes
-
-8. **.gitignore**
-   - Configuration Git
-   - ~60 lignes
+| Fichier | Usage | Flags clés |
+|---------|-------|------------|
+| `scripts/backtest_mtf.py` | Backtest MTF complet | `--start`, `--end`, `--pretrain-all`, `--use-cache`, `--precompute`, `--precompute-cache` |
+| `scripts/train_ml_ecosystem.py` | Entraînement ML ecosystem | `--train-end`, `--em-iters`, `--n-splits`, `--force-retrain` |
 
 ---
 
-### **🔧 MODULES CORE (2 fichiers Python)**
+## Source — Agents
 
-#### **A) MODULES PRINCIPAUX**
-
-9. **src/core/hsmm.py** ✅ TESTÉ
-   - Semi-Markov HMM implementation
-   - State detection (Trend+, Range, Trend-)
-   - Forward-Backward & Viterbi algorithms
-   - Confidence scoring
-   - **348 lignes**
-   - **Fonctionnel ✓**
-
-10. **src/core/smc.py** ✅ TESTÉ
-    - Smart Money Concepts detector
-    - Order Blocks, Fair Value Gaps
-    - Liquidity Sweeps, Break of Structure
-    - Zone extraction
-    - **325 lignes**
-    - **Fonctionnel ✓**
+| Fichier | Rôle |
+|---------|------|
+| `src/agents/contracts.py` | AgentResult + OrchestratorDecision (contrats) |
+| `src/agents/orchestrator.py` | Pipeline séquentiel Context → Regime → Setup → Entry |
+| `src/agents/context_agent.py` | SMA200 rule-based (passthrough pour MLContextAgent) |
+| `src/agents/regime_agent.py` | HSMM 1H (proba → features pour MLRegimeAgent) |
+| `src/agents/setup_agent.py` | HSMM 15M + SMC (proba → features pour MLSetupAgent) |
+| `src/agents/entry_agent.py` | EntryAgent stub (remplacé par MLEntryAgent) |
 
 ---
 
-### **🛠️ SCRIPTS CLI (3 fichiers Python)**
+## Source — Core
 
-#### **B) SCRIPTS COMPLETS**
-
-11. **scripts/download_data.py** ✅ READY
-    - Binance data downloader
-    - Multi-timeframe support
-    - Batch download (--all)
-    - Progress tracking
-    - **250 lignes**
-    - **Prêt à utiliser ✓**
-
-12. **scripts/run_backtest.py** ✅ READY
-    - Backtest engine
-    - HSMM + SMC integration
-    - Position pyramiding
-    - Results export (JSON)
-    - **450 lignes**
-    - **Prêt à utiliser ✓**
-
-13. **scripts/optimize.py** ✅ READY
-    - Parameter optimizer
-    - Grid search
-    - Multiple metrics
-    - **300 lignes**
-    - **Prêt à utiliser ✓**
+| Fichier | Rôle |
+|---------|------|
+| `src/core/hsmm.py` | Semi-Markov HMM — forward-backward, Baum-Welch EM, 6 états |
+| `src/core/smc.py` | SMC detector — Order Blocks, Fair Value Gaps, CHoCH, BOS |
+| `src/core/precomputed_runner.py` | Streaming forward causal + PrecomputedStates (40×) |
+| `src/core/risk_manager_mtf.py` | Sizing vol-adjusted, R:R check, Daily DD kill switch |
+| `src/core/nyx_engine_mtf.py` | Engine MTF wrapper |
 
 ---
 
-### **🎨 DASHBOARD (4 fichiers)**
+## Source — ML Ecosystem
 
-#### **C) INTERFACE WEB**
-
-14. **dashboard/api.py** ✅ BACKEND
-    - FastAPI application
-    - 10+ REST endpoints
-    - CORS, error handling
-    - Auto-docs (Swagger)
-    - **450 lignes**
-    - **Prêt à déployer ✓**
-
-15. **dashboard/App.jsx** ✅ FRONTEND COMPLET
-    - React 18 application
-    - 4 tabs (Overview, Backtest, Charts, Parameters)
-    - Real-time price updates
-    - Interactive charts (Recharts)
-    - Parameter controls
-    - **350 lignes**
-    - **Prêt à déployer ✓**
-
-16. **dashboard/package.json**
-    - Node dependencies
-    - React, Recharts, Axios, Tailwind
-    - Scripts (start, build, test)
-    - **30 lignes**
-
-17. **dashboard/README.md**
-    - Setup guide
-    - API documentation
-    - Examples
-    - **200 lignes**
+| Fichier | Rôle | État |
+|---------|------|------|
+| `src/ml/feature_engine.py` | 47 features + IncrementalFeatureEngine | Opérationnel |
+| `src/ml/ml_agents.py` | MLContextAgent, MLRegimeAgent, MLSetupAgent | Pass-through (non entraîné) |
+| `src/ml/ml_entry_agent.py` | MLEntryAgent LGB batch + River online | Pass-through |
+| `src/ml/ml_orchestrator.py` | MLOrchestrator meta-LGB + size_factor | Pass-through |
+| `src/ml/model_monitor.py` | KS drift + calibration + rolling AUC | Opérationnel |
+| `src/ml/__init__.py` | Exports ML ecosystem | OK |
 
 ---
 
-### **🧪 TESTS (2 fichiers Python)**
+## Caches (data/pretrain_cache/)
 
-#### **D) TESTS UNITAIRES**
-
-18. **tests/test_hsmm.py** ✅ 14 TESTS
-    - HSMM module tests
-    - Initialization, Learning, Inference
-    - Edge cases, Integration
-    - **250 lignes**
-    - **Pytest ready ✓**
-
-19. **tests/test_smc.py** ✅ 8 TESTS
-    - SMC module tests
-    - Pattern detection, Zone extraction
-    - **150 lignes**
-    - **Pytest ready ✓**
+| Fichier | Contenu | Généré par |
+|---------|---------|-----------|
+| `<hash>.pkl` | Params HSMM (EM Baum-Welch) | `backtest_mtf.py --use-cache` |
+| `<hash>_v1_precomp.pkl` | PrecomputedStates arrays | `backtest_mtf.py --precompute-cache` |
+| `gamma_1h_train.npy` | Forward proba HSMM 1H (training) | `train_ml_ecosystem.py` |
+| `gamma_15m_train.npy` | Forward proba HSMM 15M (training) | `train_ml_ecosystem.py` |
+| `smc_all_train.pkl` | SMC patterns toutes barres training | `train_ml_ecosystem.py` |
+| `context_ml.pkl` | MLContextAgent LGB models | `train_ml_ecosystem.py` |
+| `regime_ml.pkl` | MLRegimeAgent LGB model | `train_ml_ecosystem.py` |
+| `setup_ml.pkl` | MLSetupAgent LGB model | `train_ml_ecosystem.py` |
+| `orchestrator_ml.pkl` | MLOrchestrator meta-LGB | `train_ml_ecosystem.py` |
 
 ---
 
-### **📦 STRUCTURE (9 fichiers __init__.py)**
+## Données (data/raw/mtf/)
 
-20. **src/__init__.py**
-21. **src/core/__init__.py**
-22. **src/strategy/__init__.py**
-23. **src/data/__init__.py**
-24. **src/backtest/__init__.py**
-25. **src/risk/__init__.py**
-26. **src/execution/__init__.py**
-27. **src/utils/__init__.py**
-28. **tests/__init__.py**
+| Fichier | Barres | Période |
+|---------|--------|---------|
+| `BTCUSDT_1d.csv` | ~1577 | 2019-09 → 2024 |
+| `BTCUSDT_4h.csv` | ~9452 | 2019-09 → 2024 |
+| `BTCUSDT_1h.csv` | ~37808 | 2019-09 → 2024 |
+| `BTCUSDT_15m.csv` | ~151226 | 2019-09 → 2024 |
 
 ---
 
-### **📁 DATA DIRECTORIES (4 .gitkeep)**
+## Documentation
 
-29. **data/raw/.gitkeep**
-30. **data/processed/.gitkeep**
-31. **data/results/.gitkeep**
-32. **logs/.gitkeep**
-
----
-
-## 📊 STATISTIQUES GLOBALES
-
-```
-Total Fichiers:         32
-Total Lignes de Code:   ~3,500+
-
-Par Type:
-  Python (.py):         11 fichiers  ~3,000 lignes
-  JavaScript (.jsx):    1 fichier    ~350 lignes
-  YAML (.yaml):         2 fichiers   ~130 lignes
-  JSON (.json):         1 fichier    ~30 lignes
-  Markdown (.md):       4 fichiers   ~1,500 lignes
-  Config (.txt, .py):   2 fichiers   ~75 lignes
-  Structure (__init__): 9 fichiers   ~10 lignes
-  Data markers (.gitkeep): 4 fichiers
-
-Par Catégorie:
-  A) Modules Core:      2 fichiers   673 lignes   ✅
-  B) Scripts CLI:       3 fichiers   1,000 lignes ✅
-  C) Dashboard:         4 fichiers   1,030 lignes ✅
-  D) Tests:             2 fichiers   400 lignes   ✅
-  Documentation:        5 fichiers   1,500 lignes
-  Configuration:        3 fichiers   190 lignes
-  Structure:            13 fichiers  ~10 lignes
-```
+| Fichier | Contenu |
+|---------|---------|
+| `README.md` | Quick start, usage, performances |
+| `COMPLETE_ARCHITECTURE_SUMMARY.md` | Architecture complète, features, résultats |
+| `FILE_INDEX.md` | Ce fichier |
+| `docs/FRACTAL_AGENT_ARCHITECTURE.md` | Architecture ML ecosystem détaillée |
+| `docs/HSMM_DEEP_DIVE.md` | Détails HSMM, états, calibration |
+| `docs/FRACTAL_BOTTLENECK.md` | Analyse perf + stratégie precompute |
+| `docs/BULLISH_AUDIT.md` | Audit du bug else:SHORT |
+| `docs/*.md` | Notes d'investigation historiques |
 
 ---
 
-## 🎯 FICHIERS PAR FONCTIONNALITÉ
+## Tickets en cours (roadmap)
 
-### **Pour TÉLÉCHARGER des données:**
-→ `scripts/download_data.py` (250 lignes)
-
-### **Pour BACKTESTER:**
-→ `scripts/run_backtest.py` (450 lignes)  
-→ `src/core/hsmm.py` (348 lignes)  
-→ `src/core/smc.py` (325 lignes)
-
-### **Pour OPTIMISER:**
-→ `scripts/optimize.py` (300 lignes)
-
-### **Pour VISUALISER (Dashboard):**
-→ `dashboard/api.py` (450 lignes)  
-→ `dashboard/App.jsx` (350 lignes)
-
-### **Pour TESTER:**
-→ `tests/test_hsmm.py` (250 lignes)  
-→ `tests/test_smc.py` (150 lignes)
-
-### **Pour CONFIGURER:**
-→ `config/config.yaml` (80 lignes)  
-→ `config/pairs.yaml` (50 lignes)
-
----
-
-## 🔍 FICHIERS PAR PRIORITÉ D'UTILISATION
-
-### **🚀 DÉMARRAGE RAPIDE (Ordre d'utilisation)**
-
-1. `README.md` - Lire d'abord
-2. `requirements.txt` - Installer dépendances
-3. `scripts/download_data.py` - Télécharger données
-4. `scripts/run_backtest.py` - Premier backtest
-5. `dashboard/api.py` - Lancer API
-6. `dashboard/App.jsx` - Ouvrir dashboard
-
-### **🔧 DÉVELOPPEMENT**
-
-1. `src/core/hsmm.py` - Modifier stratégie HSMM
-2. `src/core/smc.py` - Modifier patterns SMC
-3. `config/config.yaml` - Ajuster paramètres
-4. `tests/test_hsmm.py` - Tester modifications
-5. `tests/test_smc.py` - Tester modifications
-
-### **📊 PRODUCTION**
-
-1. `setup.py` - Installer package
-2. `dashboard/api.py` - Deploy backend
-3. `dashboard/App.jsx` - Deploy frontend
-4. `config/pairs.yaml` - Activer paires
-
----
-
-## 📝 FICHIERS À MODIFIER SELON VOS BESOINS
-
-### **Ajouter une nouvelle paire:**
-→ Modifier `config/pairs.yaml`
-
-### **Changer les paramètres de stratégie:**
-→ Modifier `config/config.yaml`
-
-### **Ajouter un indicateur:**
-→ Créer `src/core/indicators.py`
-
-### **Ajouter une stratégie:**
-→ Créer `src/strategy/nyx_v06.py`
-
-### **Ajouter un test:**
-→ Créer `tests/test_votre_module.py`
-
-### **Ajouter un endpoint API:**
-→ Modifier `dashboard/api.py`
-
-### **Ajouter un composant React:**
-→ Modifier `dashboard/App.jsx`
-
----
-
-## ✅ CHECKLIST D'INSTALLATION
-
-- [ ] Extraire archive: `tar -xzf nyx-system-unified-complete.tar.gz`
-- [ ] Créer venv: `python -m venv venv`
-- [ ] Activer venv: `source venv/bin/activate`
-- [ ] Installer deps: `pip install -r requirements.txt`
-- [ ] Installer package: `pip install -e .`
-- [ ] Configurer: Éditer `config/config.yaml`
-- [ ] Télécharger données: `python scripts/download_data.py --all`
-- [ ] Tester: `pytest tests/ -v`
-- [ ] Lancer API: `uvicorn dashboard.api:app --reload`
-- [ ] Lancer dashboard: `cd dashboard && npm install && npm start`
-
----
-
-## 🎓 PARCOURS D'APPRENTISSAGE
-
-### **Niveau 1: Découverte (1 jour)**
-1. Lire `README.md`
-2. Lire `COMPLETE_ARCHITECTURE_SUMMARY.md`
-3. Installer le système
-4. Télécharger données BTC
-5. Run premier backtest
-6. Ouvrir dashboard
-
-### **Niveau 2: Utilisation (1 semaine)**
-1. Comprendre `src/core/hsmm.py`
-2. Comprendre `src/core/smc.py`
-3. Modifier `config/config.yaml`
-4. Optimiser paramètres
-5. Tester sur plusieurs paires
-6. Analyser résultats
-
-### **Niveau 3: Développement (1 mois)**
-1. Créer nouveaux indicateurs
-2. Améliorer stratégie
-3. Ajouter tests
-4. Optimiser performance
-5. Déployer en production
-6. Monitorer résultats
-
----
-
-**Version:** 0.8.0  
-**Dernière mise à jour:** 2025-03-27  
-**Total fichiers indexés:** 32  
-**Status:** Production Ready ✅
+| Ticket | Description | Priorité |
+|--------|-------------|----------|
+| Ticket 1 | Feature engineering + fenêtres contexte | Fait (47 features) |
+| Ticket 2 | Triple Barrier labelling | A faire |
+| Ticket 3 | Walk-Forward Splitter dédié | A faire |
+| Ticket 4 | Entraînement agents ML niveau 1 | A faire (pipeline prêt) |
+| Ticket 5 | Entraînement MLOrchestrator stacking | A faire (pipeline prêt) |
