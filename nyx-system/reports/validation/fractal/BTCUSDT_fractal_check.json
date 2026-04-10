@@ -1,0 +1,433 @@
+{
+  "pair": "BTCUSDT",
+  "reference_date": "2023-12-15T00:00:00",
+  "signals_evaluated": 47,
+  "bars_ready_for_decision": 47,
+  "bars_skipped_due_to_readiness": 0,
+  "active_tfs": {
+    "context": "1d",
+    "regime": "1h",
+    "setup": "15m",
+    "entry": "DEFERRED"
+  },
+  "readiness_requirements": {
+    "context_min_bars": 50,
+    "regime_min_bars": 100,
+    "setup_min_bars": 50
+  },
+  "diagnostics": {
+    "readiness_blocks": {
+      "context": 0,
+      "regime": 0,
+      "setup": 0
+    },
+    "logic_blocks": {
+      "context": 0,
+      "regime": 0,
+      "setup": 47,
+      "risk": 0
+    },
+    "actions": {
+      "approved_buy": 0,
+      "approved_sell": 0,
+      "wait_neutral": 0
+    }
+  },
+  "sample_decisions": [
+    {
+      "action": "WAIT",
+      "score": 0.7858224827312871,
+      "reason": "Blocked by: setup",
+      "blocked_by": [
+        "setup"
+      ],
+      "components": {
+        "context": {
+          "agent": "context",
+          "state": "bullish",
+          "score": 1.0,
+          "passed": true,
+          "ready": true,
+          "blocked_by_readiness": false,
+          "reason": "Bullish bias: SMA20 7.6% above SMA50",
+          "metadata": {
+            "timeframe": "1d",
+            "sma_20": 40607.310000000005,
+            "sma_50": 37731.706,
+            "diff_pct": 0.0762118733777902,
+            "trend_strength": 0.7642988872798383,
+            "structure": "uptrend",
+            "bars": 359,
+            "min_bars": 50
+          },
+          "timestamp": "2026-03-29T19:17:39.570844"
+        },
+        "regime": {
+          "agent": "regime",
+          "state": "range",
+          "score": 0.9880642363751061,
+          "passed": true,
+          "ready": true,
+          "blocked_by_readiness": false,
+          "reason": "HSMM Range with SdC=9.9, Stability=0.75",
+          "metadata": {
+            "timeframe": "4h",
+            "sdc": 9.880642363751061,
+            "stability": 0.75,
+            "hsmm_states": {
+              "Trend+": 0.0059678818124458775,
+              "Range": 0.9880642363751062,
+              "Trend-": 0.0059678818124458775
+            },
+            "context_aligned": true,
+            "bars": 108,
+            "min_bars": 100
+          },
+          "timestamp": "2026-03-29T19:17:39.674959"
+        },
+        "setup": {
+          "agent": "setup",
+          "state": "misaligned",
+          "score": 0.3,
+          "passed": false,
+          "ready": true,
+          "blocked_by_readiness": false,
+          "reason": "No bullish patterns for bullish Context (alignment=0.30)",
+          "metadata": {
+            "timeframe": "15m",
+            "patterns": {
+              "bullish_ob": false,
+              "bearish_ob": false,
+              "bullish_fvg": false,
+              "bearish_fvg": false
+            },
+            "pattern_type": null,
+            "alignment": 0.3,
+            "context_state": "bullish",
+            "bars": 51,
+            "min_bars": 50
+          },
+          "timestamp": "2026-03-29T19:17:39.675623"
+        }
+      },
+      "risk_analysis": null,
+      "timestamp": "2026-03-29T19:17:39.675647"
+    },
+    {
+      "action": "WAIT",
+      "score": 0.7858224827312871,
+      "reason": "Blocked by: setup",
+      "blocked_by": [
+        "setup"
+      ],
+      "components": {
+        "context": {
+          "agent": "context",
+          "state": "bullish",
+          "score": 1.0,
+          "passed": true,
+          "ready": true,
+          "blocked_by_readiness": false,
+          "reason": "Bullish bias: SMA20 7.6% above SMA50",
+          "metadata": {
+            "timeframe": "1d",
+            "sma_20": 40607.310000000005,
+            "sma_50": 37731.706,
+            "diff_pct": 0.0762118733777902,
+            "trend_strength": 0.7642988872798383,
+            "structure": "uptrend",
+            "bars": 359,
+            "min_bars": 50
+          },
+          "timestamp": "2026-03-29T19:17:39.677139"
+        },
+        "regime": {
+          "agent": "regime",
+          "state": "range",
+          "score": 0.9880642363751061,
+          "passed": true,
+          "ready": true,
+          "blocked_by_readiness": false,
+          "reason": "HSMM Range with SdC=9.9, Stability=0.75",
+          "metadata": {
+            "timeframe": "4h",
+            "sdc": 9.880642363751061,
+            "stability": 0.75,
+            "hsmm_states": {
+              "Trend+": 0.0059678818124458775,
+              "Range": 0.9880642363751062,
+              "Trend-": 0.0059678818124458775
+            },
+            "context_aligned": true,
+            "bars": 108,
+            "min_bars": 100
+          },
+          "timestamp": "2026-03-29T19:17:39.775360"
+        },
+        "setup": {
+          "agent": "setup",
+          "state": "misaligned",
+          "score": 0.3,
+          "passed": false,
+          "ready": true,
+          "blocked_by_readiness": false,
+          "reason": "No bullish patterns for bullish Context (alignment=0.30)",
+          "metadata": {
+            "timeframe": "15m",
+            "patterns": {
+              "bullish_ob": false,
+              "bearish_ob": false,
+              "bullish_fvg": false,
+              "bearish_fvg": false
+            },
+            "pattern_type": null,
+            "alignment": 0.3,
+            "context_state": "bullish",
+            "bars": 52,
+            "min_bars": 50
+          },
+          "timestamp": "2026-03-29T19:17:39.775885"
+        }
+      },
+      "risk_analysis": null,
+      "timestamp": "2026-03-29T19:17:39.775905"
+    },
+    {
+      "action": "WAIT",
+      "score": 0.7817049422634944,
+      "reason": "Blocked by: setup",
+      "blocked_by": [
+        "setup"
+      ],
+      "components": {
+        "context": {
+          "agent": "context",
+          "state": "bullish",
+          "score": 1.0,
+          "passed": true,
+          "ready": true,
+          "blocked_by_readiness": false,
+          "reason": "Bullish bias: SMA20 7.6% above SMA50",
+          "metadata": {
+            "timeframe": "1d",
+            "sma_20": 40607.310000000005,
+            "sma_50": 37731.706,
+            "diff_pct": 0.0762118733777902,
+            "trend_strength": 0.7642988872798383,
+            "structure": "uptrend",
+            "bars": 359,
+            "min_bars": 50
+          },
+          "timestamp": "2026-03-29T19:17:39.777366"
+        },
+        "regime": {
+          "agent": "regime",
+          "state": "range",
+          "score": 0.9762998350385557,
+          "passed": true,
+          "ready": true,
+          "blocked_by_readiness": false,
+          "reason": "HSMM Range with SdC=9.8, Stability=0.75",
+          "metadata": {
+            "timeframe": "4h",
+            "sdc": 9.762998350385557,
+            "stability": 0.75,
+            "hsmm_states": {
+              "Trend+": 0.011850082480723296,
+              "Range": 0.9762998350385557,
+              "Trend-": 0.011850082480723296
+            },
+            "context_aligned": true,
+            "bars": 109,
+            "min_bars": 100
+          },
+          "timestamp": "2026-03-29T19:17:39.868293"
+        },
+        "setup": {
+          "agent": "setup",
+          "state": "misaligned",
+          "score": 0.3,
+          "passed": false,
+          "ready": true,
+          "blocked_by_readiness": false,
+          "reason": "No bullish patterns for bullish Context (alignment=0.30)",
+          "metadata": {
+            "timeframe": "15m",
+            "patterns": {
+              "bullish_ob": false,
+              "bearish_ob": false,
+              "bullish_fvg": false,
+              "bearish_fvg": false
+            },
+            "pattern_type": null,
+            "alignment": 0.3,
+            "context_state": "bullish",
+            "bars": 53,
+            "min_bars": 50
+          },
+          "timestamp": "2026-03-29T19:17:39.868795"
+        }
+      },
+      "risk_analysis": null,
+      "timestamp": "2026-03-29T19:17:39.868811"
+    },
+    {
+      "action": "WAIT",
+      "score": 0.7817049422634944,
+      "reason": "Blocked by: setup",
+      "blocked_by": [
+        "setup"
+      ],
+      "components": {
+        "context": {
+          "agent": "context",
+          "state": "bullish",
+          "score": 1.0,
+          "passed": true,
+          "ready": true,
+          "blocked_by_readiness": false,
+          "reason": "Bullish bias: SMA20 7.6% above SMA50",
+          "metadata": {
+            "timeframe": "1d",
+            "sma_20": 40607.310000000005,
+            "sma_50": 37731.706,
+            "diff_pct": 0.0762118733777902,
+            "trend_strength": 0.7642988872798383,
+            "structure": "uptrend",
+            "bars": 359,
+            "min_bars": 50
+          },
+          "timestamp": "2026-03-29T19:17:39.870301"
+        },
+        "regime": {
+          "agent": "regime",
+          "state": "range",
+          "score": 0.9762998350385557,
+          "passed": true,
+          "ready": true,
+          "blocked_by_readiness": false,
+          "reason": "HSMM Range with SdC=9.8, Stability=0.75",
+          "metadata": {
+            "timeframe": "4h",
+            "sdc": 9.762998350385557,
+            "stability": 0.75,
+            "hsmm_states": {
+              "Trend+": 0.011850082480723296,
+              "Range": 0.9762998350385557,
+              "Trend-": 0.011850082480723296
+            },
+            "context_aligned": true,
+            "bars": 109,
+            "min_bars": 100
+          },
+          "timestamp": "2026-03-29T19:17:39.959085"
+        },
+        "setup": {
+          "agent": "setup",
+          "state": "misaligned",
+          "score": 0.3,
+          "passed": false,
+          "ready": true,
+          "blocked_by_readiness": false,
+          "reason": "No bullish patterns for bullish Context (alignment=0.30)",
+          "metadata": {
+            "timeframe": "15m",
+            "patterns": {
+              "bullish_ob": false,
+              "bearish_ob": false,
+              "bullish_fvg": false,
+              "bearish_fvg": false
+            },
+            "pattern_type": null,
+            "alignment": 0.3,
+            "context_state": "bullish",
+            "bars": 54,
+            "min_bars": 50
+          },
+          "timestamp": "2026-03-29T19:17:39.959628"
+        }
+      },
+      "risk_analysis": null,
+      "timestamp": "2026-03-29T19:17:39.959646"
+    },
+    {
+      "action": "WAIT",
+      "score": 0.7817049422634944,
+      "reason": "Blocked by: setup",
+      "blocked_by": [
+        "setup"
+      ],
+      "components": {
+        "context": {
+          "agent": "context",
+          "state": "bullish",
+          "score": 1.0,
+          "passed": true,
+          "ready": true,
+          "blocked_by_readiness": false,
+          "reason": "Bullish bias: SMA20 7.6% above SMA50",
+          "metadata": {
+            "timeframe": "1d",
+            "sma_20": 40607.310000000005,
+            "sma_50": 37731.706,
+            "diff_pct": 0.0762118733777902,
+            "trend_strength": 0.7642988872798383,
+            "structure": "uptrend",
+            "bars": 359,
+            "min_bars": 50
+          },
+          "timestamp": "2026-03-29T19:17:39.961003"
+        },
+        "regime": {
+          "agent": "regime",
+          "state": "range",
+          "score": 0.9762998350385557,
+          "passed": true,
+          "ready": true,
+          "blocked_by_readiness": false,
+          "reason": "HSMM Range with SdC=9.8, Stability=0.75",
+          "metadata": {
+            "timeframe": "4h",
+            "sdc": 9.762998350385557,
+            "stability": 0.75,
+            "hsmm_states": {
+              "Trend+": 0.011850082480723296,
+              "Range": 0.9762998350385557,
+              "Trend-": 0.011850082480723296
+            },
+            "context_aligned": true,
+            "bars": 109,
+            "min_bars": 100
+          },
+          "timestamp": "2026-03-29T19:17:40.051726"
+        },
+        "setup": {
+          "agent": "setup",
+          "state": "misaligned",
+          "score": 0.3,
+          "passed": false,
+          "ready": true,
+          "blocked_by_readiness": false,
+          "reason": "No bullish patterns for bullish Context (alignment=0.30)",
+          "metadata": {
+            "timeframe": "15m",
+            "patterns": {
+              "bullish_ob": false,
+              "bearish_ob": false,
+              "bullish_fvg": false,
+              "bearish_fvg": false
+            },
+            "pattern_type": null,
+            "alignment": 0.3,
+            "context_state": "bullish",
+            "bars": 55,
+            "min_bars": 50
+          },
+          "timestamp": "2026-03-29T19:17:40.052203"
+        }
+      },
+      "risk_analysis": null,
+      "timestamp": "2026-03-29T19:17:40.052218"
+    }
+  ]
+}

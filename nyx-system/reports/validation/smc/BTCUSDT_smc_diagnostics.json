@@ -1,0 +1,33 @@
+{
+  "pair": "BTCUSDT",
+  "period": {
+    "start": "2024-11-20T08:00:00",
+    "end": "2024-12-31T23:00:00"
+  },
+  "bars_analyzed": 1000,
+  "hsmm_passed": 900,
+  "smc_summary": {
+    "with_any_pattern": 353,
+    "without_pattern": 547,
+    "bullish_ob": 0,
+    "bearish_ob": 0,
+    "bullish_fvg": 178,
+    "bearish_fvg": 175,
+    "multiple_patterns": 0
+  },
+  "side_breakdown": {
+    "long_candidates": 65,
+    "short_candidates": 0,
+    "long_with_pattern": 65,
+    "short_with_pattern": 0,
+    "long_without_pattern": 0,
+    "short_without_pattern": 0
+  },
+  "coverage_ratios": {
+    "pattern_coverage_ratio": 39.22222222222223,
+    "long_pattern_coverage_ratio": 100.0,
+    "short_pattern_coverage_ratio": 0,
+    "coverage_level": "low coverage"
+  },
+  "summary": "\nBars analyzed: 1000\n\nHSMM-passed candidates:     900\nWith any SMC pattern:       353  (39.2%)\nWithout SMC pattern:        547  (60.8%)\n\nPattern breakdown:\n  Bullish OB:                 0\n  Bearish OB:                 0\n  Bullish FVG:              178\n  Bearish FVG:              175\n  Multiple patterns:          0\n\nSide breakdown:\n  Long candidates:           65\n  Long with pattern:         65  (100.0%)\n  Short candidates:           0\n  Short with pattern:         0  (0.0%)\n\nCoverage level: low coverage\n"
+}

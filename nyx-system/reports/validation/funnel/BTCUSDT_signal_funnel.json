@@ -1,0 +1,43 @@
+{
+  "pair": "BTCUSDT",
+  "period": {
+    "start": "2020-01-01T00:00:00",
+    "end": "2024-12-31T23:00:00"
+  },
+  "counters": {
+    "bars_analyzed": 43848,
+    "warmup_skipped": 100,
+    "raw_opportunities": 43748,
+    "insufficient_data": 43748,
+    "hsmm_initialization_failed": 0,
+    "hsmm_passed": 0,
+    "smc_passed": 0,
+    "confidence_passed": 0,
+    "macro_passed": 0,
+    "risk_passed": 0,
+    "trades_executed": 0
+  },
+  "pass_rates": {
+    "hsmm_rate": 0.0,
+    "smc_rate": 0.0,
+    "confidence_rate": 0.0,
+    "macro_rate": 0.0,
+    "risk_rate": 0.0,
+    "execution_rate": 0.0
+  },
+  "sides": {
+    "long_opportunities": 0,
+    "short_opportunities": 0,
+    "long_rejected": 0,
+    "short_rejected": 0,
+    "long_executed": 0,
+    "short_executed": 0
+  },
+  "top_rejections": [
+    [
+      "insufficient_data",
+      43748
+    ]
+  ],
+  "summary": "\nBars analyzed: 43848\nWarmup skipped: 100\n\nSIGNAL FUNNEL:\nRaw opportunities:     43748\nInsufficient data:     43748  (100.0%)\nAfter HSMM:                0  (0.0%)\nAfter confidence:          0  (0.0%)\nAfter SMC:                 0  (0.0%)\nAfter macro:               0  (0.0%)\nAfter risk:                0  (0.0%)\nTrades executed:           0  (0.0%)\n\nSIDES:\nLong opportunities:        0\nLong executed:             0\nShort opportunities:       0\nShort executed:            0\n\nTOP REJECTION REASONS:\n  insufficient_data               43748\n"
+}

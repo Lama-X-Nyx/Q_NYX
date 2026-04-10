@@ -1,0 +1,70 @@
+{
+  "pair": "BTCUSDT",
+  "fix_description": "Added sma_20 and sma_50 to RegimeAgent._prepare_data() to align with HSMM._label_states_heuristic() requirements",
+  "test_periods": [
+    "2023-01-15",
+    "2023-03-15",
+    "2023-10-15",
+    "2023-12-15"
+  ],
+  "before": {
+    "source": "HSMM Deep Dive - 2023-04-03 (before fix)",
+    "trend_plus_prob_mean": 0.0533,
+    "range_prob_mean": 0.8933,
+    "trend_minus_prob_mean": 0.0533,
+    "trend_plus_selected_count": 0,
+    "range_selected_count": 4,
+    "trend_minus_selected_count": 0,
+    "total_periods": 4,
+    "trend_plus_rate": 0.0,
+    "range_rate": 100.0,
+    "issue": "range_state_dominance",
+    "verdict": "HSMM internal state probabilities structurally dominated by range"
+  },
+  "after": {
+    "source": "HSMM Deep Dive - rerun after sma_20/sma_50 fix",
+    "trend_plus_prob_mean": 0.7147,
+    "range_prob_mean": 0.2724,
+    "trend_minus_prob_mean": 0.0129,
+    "trend_plus_selected_count": 3,
+    "range_selected_count": 1,
+    "trend_minus_selected_count": 0,
+    "total_periods": 4,
+    "trend_plus_rate": 75.0,
+    "range_rate": 25.0,
+    "issue": "unclear",
+    "verdict": "Trend states now appear normally"
+  },
+  "improvement": {
+    "trend_plus_prob_delta": 0.6614,
+    "trend_plus_prob_increase_factor": 13.4,
+    "range_prob_delta": -0.6209,
+    "range_prob_decrease_factor": 3.3,
+    "trend_plus_selected_delta": 3,
+    "trend_plus_rate_delta": 75.0,
+    "verdict": "IMPROVED",
+    "conclusion": "Initialization feature mismatch was THE MAJOR BLOCKER. After adding sma_20 and sma_50, trend_plus probability increased from 5.33% to 71.47% (13.4x), and trend_plus is now selected in 3/4 periods (was 0/4)."
+  },
+  "period_details": {
+    "2023-01-15": {
+      "before": {"trend_plus_prob": 0.0082, "selected": "range"},
+      "after": {"trend_plus_prob": 0.9928, "selected": "trend_plus"},
+      "improvement": "121x increase, now selects trend_plus"
+    },
+    "2023-03-15": {
+      "before": {"trend_plus_prob": 0.0000, "selected": "range"},
+      "after": {"trend_plus_prob": 0.8059, "selected": "trend_plus"},
+      "improvement": "Infinite increase (from 0%), now selects trend_plus"
+    },
+    "2023-10-15": {
+      "before": {"trend_plus_prob": 0.2052, "selected": "range"},
+      "after": {"trend_plus_prob": 0.4315, "selected": "range"},
+      "improvement": "2.1x increase, competitive (43% vs 57%)"
+    },
+    "2023-12-15": {
+      "before": {"trend_plus_prob": 0.0000, "selected": "range"},
+      "after": {"trend_plus_prob": 0.6284, "selected": "trend_plus"},
+      "improvement": "Infinite increase (from 0%), now selects trend_plus"
+    }
+  }
+}

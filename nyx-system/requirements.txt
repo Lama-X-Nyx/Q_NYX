@@ -1,0 +1,44 @@
+# NYX Trading System - Dependencies
+
+# Core Data Science
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.10.0
+
+# Machine Learning
+scikit-learn>=1.3.0
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+plotly>=5.14.0
+
+# Financial Data
+yfinance>=0.2.18
+ccxt>=4.0.0
+python-binance>=1.0.17
+
+# API & Web
+requests>=2.31.0
+websocket-client>=1.5.1
+fastapi>=0.100.0
+uvicorn>=0.22.0
+
+# Configuration
+pyyaml>=6.0
+python-dotenv>=1.0.0
+
+# Testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
+
+# Logging
+loguru>=0.7.0
+
+# Utils
+tqdm>=4.65.0
+colorama>=0.4.6
+
+# Dashboard (optional)
+# streamlit>=1.24.0
+# dash>=2.11.0

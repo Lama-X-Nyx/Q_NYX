@@ -1,0 +1,44 @@
+{
+  "pair": "BTCUSDT",
+  "bars_analyzed": 1000,
+  "total_trades": 1,
+  "trade_groups": {
+    "fvg_only": {
+      "count": 1,
+      "win_rate": 100.0,
+      "avg_pnl": 13.95435511764942,
+      "profit_factor": 999,
+      "expectancy": 13.95435511764942,
+      "max_drawdown": 0.0,
+      "avg_duration": 841.0
+    },
+    "ob_only": {
+      "count": 0,
+      "win_rate": 0,
+      "avg_pnl": 0,
+      "profit_factor": 0,
+      "expectancy": 0,
+      "max_drawdown": 0,
+      "avg_duration": 0
+    },
+    "fvg_and_ob": {
+      "count": 0,
+      "win_rate": 0,
+      "avg_pnl": 0,
+      "profit_factor": 0,
+      "expectancy": 0,
+      "max_drawdown": 0,
+      "avg_duration": 0
+    },
+    "no_pattern": {
+      "count": 0,
+      "win_rate": 0,
+      "avg_pnl": 0,
+      "profit_factor": 0,
+      "expectancy": 0,
+      "max_drawdown": 0,
+      "avg_duration": 0
+    }
+  },
+  "summary": "\nTrades analyzed: 1\n\nFVG ONLY:\n  Trades:              1\n  Win rate:        100.0%\n  Avg PnL:         13.95%\n  Profit factor:  999.00\n  Expectancy:      13.95%\n  Max DD:           0.00%\n  Avg duration:    841.0h\n\nConclusion:\n  Best quality: fvg_only (expectancy: 13.95%)\n  Most trades: fvg_only (1 trades)\n"
+}

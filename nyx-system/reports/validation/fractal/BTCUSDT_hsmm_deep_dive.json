@@ -1,0 +1,65 @@
+{
+  "pair": "BTCUSDT",
+  "test_dates": [
+    "2023-12-15T00:00:00"
+  ],
+  "periods": {
+    "2023-12-15T00:00:00": {
+      "date": "2023-12-15T00:00:00",
+      "input_features": {
+        "returns_mean": 0.0007950137375185906,
+        "returns_std": 0.005194262534872217,
+        "returns_median": 0.00012007919083945051,
+        "returns_skew": 0.3887866502105315,
+        "atr_mean": 358.5002857142853,
+        "atr_std": 66.40154053563857,
+        "price_slope": 0.001155009956230627,
+        "window_size": 50
+      },
+      "state_probabilities": {
+        "trend_plus": 0.6283725211906027,
+        "range": 0.32616594514805336,
+        "trend_minus": 0.04546153366134727
+      },
+      "selected_state": "trend_plus",
+      "sdc": 6.283725211906027,
+      "stability": 0.75,
+      "mapping_details": {
+        "raw_state": "Trend+",
+        "mapped_state": "trend_plus",
+        "mapping_reason": "highest probability state",
+        "agent_final_state": "trend_plus",
+        "agent_passed": true
+      },
+      "diagnostic": "trend_plus selected with 0.63 probability"
+    }
+  },
+  "cross_period_summary": {
+    "total_periods": 1,
+    "state_counts": {
+      "trend_plus": 1,
+      "range": 0,
+      "trend_minus": 0
+    },
+    "probability_means": {
+      "trend_plus": 0.6283725211906027,
+      "range": 0.32616594514805336,
+      "trend_minus": 0.04546153366134727
+    },
+    "probability_stds": {
+      "trend_plus": 0.0,
+      "range": 0.0,
+      "trend_minus": 0.0
+    },
+    "feature_summary": {
+      "returns_mean_avg": 0.0007950137375185906,
+      "returns_std_avg": 0.005194262534872217
+    },
+    "main_issue": "feature_alignment_fixed",
+    "verdict": "HSMM feature alignment fix successfully unlocked trend states"
+  },
+  "metadata": {
+    "generated_at": "2026-04-04T13:00:14.838085",
+    "total_periods": 1
+  }
+}

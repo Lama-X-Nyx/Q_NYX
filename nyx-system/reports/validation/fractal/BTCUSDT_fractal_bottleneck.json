@@ -1,0 +1,297 @@
+{
+  "pair": "BTCUSDT",
+  "reference_date": "2023-12-15T00:00:00",
+  "bars_analyzed": 47,
+  "bars_ready_for_decision": 47,
+  "bars_skipped_due_to_readiness": 0,
+  "active_agents": [
+    "context",
+    "regime",
+    "setup"
+  ],
+  "diagnostics": {
+    "readiness_blocks": {
+      "context": 0,
+      "regime": 0,
+      "setup": 0
+    },
+    "logic_blocks": {
+      "context": 0,
+      "regime": 0,
+      "setup": 47,
+      "risk": 0
+    },
+    "actions": {
+      "approved_buy": 0,
+      "approved_sell": 0,
+      "wait_neutral": 0
+    }
+  },
+  "ready_only_summary": {
+    "context_pass_rate": 100.0,
+    "regime_pass_rate": 100.0,
+    "setup_pass_rate": 0.0,
+    "final_trade_rate": 0.0,
+    "primary_bottleneck": "setup"
+  },
+  "bottleneck_ranking": [
+    {
+      "agent": "setup",
+      "blocks": 47
+    },
+    {
+      "agent": "context",
+      "blocks": 0
+    },
+    {
+      "agent": "regime",
+      "blocks": 0
+    },
+    {
+      "agent": "risk",
+      "blocks": 0
+    }
+  ],
+  "sample_blocked_decisions": [
+    {
+      "timestamp": "2023-12-14 12:30:00",
+      "blocked_by": [
+        "setup"
+      ],
+      "reason": "Blocked by: setup",
+      "components": {
+        "context": {
+          "state": "bullish",
+          "passed": true,
+          "score": 1.0
+        },
+        "regime": {
+          "state": "range",
+          "passed": true,
+          "score": 0.9880642363751061
+        },
+        "setup": {
+          "state": "misaligned",
+          "passed": false,
+          "score": 0.3
+        }
+      }
+    },
+    {
+      "timestamp": "2023-12-14 12:45:00",
+      "blocked_by": [
+        "setup"
+      ],
+      "reason": "Blocked by: setup",
+      "components": {
+        "context": {
+          "state": "bullish",
+          "passed": true,
+          "score": 1.0
+        },
+        "regime": {
+          "state": "range",
+          "passed": true,
+          "score": 0.9880642363751061
+        },
+        "setup": {
+          "state": "misaligned",
+          "passed": false,
+          "score": 0.3
+        }
+      }
+    },
+    {
+      "timestamp": "2023-12-14 13:00:00",
+      "blocked_by": [
+        "setup"
+      ],
+      "reason": "Blocked by: setup",
+      "components": {
+        "context": {
+          "state": "bullish",
+          "passed": true,
+          "score": 1.0
+        },
+        "regime": {
+          "state": "range",
+          "passed": true,
+          "score": 0.9762998350385557
+        },
+        "setup": {
+          "state": "misaligned",
+          "passed": false,
+          "score": 0.3
+        }
+      }
+    },
+    {
+      "timestamp": "2023-12-14 13:15:00",
+      "blocked_by": [
+        "setup"
+      ],
+      "reason": "Blocked by: setup",
+      "components": {
+        "context": {
+          "state": "bullish",
+          "passed": true,
+          "score": 1.0
+        },
+        "regime": {
+          "state": "range",
+          "passed": true,
+          "score": 0.9762998350385557
+        },
+        "setup": {
+          "state": "misaligned",
+          "passed": false,
+          "score": 0.3
+        }
+      }
+    },
+    {
+      "timestamp": "2023-12-14 13:30:00",
+      "blocked_by": [
+        "setup"
+      ],
+      "reason": "Blocked by: setup",
+      "components": {
+        "context": {
+          "state": "bullish",
+          "passed": true,
+          "score": 1.0
+        },
+        "regime": {
+          "state": "range",
+          "passed": true,
+          "score": 0.9762998350385557
+        },
+        "setup": {
+          "state": "misaligned",
+          "passed": false,
+          "score": 0.3
+        }
+      }
+    },
+    {
+      "timestamp": "2023-12-14 13:45:00",
+      "blocked_by": [
+        "setup"
+      ],
+      "reason": "Blocked by: setup",
+      "components": {
+        "context": {
+          "state": "bullish",
+          "passed": true,
+          "score": 1.0
+        },
+        "regime": {
+          "state": "range",
+          "passed": true,
+          "score": 0.9762998350385557
+        },
+        "setup": {
+          "state": "misaligned",
+          "passed": false,
+          "score": 0.3
+        }
+      }
+    },
+    {
+      "timestamp": "2023-12-14 14:00:00",
+      "blocked_by": [
+        "setup"
+      ],
+      "reason": "Blocked by: setup",
+      "components": {
+        "context": {
+          "state": "bullish",
+          "passed": true,
+          "score": 1.0
+        },
+        "regime": {
+          "state": "range",
+          "passed": true,
+          "score": 0.9999973758890558
+        },
+        "setup": {
+          "state": "misaligned",
+          "passed": false,
+          "score": 0.3
+        }
+      }
+    },
+    {
+      "timestamp": "2023-12-14 14:15:00",
+      "blocked_by": [
+        "setup"
+      ],
+      "reason": "Blocked by: setup",
+      "components": {
+        "context": {
+          "state": "bullish",
+          "passed": true,
+          "score": 1.0
+        },
+        "regime": {
+          "state": "range",
+          "passed": true,
+          "score": 0.9999973758890558
+        },
+        "setup": {
+          "state": "misaligned",
+          "passed": false,
+          "score": 0.3
+        }
+      }
+    },
+    {
+      "timestamp": "2023-12-14 14:30:00",
+      "blocked_by": [
+        "setup"
+      ],
+      "reason": "Blocked by: setup",
+      "components": {
+        "context": {
+          "state": "bullish",
+          "passed": true,
+          "score": 1.0
+        },
+        "regime": {
+          "state": "range",
+          "passed": true,
+          "score": 0.9999973758890558
+        },
+        "setup": {
+          "state": "misaligned",
+          "passed": false,
+          "score": 0.3
+        }
+      }
+    },
+    {
+      "timestamp": "2023-12-14 14:45:00",
+      "blocked_by": [
+        "setup"
+      ],
+      "reason": "Blocked by: setup",
+      "components": {
+        "context": {
+          "state": "bullish",
+          "passed": true,
+          "score": 1.0
+        },
+        "regime": {
+          "state": "range",
+          "passed": true,
+          "score": 0.9999973758890558
+        },
+        "setup": {
+          "state": "misaligned",
+          "passed": false,
+          "score": 0.3
+        }
+      }
+    }
+  ]
+}

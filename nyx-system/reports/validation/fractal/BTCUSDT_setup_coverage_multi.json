@@ -1,0 +1,291 @@
+{
+  "pair": "BTCUSDT",
+  "periods": {
+    "2022-06-15": {
+      "regime_label": "bear",
+      "bars_ready_for_decision": 47,
+      "setup_pass_rate": 0.0,
+      "block_reasons": {
+        "no_pattern": 47,
+        "misaligned_pattern": 0,
+        "alignment_score_too_low": 0,
+        "direction_conflict": 0,
+        "setup_not_ready": 0,
+        "unknown": 0
+      },
+      "pattern_observed": {
+        "bullish_fvg": 0,
+        "bearish_fvg": 0,
+        "bullish_ob": 0,
+        "bearish_ob": 0,
+        "no_pattern": 47
+      },
+      "primary_setup_issue": "no_pattern",
+      "sample_blocked_setups": [
+        {
+          "timestamp": "2022-06-14 12:30:00",
+          "state": "misaligned",
+          "reason": "No pattern detected",
+          "alignment_score": 0.3,
+          "patterns": {
+            "bullish_fvg": false,
+            "bearish_fvg": false,
+            "bullish_ob": false,
+            "bearish_ob": false
+          },
+          "context_state": "bearish",
+          "regime_state": "range"
+        },
+        {
+          "timestamp": "2022-06-14 12:45:00",
+          "state": "misaligned",
+          "reason": "No pattern detected",
+          "alignment_score": 0.3,
+          "patterns": {
+            "bullish_fvg": false,
+            "bearish_fvg": false,
+            "bullish_ob": false,
+            "bearish_ob": false
+          },
+          "context_state": "bearish",
+          "regime_state": "range"
+        },
+        {
+          "timestamp": "2022-06-14 13:00:00",
+          "state": "misaligned",
+          "reason": "No pattern detected",
+          "alignment_score": 0.3,
+          "patterns": {
+            "bullish_fvg": false,
+            "bearish_fvg": false,
+            "bullish_ob": false,
+            "bearish_ob": false
+          },
+          "context_state": "bearish",
+          "regime_state": "range"
+        },
+        {
+          "timestamp": "2022-06-14 13:15:00",
+          "state": "misaligned",
+          "reason": "No pattern detected",
+          "alignment_score": 0.3,
+          "patterns": {
+            "bullish_fvg": false,
+            "bearish_fvg": false,
+            "bullish_ob": false,
+            "bearish_ob": false
+          },
+          "context_state": "bearish",
+          "regime_state": "range"
+        },
+        {
+          "timestamp": "2022-06-14 13:30:00",
+          "state": "misaligned",
+          "reason": "No pattern detected",
+          "alignment_score": 0.3,
+          "patterns": {
+            "bullish_fvg": false,
+            "bearish_fvg": false,
+            "bullish_ob": false,
+            "bearish_ob": false
+          },
+          "context_state": "bearish",
+          "regime_state": "range"
+        }
+      ]
+    },
+    "2023-03-15": {
+      "regime_label": "bull",
+      "bars_ready_for_decision": 47,
+      "setup_pass_rate": 0.0,
+      "block_reasons": {
+        "no_pattern": 47,
+        "misaligned_pattern": 0,
+        "alignment_score_too_low": 0,
+        "direction_conflict": 0,
+        "setup_not_ready": 0,
+        "unknown": 0
+      },
+      "pattern_observed": {
+        "bullish_fvg": 0,
+        "bearish_fvg": 0,
+        "bullish_ob": 0,
+        "bearish_ob": 0,
+        "no_pattern": 47
+      },
+      "primary_setup_issue": "no_pattern",
+      "sample_blocked_setups": [
+        {
+          "timestamp": "2023-03-14 12:30:00",
+          "state": "no_bias",
+          "reason": "No pattern detected",
+          "alignment_score": 0.4,
+          "patterns": {
+            "bullish_fvg": false,
+            "bearish_fvg": false,
+            "bullish_ob": false,
+            "bearish_ob": false
+          },
+          "context_state": "neutral",
+          "regime_state": "range"
+        },
+        {
+          "timestamp": "2023-03-14 12:45:00",
+          "state": "no_bias",
+          "reason": "No pattern detected",
+          "alignment_score": 0.4,
+          "patterns": {
+            "bullish_fvg": false,
+            "bearish_fvg": false,
+            "bullish_ob": false,
+            "bearish_ob": false
+          },
+          "context_state": "neutral",
+          "regime_state": "range"
+        },
+        {
+          "timestamp": "2023-03-14 13:00:00",
+          "state": "no_bias",
+          "reason": "No pattern detected",
+          "alignment_score": 0.4,
+          "patterns": {
+            "bullish_fvg": false,
+            "bearish_fvg": false,
+            "bullish_ob": false,
+            "bearish_ob": false
+          },
+          "context_state": "neutral",
+          "regime_state": "range"
+        },
+        {
+          "timestamp": "2023-03-14 13:15:00",
+          "state": "no_bias",
+          "reason": "No pattern detected",
+          "alignment_score": 0.4,
+          "patterns": {
+            "bullish_fvg": false,
+            "bearish_fvg": false,
+            "bullish_ob": false,
+            "bearish_ob": false
+          },
+          "context_state": "neutral",
+          "regime_state": "range"
+        },
+        {
+          "timestamp": "2023-03-14 13:30:00",
+          "state": "no_bias",
+          "reason": "No pattern detected",
+          "alignment_score": 0.4,
+          "patterns": {
+            "bullish_fvg": false,
+            "bearish_fvg": false,
+            "bullish_ob": false,
+            "bearish_ob": false
+          },
+          "context_state": "neutral",
+          "regime_state": "range"
+        }
+      ]
+    },
+    "2023-12-15": {
+      "regime_label": "range",
+      "bars_ready_for_decision": 47,
+      "setup_pass_rate": 0.0,
+      "block_reasons": {
+        "no_pattern": 47,
+        "misaligned_pattern": 0,
+        "alignment_score_too_low": 0,
+        "direction_conflict": 0,
+        "setup_not_ready": 0,
+        "unknown": 0
+      },
+      "pattern_observed": {
+        "bullish_fvg": 0,
+        "bearish_fvg": 0,
+        "bullish_ob": 0,
+        "bearish_ob": 0,
+        "no_pattern": 47
+      },
+      "primary_setup_issue": "no_pattern",
+      "sample_blocked_setups": [
+        {
+          "timestamp": "2023-12-14 12:30:00",
+          "state": "misaligned",
+          "reason": "No pattern detected",
+          "alignment_score": 0.3,
+          "patterns": {
+            "bullish_fvg": false,
+            "bearish_fvg": false,
+            "bullish_ob": false,
+            "bearish_ob": false
+          },
+          "context_state": "bullish",
+          "regime_state": "range"
+        },
+        {
+          "timestamp": "2023-12-14 12:45:00",
+          "state": "misaligned",
+          "reason": "No pattern detected",
+          "alignment_score": 0.3,
+          "patterns": {
+            "bullish_fvg": false,
+            "bearish_fvg": false,
+            "bullish_ob": false,
+            "bearish_ob": false
+          },
+          "context_state": "bullish",
+          "regime_state": "range"
+        },
+        {
+          "timestamp": "2023-12-14 13:00:00",
+          "state": "misaligned",
+          "reason": "No pattern detected",
+          "alignment_score": 0.3,
+          "patterns": {
+            "bullish_fvg": false,
+            "bearish_fvg": false,
+            "bullish_ob": false,
+            "bearish_ob": false
+          },
+          "context_state": "bullish",
+          "regime_state": "range"
+        },
+        {
+          "timestamp": "2023-12-14 13:15:00",
+          "state": "misaligned",
+          "reason": "No pattern detected",
+          "alignment_score": 0.3,
+          "patterns": {
+            "bullish_fvg": false,
+            "bearish_fvg": false,
+            "bullish_ob": false,
+            "bearish_ob": false
+          },
+          "context_state": "bullish",
+          "regime_state": "range"
+        },
+        {
+          "timestamp": "2023-12-14 13:30:00",
+          "state": "misaligned",
+          "reason": "No pattern detected",
+          "alignment_score": 0.3,
+          "patterns": {
+            "bullish_fvg": false,
+            "bearish_fvg": false,
+            "bullish_ob": false,
+            "bearish_ob": false
+          },
+          "context_state": "bullish",
+          "regime_state": "range"
+        }
+      ]
+    }
+  },
+  "cross_period_summary": {
+    "average_setup_pass_rate": 0.0,
+    "bull_behavior": "very low pattern coverage",
+    "bear_behavior": "very low pattern coverage",
+    "range_behavior": "very low pattern coverage",
+    "global_interpretation": "Detector is globally too silent across all tested regimes"
+  }
+}

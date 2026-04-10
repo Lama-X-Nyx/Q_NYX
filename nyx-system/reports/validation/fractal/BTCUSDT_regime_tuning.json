@@ -1,0 +1,143 @@
+{
+  "pair": "BTCUSDT",
+  "test_dates": [
+    "2023-12-15T00:00:00"
+  ],
+  "scenarios": [
+    {
+      "scenario": "baseline",
+      "label": "Baseline (current)",
+      "description": "Current production settings - sdc_min=5.0, stability_min=0.6",
+      "params": {
+        "sdc_min": 5.0,
+        "stability_min": 0.6
+      },
+      "results": [
+        {
+          "date": "2023-12-15T00:00:00",
+          "state": "range",
+          "score": 1.0,
+          "passed": true,
+          "ready": true,
+          "metadata": {
+            "sdc": 10.0,
+            "stability": 0.75,
+            "trend_plus": false
+          }
+        }
+      ],
+      "summary": {
+        "total_periods": 1,
+        "trend_plus_count": 0,
+        "range_count": 1,
+        "trend_plus_rate": 0.0,
+        "range_rate": 100.0
+      }
+    },
+    {
+      "scenario": "slightly_relaxed",
+      "label": "Slightly Relaxed",
+      "description": "Modest relaxation: sdc_min=4.0, stability_min=0.50",
+      "params": {
+        "sdc_min": 4.0,
+        "stability_min": 0.5
+      },
+      "results": [
+        {
+          "date": "2023-12-15T00:00:00",
+          "state": "range",
+          "score": 1.0,
+          "passed": true,
+          "ready": true,
+          "metadata": {
+            "sdc": 10.0,
+            "stability": 0.75,
+            "trend_plus": false
+          }
+        }
+      ],
+      "summary": {
+        "total_periods": 1,
+        "trend_plus_count": 0,
+        "range_count": 1,
+        "trend_plus_rate": 0.0,
+        "range_rate": 100.0
+      }
+    },
+    {
+      "scenario": "moderately_relaxed",
+      "label": "Moderately Relaxed",
+      "description": "Moderate relaxation: sdc_min=3.0, stability_min=0.40",
+      "params": {
+        "sdc_min": 3.0,
+        "stability_min": 0.4
+      },
+      "results": [
+        {
+          "date": "2023-12-15T00:00:00",
+          "state": "range",
+          "score": 1.0,
+          "passed": true,
+          "ready": true,
+          "metadata": {
+            "sdc": 10.0,
+            "stability": 0.75,
+            "trend_plus": false
+          }
+        }
+      ],
+      "summary": {
+        "total_periods": 1,
+        "trend_plus_count": 0,
+        "range_count": 1,
+        "trend_plus_rate": 0.0,
+        "range_rate": 100.0
+      }
+    },
+    {
+      "scenario": "aggressive",
+      "label": "Aggressive",
+      "description": "Aggressive relaxation: sdc_min=2.0, stability_min=0.30",
+      "params": {
+        "sdc_min": 2.0,
+        "stability_min": 0.3
+      },
+      "results": [
+        {
+          "date": "2023-12-15T00:00:00",
+          "state": "range",
+          "score": 1.0,
+          "passed": true,
+          "ready": true,
+          "metadata": {
+            "sdc": 10.0,
+            "stability": 0.75,
+            "trend_plus": false
+          }
+        }
+      ],
+      "summary": {
+        "total_periods": 1,
+        "trend_plus_count": 0,
+        "range_count": 1,
+        "trend_plus_rate": 0.0,
+        "range_rate": 100.0
+      }
+    }
+  ],
+  "verdict": {
+    "conclusion": "Regime remains too conservative",
+    "message": "Best scenario improves trend_plus_rate by only 0.0%",
+    "best_scenario": "baseline",
+    "best_label": "Baseline (current)",
+    "baseline_trend_rate": 0.0,
+    "best_trend_rate": 0.0,
+    "improvement": 0.0,
+    "recommendation": "Regime tuning alone insufficient - investigate Context alignment or deeper HSMM issues"
+  },
+  "metadata": {
+    "generated_at": "2026-03-30T20:34:32.244571",
+    "total_scenarios": 4,
+    "total_periods": 1
+  }
+}

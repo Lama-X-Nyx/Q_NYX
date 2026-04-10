@@ -1,0 +1,178 @@
+# NYX Phase 1 - Validation Baseline
+# FROZEN - Do NOT modify during Phase 1 validation
+
+# Pairs authorized for validation
+pairs:
+  - BTCUSDT
+  - ETHUSDT
+
+# Multi-Timeframe Configuration
+mtf:
+  enabled: false  # Set to true to use 4-TF baseline
+  
+  # Timeframe hierarchy (NYX Prompt Maître v5.5M)
+  timeframes:
+    context: "1d"     # Daily - Strategic Intent & Bias
+    regime: "4h"      # 4-Hour - Operational Stability (HSMM primary)
+    bridge: "1h"      # 1-Hour - Intermediate confirmation
+    setup: "15m"      # 15-Minute - SMC patterns (OB, FVG, BoS/CHoCH)
+    entry: "5m"       # 5-Minute - Entry timing (optional)
+  
+  # Fractal scoring weights (base values)
+  weights:
+    "1d": 3.0
+    "4h": 2.0
+    "1h": 1.5
+    "15m": 1.0
+    "5m": 0.5
+  
+  # ATR weight adjustment
+  atr_adjustment:
+    high_vol_boost: 0.2    # +0.2 if ATR(14) > 1.2 × ATR(50)
+    low_vol_penalty: -0.2  # -0.2 if ATR(14) < 0.8 × ATR(50)
+  
+  # Synchronization rules
+  sync:
+    require_closed_candles: true   # Only use closed HTF candles
+    macro_block_freeze: true       # Freeze transitions during macro events
+  
+  # Data requirements (minimum bars per TF)
+  min_bars:
+    "1d": 200
+    "4h": 500
+    "1h": 1000
+    "15m": 2000
+    "5m": 5000
+
+# Fractal Agent Architecture (Active Baseline)
+fractal:
+  enabled: true                     # Use fractal architecture
+  use_entry_agent: false            # Entry/5M not yet active (awaiting data)
+  
+  # Active agent timeframes (3-layer baseline)
+  timeframes:
+    context_tf: "1d"                # Context Agent - macro bias
+    structure_tf: "4h"              # Structure (reserved for future use)
+    regime_tf: "1h"                 # Regime Agent - HSMM regime detection
+    setup_tf: "15m"                 # Setup Agent - SMC patterns
+  
+  # Context windows per timeframe (in days)
+  context_windows:
+    context_1d_days: 360            # 1 year macro context
+    structure_4h_days: 7            # 1 week structure
+    regime_1h_days: 5               # 5 days regime (for 100+ bars 1H)
+    setup_15m_days: 1               # 1 day setup
+  
+  # Deferred (not yet implemented)
+  # entry_tf: "5m"                  # Entry Agent - awaiting 5M data pipeline
+
+# Fractal Readiness Requirements
+fractal_readiness:
+  context_min_bars: 50              # Context Agent needs 50+ bars 1D (for SMA 20/50)
+  regime_min_bars: 100              # Regime Agent needs 100+ bars 1H (for HSMM)
+  setup_min_bars: 50                # Setup Agent needs 50+ bars 15M (for SMC lookback)
+
+
+# Single-TF fallback (legacy/diagnostic mode)
+timeframe: "1h"
+
+# Historical period for validation
+period:
+  start: "2020-01-01"
+  end: "2024-12-31"
+  
+# Reference capital
+capital:
+  initial: 10000
+  currency: "USD"
+
+# Fees and slippage (for validation realism)
+execution:
+  maker_fee: 0.0004  # 0.04% Binance maker
+  taker_fee: 0.0010  # 0.10% Binance taker
+  slippage_bps: 5     # 5 basis points average slippage
+
+# NYX Engine parameters - FROZEN
+strategy:
+  # Minimum bars required for signal generation
+  min_required_bars: 100
+  
+  # Multi-TF entry conditions (all required)
+  mtf_conditions:
+    sdc_min: 5.0              # Score de Confiance > 5
+    stability_4h_min: 0.60    # Stability_4H ≥ 0.60 (0.70 if macro_block)
+    alignment_15m_min: 0.60   # max{P(Trend+), P(Trend-)}_{15M} ≥ 0.60
+    rr_min: 2.0               # Risk/Reward ≥ 2:1
+    hit_minus_010_max: 0.20   # P(hit -0.10) ≤ 0.20
+  
+  # Flip detection (1H/4H)
+  flip:
+    prob_threshold: 0.35      # P(flip at h∈{2,3}) > 0.35
+    volume_multiplier: 1.5    # Volume > 1.5× MA20
+  
+  hsmm:
+    sdc_threshold: 3.5
+    prob_threshold: 0.55
+  
+  smc:
+    ob_range_threshold: 0.015
+    ob_lookback: 5           # OB base 2-6 candles, lookback 5
+    fvg_threshold: 0.01
+  
+  risk:
+    base_size: 0.05          # 5% per trade
+    max_position: 0.25       # 25% max
+    stop_loss: 0.05          # 5%
+    take_profit: 0.15        # 15%
+    bull_multiplier: 2.5
+    bear_multiplier: 0.7
+    range_multiplier: 1.0
+
+# Validation specific settings
+validation:
+  # Performance optimization (P1-06d)
+  warmup_bars: 100           # Bars to skip at start (NYX needs history)
+  signal_lookback_bars: 50   # Max historical window (50 bars = 2 days @ 1h, reasonable for multi-TF perspective)
+  
+  # Walk-forward
+  walk_forward:
+    train_months: 12
+    test_months: 3
+    step_months: 3
+  
+  # Monte Carlo
+  monte_carlo:
+    runs: 1000
+    seed: 42
+    confidence_levels: [0.05, 0.25, 0.50, 0.75, 0.95]
+  
+  # Sensitivity analysis
+  sensitivity:
+    params_to_test:
+      - sdc_threshold
+      - prob_threshold
+      - base_size
+      - stop_loss
+      - take_profit
+    variations: [-20, -10, 10, 20]  # Percentage variations
+  
+  # Benchmarks
+  benchmarks:
+    - buy_hold
+    - sma_crossover
+    - random_entry
+    - hsmm_only
+    - smc_only
+
+# Phase 1 metadata
+metadata:
+  version: "1.0.0"
+  frozen_date: "2025-03-28"
+  baseline_code_version: "v0.8.2-FINAL"
+  note: "This configuration is FROZEN for entire Phase 1. Any changes invalidate all validation results."
+
+# SMC Detector Configuration
+smc_detector:
+  ob_range_threshold: 0.015   # Order Block: minimum followthrough move (1.5%)
+  fvg_min_gap: 0.005          # Fair Value Gap: minimum gap size (0.5%)
+  liquidity_lookback: 20      # Liquidity sweep: bars to look back
