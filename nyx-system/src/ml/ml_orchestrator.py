@@ -20,6 +20,8 @@ from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import roc_auc_score
 
 from src.agents.contracts import AgentResult, OrchestratorDecision
+from src.ml.triple_barrier import label_with_context
+from src.ml.walk_forward_splitter import WalkForwardSplitter
 
 try:
     from river import linear_model, preprocessing, compose, metrics as river_metrics
@@ -205,10 +207,13 @@ class MLOrchestrator:
                 class_weight='balanced'
             )
 
-            tscv = TimeSeriesSplit(n_splits=n_splits)
+            # Walk-forward CV (meta-dataset is 15M aligned: bars_per_month=2880)
+            splitter = WalkForwardSplitter(n_folds=n_splits, test_months=3,
+                                           bars_per_month=2_880, embargo_bars=16,
+                                           mode='expanding', min_train_bars=5_000)
             fold_aucs = []
 
-            for tr_idx, val_idx in tscv.split(X):
+            for tr_idx, val_idx in splitter.split(X):
                 Xtr, ytr = X.iloc[tr_idx], y.iloc[tr_idx]
                 Xval, yval = X.iloc[val_idx], y.iloc[val_idx]
                 if ytr.sum() < 10 or yval.sum() < 5:
@@ -424,19 +429,23 @@ class MLOrchestrator:
         # We approximate by resampling context_arr to 15m length
         ctx_15m = self._broadcast_context(context_arr, n)
 
+        # Precompute triple-barrier labels for the full 15M series
+        ctx_series = pd.Series(ctx_15m, index=df_15m.index)
+        tb_labels  = label_with_context(df_15m, ctx_series,
+                                        pt_mult=2.0, sl_mult=1.0,
+                                        num_bars=self.LABEL_BARS)
+
         records = []
         for i in range(warmup, n - self.LABEL_BARS):
             ctx = ctx_15m[i]
             if ctx not in ('bullish', 'bearish'):
                 continue
 
-            # Forward return label
-            if ctx == 'bullish':
-                future_max = high[i + 1: i + 1 + self.LABEL_BARS].max()
-                label = 1 if future_max > close[i] * (1 + self.LABEL_THR) else 0
-            else:
-                future_min = low[i + 1: i + 1 + self.LABEL_BARS].min()
-                label = 1 if future_min < close[i] * (1 - self.LABEL_THR) else 0
+            # Triple-barrier label (NaN → skip)
+            lbl_val = tb_labels.iloc[i]
+            if pd.isna(lbl_val):
+                continue
+            label = int(lbl_val)
 
             # Build meta features from raw arrays
             hsmm_row_15m = gamma_15m[i] if gamma_15m is not None and i < len(gamma_15m) else np.ones(6) / 6

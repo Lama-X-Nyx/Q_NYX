@@ -36,6 +36,7 @@ from river import linear_model, preprocessing, compose, metrics
 
 from src.agents.contracts import AgentResult
 from src.ml.feature_engine import MLFeatureEngine, IncrementalFeatureEngine
+from src.ml.walk_forward_splitter import WalkForwardSplitter
 
 
 class MLEntryAgent:
@@ -107,7 +108,7 @@ class MLEntryAgent:
             Per-bar context label ('bullish'/'bearish'/'neutral'), aligned with
             df_15m.  Typically computed from ContextAgent on the same history.
         n_splits : int
-            Walk-forward folds (TimeSeriesSplit).
+            Walk-forward folds (WalkForwardSplitter).
         n_rounds : int
             Max LGB boosting rounds per fold (early stopping at 50).
         cache_key : str
@@ -136,8 +137,10 @@ class MLEntryAgent:
 
         self._feature_names = X.columns.tolist()
 
-        # --- Walk-forward CV ---
-        tscv     = TimeSeriesSplit(n_splits=n_splits)
+        # --- Walk-forward CV (15M bars: bars_per_month=2880) ---
+        splitter  = WalkForwardSplitter(n_folds=n_splits, test_months=3,
+                                        bars_per_month=2_880, embargo_bars=16,
+                                        mode='expanding', min_train_bars=5_000)
         fold_aucs = []
 
         lgb_params = {
@@ -156,7 +159,7 @@ class MLEntryAgent:
         X_arr = X.values
         y_arr = y.values
 
-        for fold, (tr_idx, val_idx) in enumerate(tscv.split(X_arr)):
+        for fold, (tr_idx, val_idx) in enumerate(splitter.split(X)):
             X_tr, y_tr = X_arr[tr_idx], y_arr[tr_idx]
             X_val, y_val = X_arr[val_idx], y_arr[val_idx]
 

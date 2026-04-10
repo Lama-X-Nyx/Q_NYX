@@ -7,7 +7,7 @@ Three agents:
   MLSetupAgent    — 15M data + HSMM probs + SMC patterns, trade setup quality
 
 Each agent:
-  - pretrain()  : walk-forward CV (TimeSeriesSplit), saves .pkl to data/pretrain_cache/
+  - pretrain()  : walk-forward CV (WalkForwardSplitter), saves .pkl to data/pretrain_cache/
   - analyze()   : returns AgentResult (pass-through when not trained)
   - update_online(): River LR adapts after each outcome
 """
@@ -23,6 +23,8 @@ from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import roc_auc_score
 
 from src.agents.contracts import AgentResult
+from src.ml.triple_barrier import triple_barrier_labels, label_with_context
+from src.ml.walk_forward_splitter import WalkForwardSplitter
 
 # River is optional — wrap all usage in try/except
 try:
@@ -166,17 +168,27 @@ class MLContextAgent:
     # ------------------------------------------------------------------
 
     def create_labels(self, df_1d: pd.DataFrame,
-                      forward_bars: int = 5,
-                      bull_thr: float = 0.03,
-                      bear_thr: float = -0.03) -> pd.Series:
+                      pt_mult: float = 2.0,
+                      sl_mult: float = 1.0,
+                      num_bars: int = 5) -> pd.Series:
         """
-        Returns Series: 1=bullish, -1=bearish, 0=neutral.
-        Based on forward return over next `forward_bars` bars.
+        Triple-barrier labels on 1D data.
+        Returns Series: 1=bullish (TP hit), -1=bearish (TP hit short), 0=neutral/SL/time.
+
+        We run TB in both directions; bar gets:
+          +1 if bullish TB hits TP first
+          -1 if bearish TB hits TP first
+           0 otherwise
         """
-        fwd_ret = df_1d['close'].shift(-forward_bars) / df_1d['close'] - 1
-        labels  = pd.Series(0, index=df_1d.index)
-        labels[fwd_ret >  bull_thr] =  1
-        labels[fwd_ret <  bear_thr] = -1
+        lbl_bull = triple_barrier_labels(df_1d, context='bullish',
+                                         pt_mult=pt_mult, sl_mult=sl_mult,
+                                         num_bars=num_bars)
+        lbl_bear = triple_barrier_labels(df_1d, context='bearish',
+                                         pt_mult=pt_mult, sl_mult=sl_mult,
+                                         num_bars=num_bars)
+        labels = pd.Series(0, index=df_1d.index)
+        labels[lbl_bull == 1] =  1
+        labels[lbl_bear == 1] = -1
         return labels
 
     # ------------------------------------------------------------------
@@ -195,7 +207,6 @@ class MLContextAgent:
             y = self.create_labels(df_1d)
 
             mask = X.notna().all(axis=1) & y.notna()
-            # Drop last forward_bars rows (no label)
             mask.iloc[-5:] = False
             X, y = X[mask], y[mask]
 
@@ -210,14 +221,17 @@ class MLContextAgent:
             params = dict(num_leaves=15, learning_rate=0.05, n_estimators=200,
                           min_child_samples=20, verbose=-1, n_jobs=-1)
 
-            tscv     = TimeSeriesSplit(n_splits=n_splits)
+            # Walk-forward CV (1D bars: test_months=3, bars_per_month=30)
+            splitter = WalkForwardSplitter(n_folds=n_splits, test_months=3,
+                                           bars_per_month=30, embargo_bars=5,
+                                           mode='expanding', min_train_bars=200)
             auc_bull, auc_bear = [], []
 
-            for tr_idx, val_idx in tscv.split(X):
+            for tr_idx, val_idx in splitter.split(X):
                 Xtr, Xval = X.iloc[tr_idx], X.iloc[val_idx]
-                for y_bin, auc_list, name in [
-                    (y_bull, auc_bull, 'bull'),
-                    (y_bear, auc_bear, 'bear'),
+                for y_bin, auc_list in [
+                    (y_bull, auc_bull),
+                    (y_bear, auc_bear),
                 ]:
                     ytr, yval = y_bin.iloc[tr_idx], y_bin.iloc[val_idx]
                     if ytr.sum() < 5 or yval.sum() < 2:
@@ -432,20 +446,16 @@ class MLRegimeAgent:
     # ------------------------------------------------------------------
 
     def create_labels(self, df_1h: pd.DataFrame,
-                      forward_bars: int = 4,
-                      thr: float = 0.01) -> pd.Series:
+                      pt_mult: float = 1.5,
+                      sl_mult: float = 1.0,
+                      num_bars: int = 8) -> pd.Series:
         """
-        1 if max high in next forward_bars > close*(1+thr), else 0.
+        Triple-barrier labels on 1H data.
+        1 if bullish TP hit first within num_bars, else 0.
         """
-        labels = pd.Series(0, index=df_1h.index)
-        c = df_1h['close'].values
-        h = df_1h['high'].values
-        n = len(df_1h)
-        for i in range(n - forward_bars):
-            future_max = h[i + 1: i + 1 + forward_bars].max()
-            if future_max > c[i] * (1 + thr):
-                labels.iloc[i] = 1
-        return labels
+        return triple_barrier_labels(df_1h, context='bullish',
+                                     pt_mult=pt_mult, sl_mult=sl_mult,
+                                     num_bars=num_bars).fillna(0).astype(int)
 
     # ------------------------------------------------------------------
     # Training
@@ -465,7 +475,7 @@ class MLRegimeAgent:
             y = self.create_labels(df_1h)
 
             mask = X.notna().all(axis=1) & y.notna()
-            mask.iloc[-4:] = False
+            mask.iloc[-8:] = False
             X, y = X[mask], y[mask]
 
             if len(X) < 300:
@@ -476,10 +486,13 @@ class MLRegimeAgent:
             params = dict(num_leaves=31, learning_rate=0.05, n_estimators=300,
                           min_child_samples=50, verbose=-1, n_jobs=-1)
 
-            tscv = TimeSeriesSplit(n_splits=n_splits)
+            # Walk-forward CV (1H bars: test_months=3, bars_per_month=720)
+            splitter = WalkForwardSplitter(n_folds=n_splits, test_months=3,
+                                           bars_per_month=720, embargo_bars=8,
+                                           mode='expanding', min_train_bars=2000)
             fold_aucs = []
 
-            for tr_idx, val_idx in tscv.split(X):
+            for tr_idx, val_idx in splitter.split(X):
                 Xtr, ytr = X.iloc[tr_idx], y.iloc[tr_idx]
                 Xval, yval = X.iloc[val_idx], y.iloc[val_idx]
                 if ytr.sum() < 10 or yval.sum() < 5:
@@ -716,28 +729,22 @@ class MLSetupAgent:
     # ------------------------------------------------------------------
 
     def create_labels(self, df_15m: pd.DataFrame,
-                      context: str = 'bullish',
-                      forward_bars: int = 8,
-                      thr: float = 0.008) -> pd.Series:
+                      context_series: Optional[pd.Series] = None,
+                      pt_mult: float = 2.0,
+                      sl_mult: float = 1.0,
+                      num_bars: int = 16) -> pd.Series:
         """
-        1 if price moved in context direction by thr within forward_bars.
+        Triple-barrier labels on 15M data, direction-aware.
+        If context_series provided, uses label_with_context().
+        Otherwise defaults to bullish.
         """
-        labels = pd.Series(0, index=df_15m.index)
-        c = df_15m['close'].values
-        h = df_15m['high'].values
-        lo = df_15m['low'].values
-        n  = len(df_15m)
-
-        for i in range(n - forward_bars):
-            if context == 'bullish':
-                future_max = h[i + 1: i + 1 + forward_bars].max()
-                if future_max > c[i] * (1 + thr):
-                    labels.iloc[i] = 1
-            else:  # bearish
-                future_min = lo[i + 1: i + 1 + forward_bars].min()
-                if future_min < c[i] * (1 - thr):
-                    labels.iloc[i] = 1
-        return labels
+        if context_series is not None:
+            return label_with_context(df_15m, context_series,
+                                      pt_mult=pt_mult, sl_mult=sl_mult,
+                                      num_bars=num_bars).fillna(0).astype(int)
+        return triple_barrier_labels(df_15m, context='bullish',
+                                     pt_mult=pt_mult, sl_mult=sl_mult,
+                                     num_bars=num_bars).fillna(0).astype(int)
 
     # ------------------------------------------------------------------
     # Training
@@ -766,12 +773,11 @@ class MLSetupAgent:
             if len(ctx_dir) == len(X):
                 X['context_dir'] = ctx_dir.values
 
-            # Create mixed labels (use majority context)
-            ctx_mode = 'bullish' if (context_series == 'bullish').sum() >= (context_series == 'bearish').sum() else 'bearish'
-            y = self.create_labels(df_15m, context=ctx_mode)
+            # Triple-barrier labels: direction-aware using context_series
+            y = self.create_labels(df_15m, context_series=context_series)
 
             mask = X.notna().all(axis=1) & y.notna()
-            mask.iloc[-8:] = False
+            mask.iloc[-16:] = False   # embargo = num_bars of triple barrier
             X, y = X[mask], y[mask]
 
             if len(X) < 300:
@@ -783,10 +789,13 @@ class MLSetupAgent:
                           min_child_samples=50, verbose=-1, n_jobs=-1,
                           class_weight='balanced')
 
-            tscv = TimeSeriesSplit(n_splits=n_splits)
+            # Walk-forward CV (15M bars: test_months=3, bars_per_month=2880)
+            splitter = WalkForwardSplitter(n_folds=n_splits, test_months=3,
+                                           bars_per_month=2_880, embargo_bars=16,
+                                           mode='expanding', min_train_bars=10_000)
             fold_aucs = []
 
-            for tr_idx, val_idx in tscv.split(X):
+            for tr_idx, val_idx in splitter.split(X):
                 Xtr, ytr = X.iloc[tr_idx], y.iloc[tr_idx]
                 Xval, yval = X.iloc[val_idx], y.iloc[val_idx]
                 if ytr.sum() < 10 or yval.sum() < 5:
