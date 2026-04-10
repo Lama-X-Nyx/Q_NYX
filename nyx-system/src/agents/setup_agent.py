@@ -183,7 +183,9 @@ class SetupAgent:
         }
         try:
             df_prepared = self._prepare_data(df)
-            self.hsmm.initialize_parameters(df_prepared)
+            # Only initialize if not yet pretrained — preserve EM-trained params (P0.2 fix).
+            if self.hsmm.emission_params is None:
+                self.hsmm.initialize_parameters(df_prepared)
 
             window_size = min(50, len(df_prepared))
             window = df_prepared.tail(window_size)
