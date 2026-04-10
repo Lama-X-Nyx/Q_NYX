@@ -102,7 +102,7 @@ def load_or_train_hsmm(mtf_all, cache_dir, em_iters, force):
     df_4h  = mtf_all.get('4h')
     prep_1h = _prepare_features_full(df_1h, df_htf=df_4h)
 
-    hsmm_1h = SemiMarkovHMM(n_states=len(states), states=states)
+    hsmm_1h = SemiMarkovHMM(states=states)
     init_data = prep_1h.dropna().tail(min(2000, len(prep_1h) // 2))
     hsmm_1h.initialize_parameters(init_data)
     # EM training
@@ -121,7 +121,7 @@ def load_or_train_hsmm(mtf_all, cache_dir, em_iters, force):
     df_15m  = mtf_all['15m']
     prep_15m = _prepare_features_full(df_15m, df_htf=df_1h)
 
-    hsmm_15m = SemiMarkovHMM(n_states=len(states), states=states)
+    hsmm_15m = SemiMarkovHMM(states=states)
     init_15m = prep_15m.dropna().tail(min(4000, len(prep_15m) // 2))
     hsmm_15m.initialize_parameters(init_15m)
     t0 = time.time()
