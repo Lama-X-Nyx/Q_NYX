@@ -1,215 +1,365 @@
-#!/usr/bin/env python3
 """
-NYX ML Ecosystem Training Pipeline
+train_ml_ecosystem.py — Train the full NYX ML ecosystem in order.
 
-Trains all 4 ML agents + the meta-orchestrator in order:
-  1. Pretrain HSMM (or load cache)
-  2. Build PrecomputedStates (HSMM forward pass + SMC on ALL data)
-  3. Train MLContextAgent   (1D)
-  4. Train MLRegimeAgent    (1H + HSMM gamma)
-  5. Train MLSetupAgent     (15M + HSMM gamma + SMC)
-  6. Generate meta-dataset  (all agent signals on every bar)
-  7. Train MLOrchestrator   (meta-LGB)
-  8. Print calibration report
+Steps:
+  1. Load all MTF data
+  2. Pretrain HSMM (or load cache)
+  3. Run PrecomputedStates.precompute() on full dataset (all data for SMC)
+  4. Train MLContextAgent  on 1D data
+  5. Train MLRegimeAgent   on 1H data + gamma_1h
+  6. Train MLSetupAgent    on 15M data + gamma_15m + smc_list
+  7. Generate meta-dataset for MLOrchestrator
+  8. Train MLOrchestrator  on meta-dataset
+  9. Print AUC + calibration report
 
 Usage:
-    python scripts/train_ml_ecosystem.py --train-end 2022-12-31
-    python scripts/train_ml_ecosystem.py --train-end 2022-12-31 --em-iters 50
+  python scripts/train_ml_ecosystem.py --pair BTCUSDT --train-end 2022-12-31
 """
 
 import sys
-import time
 import argparse
+import time
+import pickle
 import numpy as np
 import pandas as pd
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Make sure project root is on path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.agents.orchestrator import Orchestrator
-from src.core.precomputed_runner import (
-    PrecomputedStates, _prepare_features_full, _compute_log_B_from_arrays,
-    forward_streaming, _precompute_smc, _precompute_context
-)
+from src.data.mtf_loader import MTFLoader
 from src.ml.ml_agents import MLContextAgent, MLRegimeAgent, MLSetupAgent
 from src.ml.ml_orchestrator import MLOrchestrator
 
 
-BASE_CONFIG = {
-    'fractal': {'context_tf': '1d', 'structure_tf': '4h',
-                'regime_tf': '1h', 'setup_tf': '15m',
-                'use_entry_agent': False},
-    'mtf': {'timeframes': {'context': '1d', 'regime': '1h', 'setup': '15m'}},
-    'strategy': {'mtf_conditions': {
-        'sdc_min': 4.5, 'stability_4h_min': 0.55, 'alignment_15m_min': 0.40
-    }, 'min_entry_score': 0.78},
-    'fractal_readiness': {'context_min_bars': 200, 'regime_min_bars': 100, 'setup_min_bars': 50},
-    'risk': {'risk_per_trade_pct': 0.02, 'max_leverage': 10,
-             'atr_period': 50, 'atr_sl_multiplier': 2.5,
-             'atr_k_by_regime': {'Trend+': 2.5, 'Trend-': 2.5, 'Range': 2.5,
-                                 'Squeeze': 2.5, 'Distribution': 2.5},
-             'min_profit_atr_mult': 8.0, 'trail_tp_retracement': 0.25,
-             'cooldown_bars': 96, 'max_drawdown_pct': 0.05,
-             'fee_pct': 0.0004, 'slippage_pct': 0.0005},
-    'macro': {'enabled': False},
-}
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+def parse_args():
+    p = argparse.ArgumentParser(description='Train NYX ML Ecosystem')
+    p.add_argument('--pair',      default='BTCUSDT', help='Trading pair (default: BTCUSDT)')
+    p.add_argument('--train-end', default=None,      help='Exclusive training end date YYYY-MM-DD')
+    p.add_argument('--data-dir',  default='data/raw/mtf', help='MTF data directory')
+    p.add_argument('--em-iters',  type=int, default=30,   help='HSMM EM iterations (default: 30)')
+    p.add_argument('--n-splits',  type=int, default=5,    help='Walk-forward CV splits (default: 5)')
+    p.add_argument('--force-retrain', action='store_true', help='Ignore all caches and retrain')
+    return p.parse_args()
 
 
-def load_mtf(pair: str, data_dir: str = 'data/raw/mtf') -> dict:
-    tfs = {'1d': '1d', '4h': '4h', '1h': '1h', '15m': '15m'}
-    out = {}
-    for key, suffix in tfs.items():
-        path = Path(data_dir) / f'{pair}_{suffix}.csv'
-        df = pd.read_csv(path, index_col=0)
-        df.index = pd.to_datetime(df['datetime'])
-        df = df[['open', 'high', 'low', 'close', 'volume']].sort_index()
-        out[key] = df
-    return out
+# ---------------------------------------------------------------------------
+# Calibration report
+# ---------------------------------------------------------------------------
 
+def calibration_report(name: str, proba: np.ndarray, labels: np.ndarray,
+                        n_bins: int = 5):
+    """Print ECE and per-bin calibration."""
+    from sklearn.calibration import calibration_curve
+    try:
+        frac_pos, mean_pred = calibration_curve(labels, proba, n_bins=n_bins, strategy='uniform')
+        ece = float(np.mean(np.abs(frac_pos - mean_pred)))
+        print(f'  [{name}] ECE={ece:.4f}')
+        print(f'    {"pred":>8}  {"actual":>8}')
+        for mp, fp in zip(mean_pred, frac_pos):
+            print(f'    {mp:8.3f}  {fp:8.3f}')
+    except Exception as e:
+        print(f'  [{name}] Calibration skipped: {e}')
+
+
+# ---------------------------------------------------------------------------
+# HSMM helper (reuse precomputed_runner machinery)
+# ---------------------------------------------------------------------------
+
+def load_or_train_hsmm(mtf_all, cache_dir, em_iters, force):
+    """
+    Initialize HSMM models using the streaming forward approach.
+    Returns gamma_1h (T_1h, 6) and gamma_15m (T_15m, 6).
+    """
+    from src.core.precomputed_runner import (
+        _prepare_features_full,
+        _build_obs_arrays,
+        _compute_log_B_from_arrays,
+        forward_streaming,
+    )
+    from src.core.hsmm import SemiMarkovHMM
+
+    cache_1h  = Path(cache_dir) / 'gamma_1h_train.npy'
+    cache_15m = Path(cache_dir) / 'gamma_15m_train.npy'
+
+    if not force and cache_1h.exists() and cache_15m.exists():
+        print('  [HSMM] Loading gamma arrays from cache...')
+        gamma_1h  = np.load(str(cache_1h))
+        gamma_15m = np.load(str(cache_15m))
+        print(f'    gamma_1h:  {gamma_1h.shape}')
+        print(f'    gamma_15m: {gamma_15m.shape}')
+        return gamma_1h, gamma_15m
+
+    print(f'  [HSMM] Training with {em_iters} EM iterations...')
+    states = ['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution', 'Liquidation']
+
+    # ---- 1H HSMM ----
+    df_1h  = mtf_all['1h']
+    df_4h  = mtf_all.get('4h')
+    prep_1h = _prepare_features_full(df_1h, df_htf=df_4h)
+
+    hsmm_1h = SemiMarkovHMM(n_states=len(states), states=states)
+    init_data = prep_1h.dropna().tail(min(2000, len(prep_1h) // 2))
+    hsmm_1h.initialize_parameters(init_data)
+    # EM training
+    t0 = time.time()
+    for it in range(em_iters):
+        hsmm_1h.fit(prep_1h.dropna().tail(5000), max_iter=1)
+        if (it + 1) % 10 == 0:
+            print(f'    1H EM iter {it+1}/{em_iters}  ({time.time()-t0:.1f}s)')
+
+    obs_1h   = _build_obs_arrays(prep_1h)
+    log_B_1h = _compute_log_B_from_arrays(hsmm_1h, obs_1h)
+    gamma_1h = forward_streaming(hsmm_1h, log_B_1h)
+    print(f'  [HSMM 1H] Done. gamma shape: {gamma_1h.shape}')
+
+    # ---- 15M HSMM ----
+    df_15m  = mtf_all['15m']
+    prep_15m = _prepare_features_full(df_15m, df_htf=df_1h)
+
+    hsmm_15m = SemiMarkovHMM(n_states=len(states), states=states)
+    init_15m = prep_15m.dropna().tail(min(4000, len(prep_15m) // 2))
+    hsmm_15m.initialize_parameters(init_15m)
+    t0 = time.time()
+    for it in range(em_iters):
+        hsmm_15m.fit(prep_15m.dropna().tail(10000), max_iter=1)
+        if (it + 1) % 10 == 0:
+            print(f'    15M EM iter {it+1}/{em_iters}  ({time.time()-t0:.1f}s)')
+
+    obs_15m   = _build_obs_arrays(prep_15m)
+    log_B_15m = _compute_log_B_from_arrays(hsmm_15m, obs_15m)
+    gamma_15m = forward_streaming(hsmm_15m, log_B_15m)
+    print(f'  [HSMM 15M] Done. gamma shape: {gamma_15m.shape}')
+
+    np.save(str(cache_1h),  gamma_1h)
+    np.save(str(cache_15m), gamma_15m)
+    print(f'  [HSMM] Saved gamma arrays.')
+    return gamma_1h, gamma_15m
+
+
+# ---------------------------------------------------------------------------
+# SMC precomputation helper
+# ---------------------------------------------------------------------------
+
+def load_or_compute_smc(df_15m, cache_dir, force, orchestrator=None):
+    """Compute or load SMC patterns for all 15M bars."""
+    from src.core.precomputed_runner import _prepare_features_full, _precompute_smc
+    from src.core.smc import SMCDetector
+
+    cache_path = Path(cache_dir) / 'smc_all_train.pkl'
+    if not force and cache_path.exists():
+        print('  [SMC] Loading from cache...')
+        with open(cache_path, 'rb') as f:
+            d = pickle.load(f)
+        return d['smc_list'], d['smc_start_iloc']
+
+    print('  [SMC] Precomputing all 15M bars (this may take a while)...')
+    smc = SMCDetector()
+    prep_15m = _prepare_features_full(df_15m)
+    t0 = time.time()
+    smc_list, smc_start = _precompute_smc(prep_15m, smc, window=200,
+                                          start_iloc=0, end_iloc=len(prep_15m))
+    print(f'  [SMC] Done in {time.time()-t0:.1f}s — {len(smc_list)} patterns computed')
+    with open(cache_path, 'wb') as f:
+        pickle.dump({'smc_list': smc_list, 'smc_start_iloc': smc_start}, f, protocol=4)
+    return smc_list, smc_start
+
+
+# ---------------------------------------------------------------------------
+# Main training pipeline
+# ---------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description='NYX ML Ecosystem Training')
-    parser.add_argument('--pair',      default='BTCUSDT')
-    parser.add_argument('--train-end', default='2022-12-31',
-                        help='Exclusive end date for training (default: 2022-12-31)')
-    parser.add_argument('--data-dir',  default='data/raw/mtf')
-    parser.add_argument('--em-iters',  type=int, default=30)
-    parser.add_argument('--n-splits',  type=int, default=5)
-    args = parser.parse_args()
+    args = parse_args()
+    force = args.force_retrain
 
-    t_total = time.time()
-    print(f'\n{"═"*70}')
-    print(f'  NYX ML Ecosystem Training Pipeline')
-    print(f'  Pair : {args.pair}  |  Train end : {args.train_end}')
-    print(f'{"═"*70}\n')
+    cache_dir = Path('data/pretrain_cache')
+    cache_dir.mkdir(parents=True, exist_ok=True)
 
-    # ---- Load data ----
-    print('Loading MTF data…')
-    mtf_all = load_mtf(args.pair, args.data_dir)
-    train_end = pd.Timestamp(args.train_end)
-    mtf_train = {tf: df[df.index < train_end] for tf, df in mtf_all.items()}
-    for tf, df in mtf_train.items():
-        print(f'  {tf}: {len(df)} bars  ({df.index[0].date()} → {df.index[-1].date()})')
+    # Force-retrain: remove existing caches
+    if force:
+        print('[TRAIN] --force-retrain: removing existing caches...')
+        for f in cache_dir.glob('*.pkl'):
+            f.unlink()
+        for f in cache_dir.glob('*.npy'):
+            f.unlink()
 
-    # ---- Step 1: HSMM pre-training ----
-    print('\n[Step 1] HSMM pre-training…')
-    from scripts.backtest_mtf import pretrain_agents, _pretrain_cache_key, \
-        _load_pretrain_cache, _save_pretrain_cache, CACHE_DIR
-    import hashlib as _hlib
+    print('=' * 60)
+    print(f'NYX ML Ecosystem Training')
+    print(f'  pair      : {args.pair}')
+    print(f'  train-end : {args.train_end or "full dataset"}')
+    print(f'  data-dir  : {args.data_dir}')
+    print(f'  em-iters  : {args.em_iters}')
+    print('=' * 60)
 
-    orch = Orchestrator(BASE_CONFIG)
-    start_ts = mtf_train['1h'].index[0]
-    months   = int((train_end - start_ts).days / 30)
+    # ------------------------------------------------------------------
+    # Step 1: Load MTF data
+    # ------------------------------------------------------------------
+    print('\n[1/8] Loading MTF data...')
+    loader  = MTFLoader(data_dir=args.data_dir)
+    mtf_all = loader.load(args.pair, tfs=['1d', '4h', '1h', '15m'])
 
-    cache_blob = f'{args.pair}|{args.train_end}|{months}|{args.em_iters}|v6_calibrate'
-    cache_key  = _hlib.md5(cache_blob.encode()).hexdigest()[:16]
-    cache_path = CACHE_DIR / f'{cache_key}.pkl'
+    # Slice to training window
+    if args.train_end:
+        end_ts = pd.Timestamp(args.train_end)
+        for tf in list(mtf_all.keys()):
+            mtf_all[tf] = mtf_all[tf][mtf_all[tf].index < end_ts]
+        print(f'  Sliced to <= {args.train_end}')
 
-    if _load_pretrain_cache(orch, cache_path):
-        print('  HSMM loaded from cache')
-    else:
-        pretrain_agents(orch, mtf_train, pretrain_end=args.train_end,
-                        pretrain_months=months, em_iters=args.em_iters,
-                        pair=args.pair, use_cache=True)
+    df_1d  = mtf_all['1d']
+    df_1h  = mtf_all['1h']
+    df_15m = mtf_all['15m']
 
-    # ---- Step 2: Precompute HSMM gammas + SMC on ALL training data ----
-    print('\n[Step 2] Precomputing HSMM states + SMC on all training data…')
-    t2 = time.time()
+    print(f'  1D  bars: {len(df_1d)}')
+    print(f'  1H  bars: {len(df_1h)}')
+    print(f'  15M bars: {len(df_15m)}')
 
-    df_1h   = mtf_train['1h']
-    df_4h   = mtf_train.get('4h')
-    df_15m  = mtf_train['15m']
-    df_1d   = mtf_train['1d']
+    # ------------------------------------------------------------------
+    # Step 2: Train / load HSMM and get gamma arrays
+    # ------------------------------------------------------------------
+    print('\n[2/8] Training HSMM / loading cache...')
+    gamma_1h, gamma_15m = load_or_train_hsmm(mtf_all, cache_dir, args.em_iters, force)
 
-    # Regime HSMM (1H)
-    df_1h_prep = _prepare_features_full(df_1h, df_htf=df_4h)
-    orch.regime_agent.hsmm.initialize_parameters(df_1h_prep.dropna().tail(500))
-    from src.core.precomputed_runner import _build_obs_arrays
-    obs_1h   = _build_obs_arrays(df_1h_prep)
-    log_B_1h = _compute_log_B_from_arrays(orch.regime_agent.hsmm, obs_1h)
-    gamma_1h = forward_streaming(orch.regime_agent.hsmm, log_B_1h)
-    print(f'  gamma_1h   : {gamma_1h.shape}')
+    # ------------------------------------------------------------------
+    # Step 3: SMC precomputation on ALL data (no start/end restriction)
+    # ------------------------------------------------------------------
+    print('\n[3/8] Precomputing SMC patterns on ALL 15M data...')
+    smc_list, smc_start_iloc = load_or_compute_smc(df_15m, cache_dir, force)
 
-    # Setup HSMM (15M)
-    df_15m_prep = _prepare_features_full(df_15m, df_htf=df_1h)
-    orch.setup_agent.hsmm.initialize_parameters(df_15m_prep.dropna().tail(500))
-    obs_15m   = _build_obs_arrays(df_15m_prep)
-    log_B_15m = _compute_log_B_from_arrays(orch.setup_agent.hsmm, obs_15m)
-    gamma_15m = forward_streaming(orch.setup_agent.hsmm, log_B_15m)
-    print(f'  gamma_15m  : {gamma_15m.shape}')
-
-    # Context SMA200 (1D)
-    context_arr = _precompute_context(df_1d, orch.context_agent.trend_threshold)
-    print(f'  context    : {len(context_arr)} bars  '
-          f'({(context_arr=="bullish").sum()} bull / {(context_arr=="bearish").sum()} bear)')
-
-    # SMC on ALL training 15M data (needed for SetupML training)
-    print(f'  SMC 15M    : {len(df_15m)} bars… ', end='', flush=True)
-    t_smc = time.time()
-    smc_list, smc_start = _precompute_smc(
-        df_15m_prep, orch.setup_agent.smc, window=200,
-        start_iloc=0, end_iloc=len(df_15m)
-    )
-    print(f'{time.time()-t_smc:.0f}s  ({len(smc_list)} dicts)')
-    print(f'  Step 2 total: {time.time()-t2:.0f}s')
-
-    # Build context_series aligned to 15M index
-    idx_1d  = df_1d.index.astype(np.int64)
-    idx_15m = df_15m.index.astype(np.int64)
-    ctx_15m = []
-    for ts_ns in idx_15m:
-        i_1d = int(np.searchsorted(idx_1d, ts_ns, side='left')) - 1
-        ctx_15m.append(str(context_arr[i_1d]) if 0 <= i_1d < len(context_arr) else 'insufficient')
-    context_series_15m = pd.Series(ctx_15m, index=df_15m.index)
-
-    # ---- Step 3: Train MLContextAgent (1D) ----
-    print('\n[Step 3] Training MLContextAgent…')
+    # ------------------------------------------------------------------
+    # Step 4: Train MLContextAgent
+    # ------------------------------------------------------------------
+    print('\n[4/8] Training MLContextAgent (1D)...')
     ctx_agent = MLContextAgent()
-    ctx_agent.pretrain(df_1d, n_splits=args.n_splits)
+    ctx_result = ctx_agent.pretrain(df_1d, n_splits=args.n_splits)
+    print(f'  Result: {ctx_result}')
 
-    # ---- Step 4: Train MLRegimeAgent (1H + HSMM) ----
-    print('\n[Step 4] Training MLRegimeAgent…')
+    # Generate context_arr for downstream use
+    from src.core.precomputed_runner import _precompute_context
+    context_arr = _precompute_context(df_1d, trend_threshold=0.02)
+    context_series_1d = pd.Series(context_arr, index=df_1d.index)
+
+    # ------------------------------------------------------------------
+    # Step 5: Train MLRegimeAgent
+    # ------------------------------------------------------------------
+    print('\n[5/8] Training MLRegimeAgent (1H + HSMM)...')
     reg_agent = MLRegimeAgent()
-    reg_agent.pretrain(df_1h, gamma_1h, n_splits=args.n_splits)
+    reg_result = reg_agent.pretrain(df_1h, gamma_1h, n_splits=args.n_splits)
+    print(f'  Result: {reg_result}')
 
-    # ---- Step 5: Train MLSetupAgent (15M + HSMM + SMC) ----
-    print('\n[Step 5] Training MLSetupAgent…')
-    stp_agent = MLSetupAgent()
-    stp_agent.pretrain(
-        df_15m, gamma_15m, smc_list, context_series_15m,
-        smc_start_iloc=smc_start, n_splits=args.n_splits
+    # ------------------------------------------------------------------
+    # Step 6: Train MLSetupAgent
+    # ------------------------------------------------------------------
+    print('\n[6/8] Training MLSetupAgent (15M + HSMM + SMC)...')
+
+    # Build context series aligned to 15M
+    # Reindex 1D context to 15M using forward-fill
+    ctx_1d_df = pd.DataFrame({'ctx': context_arr}, index=df_1d.index)
+    ctx_15m = ctx_1d_df.reindex(df_15m.index, method='ffill')['ctx'].fillna('neutral')
+
+    setup_agent = MLSetupAgent()
+    setup_result = setup_agent.pretrain(
+        df_15m, gamma_15m, smc_list, ctx_15m,
+        n_splits=args.n_splits
     )
+    print(f'  Result: {setup_result}')
 
-    # ---- Step 6 + 7: Generate meta-dataset & train MLOrchestrator ----
-    print('\n[Step 6] Generating MLOrchestrator meta-dataset…')
-    ml_orch = MLOrchestrator()
-    meta_ds = ml_orch.generate_training_data(
-        df_15m=df_15m,
-        context_arr=context_arr,
-        gamma_1h=gamma_1h,
-        gamma_15m=gamma_15m,
-        smc_list=smc_list,
-        smc_start_iloc=smc_start,
-        df_1d=df_1d,
-        df_1h=df_1h,
+    # ------------------------------------------------------------------
+    # Step 7: Generate meta-dataset
+    # ------------------------------------------------------------------
+    print('\n[7/8] Generating MLOrchestrator meta-dataset...')
+    orch = MLOrchestrator()
+    meta_dataset = orch.generate_training_data(
+        df_15m, context_arr, gamma_1h, gamma_15m,
+        smc_list, smc_start_iloc=smc_start_iloc,
+        warmup=200
     )
+    print(f'  Meta-dataset: {len(meta_dataset)} samples')
 
-    print('\n[Step 7] Training MLOrchestrator…')
-    ml_orch.pretrain(meta_ds, n_splits=args.n_splits)
+    # ------------------------------------------------------------------
+    # Step 8: Train MLOrchestrator
+    # ------------------------------------------------------------------
+    print('\n[8/8] Training MLOrchestrator...')
+    orch_result = orch.pretrain(meta_dataset, n_splits=args.n_splits)
+    print(f'  Result: {orch_result}')
 
-    # ---- Report ----
-    elapsed = time.time() - t_total
-    print(f'\n{"═"*70}')
-    print(f'  Training complete in {elapsed:.0f}s ({elapsed/60:.1f} min)')
-    print(f'  Saved:')
-    print(f'    data/pretrain_cache/context_ml.pkl')
-    print(f'    data/pretrain_cache/regime_ml.pkl')
-    print(f'    data/pretrain_cache/setup_ml.pkl')
-    print(f'    data/pretrain_cache/orchestrator_ml.pkl')
-    print(f'\n  To run backtest with ML ecosystem:')
-    print(f'    python scripts/backtest_mtf.py --start 2023-01-01 --end 2023-12-31 \\')
-    print(f'        --pretrain-all --use-cache --precompute --precompute-cache')
-    print(f'{"═"*70}\n')
+    # ------------------------------------------------------------------
+    # Step 9: Calibration report
+    # ------------------------------------------------------------------
+    print('\n[9/8] Calibration report...')
+    _print_calibration_summary(ctx_agent, reg_agent, setup_agent, orch,
+                                df_1d, df_1h, df_15m,
+                                gamma_1h, gamma_15m, smc_list, smc_start_iloc,
+                                context_arr, ctx_15m, meta_dataset)
+
+    print('\n' + '=' * 60)
+    print('Training complete.')
+    print(f'Models saved to: {cache_dir}')
+    print('=' * 60)
+
+
+def _print_calibration_summary(ctx_agent, reg_agent, setup_agent, orch,
+                                df_1d, df_1h, df_15m,
+                                gamma_1h, gamma_15m, smc_list, smc_start_iloc,
+                                context_arr, ctx_15m, meta_dataset):
+    """Run held-out evaluation and print calibration."""
+    try:
+        from sklearn.metrics import roc_auc_score
+
+        # Context calibration
+        if ctx_agent._trained:
+            X_ctx = ctx_agent.compute_features(df_1d)
+            y_ctx = ctx_agent.create_labels(df_1d)
+            mask  = X_ctx.notna().all(axis=1) & y_ctx.notna()
+            mask.iloc[-5:] = False
+            X_ctx, y_ctx = X_ctx[mask], y_ctx[mask]
+            # Use last 20% as pseudo-holdout
+            n = len(X_ctx)
+            split = int(n * 0.8)
+            proba_bull = ctx_agent._lgb_bull.predict_proba(X_ctx.iloc[split:])[:, 1]
+            y_bull = (y_ctx.iloc[split:] == 1).astype(int)
+            if y_bull.sum() > 5:
+                auc = roc_auc_score(y_bull, proba_bull)
+                print(f'\n  [MLContextAgent] Holdout AUC (bull): {auc:.4f}')
+                calibration_report('MLContextAgent-bull', proba_bull, y_bull.values)
+
+        # Regime calibration
+        if reg_agent._trained:
+            X_reg = reg_agent.compute_features(df_1h, gamma_1h)
+            y_reg = reg_agent.create_labels(df_1h)
+            mask  = X_reg.notna().all(axis=1) & y_reg.notna()
+            mask.iloc[-4:] = False
+            X_reg, y_reg = X_reg[mask], y_reg[mask]
+            n = len(X_reg)
+            split = int(n * 0.8)
+            proba_reg = reg_agent._lgb.predict_proba(X_reg.iloc[split:])[:, 1]
+            y_reg_ho  = y_reg.iloc[split:].values
+            if y_reg_ho.sum() > 5:
+                auc = roc_auc_score(y_reg_ho, proba_reg)
+                print(f'\n  [MLRegimeAgent] Holdout AUC: {auc:.4f}')
+                calibration_report('MLRegimeAgent', proba_reg, y_reg_ho)
+
+        # Orchestrator calibration
+        if orch._trained and len(meta_dataset) > 100:
+            records = [fd for fd, _, _ in meta_dataset]
+            labels  = [lbl for _, lbl, _ in meta_dataset]
+            X_orch  = pd.DataFrame(records)[orch._feat_names].dropna()
+            y_orch  = np.array(labels[:len(X_orch)])
+            n = len(X_orch)
+            split = int(n * 0.8)
+            proba_orch = orch._lgb.predict_proba(X_orch.iloc[split:])[:, 1]
+            y_orch_ho  = y_orch[split:]
+            if y_orch_ho.sum() > 5:
+                auc = roc_auc_score(y_orch_ho, proba_orch)
+                print(f'\n  [MLOrchestrator] Holdout AUC: {auc:.4f}')
+                calibration_report('MLOrchestrator', proba_orch, y_orch_ho)
+
+    except Exception as e:
+        print(f'  Calibration report failed: {e}')
 
 
 if __name__ == '__main__':
