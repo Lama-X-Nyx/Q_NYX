@@ -196,7 +196,17 @@ BASE_CONFIG = {
 
         # --- Transaction costs (applied on every entry AND exit) ---
         'fee_pct':                 0.0004, # 0.04%/side — Binance futures taker
-        'slippage_pct':            0.0005, # 0.05%/side — conservative market impact
+        # Market-impact slippage: base + size-dependent component.
+        # slippage = slippage_base + market_impact_factor × (notional / bar_dollar_vol)
+        # At $10K notional vs $50M bar volume → ~0.02% + negligible impact
+        # At $1M notional vs $50M bar volume → ~0.02% + 0.04% = 0.06%
+        'slippage_base':           0.0002, # 0.02% base bid-ask spread
+        'market_impact_factor':    2.0,    # Kyle-style: 2× notional/bar_vol
+        # Funding rate (BTC perp): ~0.01%/8h avg in trending markets.
+        # Long pays short. Charged every 32 bars (8h = 32 × 15m).
+        # Use 0.0% for shorts (longs subsidise shorts historically).
+        'funding_rate_long_8h':    0.0001, # 0.01%/8h for LONG
+        'funding_rate_short_8h':   0.0000, # 0.00%/8h for SHORT
     },
     'macro': {'enabled': False},
 }
@@ -438,8 +448,6 @@ class MTFBacktest:
 
         risk_cfg = self.config['risk']
         fee      = risk_cfg['fee_pct']
-        slip     = risk_cfg['slippage_pct']
-        friction = fee + slip            # one-way cost
         max_dd   = risk_cfg['max_drawdown_pct']
         k_regime = risk_cfg['atr_k_by_regime']
         min_mult = risk_cfg['min_profit_atr_mult']
@@ -458,7 +466,10 @@ class MTFBacktest:
               f"Max DD/day : {max_dd*100:.0f}%  |  "
               f"ATR({atr_p})×k  |  "
               f"Cooldown : {risk_cfg.get('cooldown_bars',16)} bars  |  "
-              f"Fees : {(fee+slip)*100:.2f}%/side")
+              f"Fees : {risk_cfg['fee_pct']*100:.2f}%  |  "
+              f"Slip base : {risk_cfg.get('slippage_base',0.0002)*100:.2f}%+impact  |  "
+              f"Funding : {risk_cfg.get('funding_rate_long_8h',0.0001)*100:.3f}%/8h LONG  |  "
+              f"Fill : open+1")
         print(f"{'═'*70}\n")
 
         # Pre-build aligned index
@@ -476,9 +487,17 @@ class MTFBacktest:
             if bars_in_period.index[0] in bars_15m.index \
             else bars_15m.index.searchsorted(bars_in_period.index[0])
 
-        bar_closes = bars_in_period['close'].values.astype(float)
-        bar_index  = bars_in_period.index
-        total      = len(bars_in_period)
+        bar_closes  = bars_in_period['close'].values.astype(float)
+        bar_opens   = bars_in_period['open'].values.astype(float)
+        bar_volumes = bars_in_period['volume'].values.astype(float)
+        bar_index   = bars_in_period.index
+        total       = len(bars_in_period)
+
+        # Funding counters
+        _funding_rate_long  = risk_cfg.get('funding_rate_long_8h',  0.0001)
+        _funding_rate_short = risk_cfg.get('funding_rate_short_8h', 0.0000)
+        _funding_interval   = 32   # every 32 bars = 8h
+        _total_funding: float = 0.0
 
         for bar_i in range(total):
             ts            = bar_index[bar_i]
@@ -543,6 +562,17 @@ class MTFBacktest:
                             if current_price > locked_floor:
                                 self._close('Trail-TP', ts, current_price)
                                 self._last_close_bar = bar_i
+
+            # ----------------------------------------------------------------
+            # 2a. Funding rate — charged every 32 bars (8h) on open positions
+            # ----------------------------------------------------------------
+            if self.position and bar_i % _funding_interval == 0 and bar_i > 0:
+                rate = _funding_rate_long if self.position == 'LONG' else _funding_rate_short
+                if rate > 0:
+                    funding_cost = self.notional * rate
+                    self.capital       -= funding_cost
+                    _total_funding     += funding_cost
+                    self._total_friction += funding_cost
 
             # ----------------------------------------------------------------
             # 2. Equity snapshot & daily drawdown check (prop-desk style)
@@ -686,19 +716,31 @@ class MTFBacktest:
                     # when a filtered-out BUY hits the else branch.
                     if action not in ('BUY', 'SELL'):
                         pass  # filtered out — skip entry silently
+                    elif bar_i + 1 >= total:
+                        pass  # no next bar to fill — skip (last bar of period)
                     else:
                         regime_comp = decision.components.get('regime')
                         dominant    = (regime_comp.metadata.get('dominant_state', 'Range')
                                        if regime_comp else 'Range')
                         k = k_regime.get(dominant, risk_cfg['atr_sl_multiplier'])
 
-                        notional, lev = self._compute_position_size(current_price, atr_now, k)
+                        # ---- Fill at open of NEXT bar (realistic execution) ----
+                        fill_price = float(bar_opens[bar_i + 1])
+
+                        notional, lev = self._compute_position_size(fill_price, atr_now, k)
+
+                        # Market-impact slippage: base + size/bar_vol component
+                        bar_dol_vol  = max(fill_price * bar_volumes[bar_i + 1], 1.0)
+                        impact_slip  = risk_cfg.get('market_impact_factor', 2.0) * (notional / bar_dol_vol)
+                        total_slip   = risk_cfg.get('slippage_base', 0.0002) + impact_slip
+                        total_slip   = min(total_slip, 0.005)   # cap at 0.5% per side
+                        friction_now = risk_cfg['fee_pct'] + total_slip
 
                         # Apply entry friction (fee + slippage worsens fill)
-                        eff_entry = current_price * (1 + friction) if action == 'BUY' \
-                                    else current_price * (1 - friction)
-                        entry_cost = notional * friction
-                        self.capital      -= entry_cost
+                        eff_entry  = fill_price * (1 + friction_now) if action == 'BUY' \
+                                     else fill_price * (1 - friction_now)
+                        entry_cost = notional * friction_now
+                        self.capital         -= entry_cost
                         self._total_friction += entry_cost
 
                         self.entry_price = eff_entry
@@ -711,14 +753,16 @@ class MTFBacktest:
                             self.trail_sl   = eff_entry - stop_dist
                             self.high_water = eff_entry
                             self.position   = 'LONG'
-                            self.fixed_tp   = eff_entry + 2.5 * stop_dist   # 2.5:1 R:R target
+                            self.fixed_tp   = eff_entry + 2.5 * stop_dist
                         else:
                             self.trail_sl   = eff_entry + stop_dist
                             self.high_water = eff_entry
                             self.position   = 'SHORT'
-                            self.fixed_tp   = eff_entry - 2.5 * stop_dist   # 2.5:1 R:R target
+                            self.fixed_tp   = eff_entry - 2.5 * stop_dist
 
-                        self._log_entry(ts, eff_entry, decision, lev, k, atr_now)
+                        self._log_entry(bar_index[bar_i + 1], eff_entry, decision,
+                                        lev, k, atr_now,
+                                        slip_bps=total_slip * 10_000)
 
             self.decision_log.append({
                 'ts':     ts,
@@ -752,7 +796,8 @@ class MTFBacktest:
 
     def _close(self, reason: str, ts, price: float):
         risk_cfg = self.config['risk']
-        friction = risk_cfg['fee_pct'] + risk_cfg['slippage_pct']
+        # Exit slippage: base only (passive fill — no market impact on stop exits)
+        friction = risk_cfg['fee_pct'] + risk_cfg.get('slippage_base', 0.0002)
 
         side = self.position
         # Apply exit friction (worsens fill)
@@ -788,13 +833,14 @@ class MTFBacktest:
         self.notional    = self.trail_sl  = self.high_water = self.fixed_tp = 0.0
 
     def _log_entry(self, ts, price: float, decision, leverage: float,
-                   k: float, atr: float):
+                   k: float, atr: float, slip_bps: float = 0.0):
         score = decision.score if decision else 0
         side  = self.position
         icon  = '🟢' if side == 'LONG' else '🔴'
         print(f"  {icon} ENTRY {side:<5}  {ts.strftime('%m/%d %H:%M')} @ ${price:,.0f}"
               f"  score={score:.2f}  lev={leverage:.1f}×  "
-              f"k={k:.1f}  ATR={atr:.0f}  SL=${self.trail_sl:,.0f}  TP=${self.fixed_tp:,.0f}")
+              f"k={k:.1f}  ATR={atr:.0f}  slip={slip_bps:.1f}bps  "
+              f"SL=${self.trail_sl:,.0f}  TP=${self.fixed_tp:,.0f}")
 
     # -----------------------------------------------------------------------
     # Metrics
