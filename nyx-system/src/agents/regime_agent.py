@@ -105,13 +105,12 @@ class RegimeAgent:
         # Prepare data for HSMM
         df_prepared = self._prepare_data(df, df_htf=df_htf)
 
-        # Initialize HSMM only if not yet pretrained.
-        # pretrain() calls initialize_parameters_with_em() which runs EM and
-        # stores learned emission_params + transition_matrix.  Calling
-        # initialize_parameters() again here would wipe those learned params
-        # with a heuristic re-initialization on the current window — P0.2 fix.
-        if self.hsmm.emission_params is None:
-            self.hsmm.initialize_parameters(df_prepared)
+        # Initialize HSMM with data.
+        # When pretrain() was called first: _locked_structure=True → structure lock
+        # keeps A and π from EM, only re-estimates emission params from the current
+        # window (adaptive emissions, frozen structure — designed behavior).
+        # When NOT pretrained: full heuristic re-init each bar (rolling window).
+        self.hsmm.initialize_parameters(df_prepared)
 
         # Build observations (last 50 bars)
         window_size = min(50, len(df_prepared))
