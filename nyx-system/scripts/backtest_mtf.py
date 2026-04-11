@@ -244,7 +244,7 @@ def slice_mtf(mtf_all: dict, ts: pd.Timestamp, warmup: int = 200) -> dict:
 
 
 def build_aligned_index(mtf_all: dict, bar_index: pd.DatetimeIndex,
-                         warmup: int = 200) -> list:
+                         warmup: int = 300) -> list:
     """
     Pre-compute, for every 15m bar timestamp, the iloc positions in each
     TF that correspond to the last closed bar strictly before that timestamp.
