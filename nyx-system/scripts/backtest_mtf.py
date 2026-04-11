@@ -519,8 +519,13 @@ class MTFBacktest:
                     self._close('Fixed-TP', ts, current_price)
                     self._last_close_bar = bar_i
                 else:
-                    # Trail stop upward
-                    new_sl = current_price - self.entry_k * atr_now
+                    # Trail stop: use ENTRY_ATR (not current atr_now).
+                    # Using atr_now makes the stop tighten on low-vol bars,
+                    # tripping on normal retracements. entry_atr is fixed
+                    # at the measured volatility when we entered — it defines
+                    # the "noise floor" for this specific trade.
+                    stop_dist_now = self.entry_k * self.entry_atr
+                    new_sl = current_price - stop_dist_now
                     self.trail_sl = max(self.trail_sl, new_sl)
                     # Track high-water
                     self.high_water = max(self.high_water, current_price)
@@ -544,8 +549,9 @@ class MTFBacktest:
                     self._close('Fixed-TP', ts, current_price)
                     self._last_close_bar = bar_i
                 else:
-                    # Trail stop downward
-                    new_sl = current_price + self.entry_k * atr_now
+                    # Trail stop: use ENTRY_ATR (fixed, not adaptive atr_now)
+                    stop_dist_now = self.entry_k * self.entry_atr
+                    new_sl = current_price + stop_dist_now
                     self.trail_sl = min(self.trail_sl, new_sl)
                     # Track low-water
                     self.high_water = min(self.high_water, current_price)
