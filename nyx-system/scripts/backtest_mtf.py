@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.agents.orchestrator import Orchestrator
 from src.core.precomputed_runner import PrecomputedStates
+from src.ml.ml_backtest_adapter import MLBacktestAdapter
 
 
 # ---------------------------------------------------------------------------
@@ -357,11 +358,13 @@ def pretrain_agents(orchestrator: Orchestrator, mtf_all: dict,
 
 
 class MTFBacktest:
-    def __init__(self, config: dict, initial_capital: float = 10_000.0):
+    def __init__(self, config: dict, initial_capital: float = 10_000.0,
+                 orchestrator=None):
         self.config = config
         self.initial_capital = initial_capital
         self.capital = initial_capital
-        self.orchestrator = Orchestrator(config)
+        # Allow injecting a custom orchestrator (e.g. MLBacktestAdapter)
+        self.orchestrator = orchestrator if orchestrator is not None else Orchestrator(config)
 
         # ---- Position state ----
         self.position: str | None = None   # None | 'LONG' | 'SHORT'
@@ -456,8 +459,9 @@ class MTFBacktest:
         bars_15m       = mtf_all['15m']
         bars_in_period = bars_15m[start:end]
 
+        _mode_tag = '[ML Pipeline]' if isinstance(self.orchestrator, MLBacktestAdapter) else '[Rule-based HSMM]'
         print(f"\n{'═'*70}")
-        print(f"  NYX v1.0 — MTF BACKTEST  [Institutional Risk Engine]")
+        print(f"  NYX v1.0 — MTF BACKTEST  {_mode_tag}")
         print(f"  Pair : BTCUSDT  |  TF décision : 15 min")
         print(f"  Période : {start}  →  {end}")
         print(f"  Barres  : {len(bars_in_period)}  |  Capital  : ${self.initial_capital:,.0f}")
@@ -1092,6 +1096,8 @@ def main():
                         help='EM iterations for pre-training (default: 30)')
     parser.add_argument('--use-cache', action='store_true',
                         help='Load/save EM pre-training from disk cache (~data/pretrain_cache/)')
+    parser.add_argument('--use-ml', action='store_true',
+                        help='Replace rule-based heuristics with trained ML agents (MLBacktestAdapter)')
     parser.add_argument('--precompute', action='store_true',
                         help='Precompute HSMM states + SMC for entire period (~70x faster hot loop)')
     parser.add_argument('--precompute-cache', action='store_true',
@@ -1101,9 +1107,14 @@ def main():
     import time as _time
     mtf_all = load_mtf(args.pair, args.data_dir)
 
+    # Start with rule-based orchestrator (needed for HSMM pretraining).
+    # If --use-ml: after pretraining the HSMM agents (gamma extractors),
+    # we swap the orchestrator for MLBacktestAdapter which hands all
+    # trading decisions to the ML pipeline.
     bt = MTFBacktest(BASE_CONFIG, args.capital)
 
     # EM pre-training: all data before backtest start, or N months
+    # (mandatory when --use-ml: HSMM gamma is the feature input to ML agents)
     if args.pretrain_all:
         start_ts = pd.Timestamp(args.start)
         data_start = mtf_all['4h'].index[0]
@@ -1129,6 +1140,29 @@ def main():
             pair=args.pair,
             use_cache=args.use_cache,
         )
+    elif args.use_ml:
+        # --use-ml without explicit pretrain: default to 12 months of HSMM pretraining
+        # so the gamma feature extractor is properly calibrated.
+        print('\n  [--use-ml]  Auto-pretraining HSMM for 12M (gamma feature extraction)')
+        pretrain_agents(
+            bt.orchestrator,
+            mtf_all,
+            pretrain_end=args.start,
+            pretrain_months=12,
+            em_iters=args.em_iters,
+            pair=args.pair,
+            use_cache=args.use_cache,
+        )
+
+    # --use-ml: replace rule-based orchestrator with ML pipeline adapter
+    if args.use_ml:
+        print('\n  [--use-ml]  Activating ML pipeline (HSMM = gamma features only)')
+        ml_adapter = MLBacktestAdapter(
+            BASE_CONFIG,
+            regime_agent=bt.orchestrator.regime_agent,
+            setup_agent=bt.orchestrator.setup_agent,
+        )
+        bt.orchestrator = ml_adapter
 
     # ---- Precomputed states (optional speedup) ----
     precomp = None
