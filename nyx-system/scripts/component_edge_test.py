@@ -122,15 +122,18 @@ def test_hsmm_edge(df: pd.DataFrame, train_df: "pd.DataFrame | None" = None,
             mask = labels == state
             if mask.sum() < 10:
                 continue
-            rets: pd.Series = fwd_ret[mask].dropna()
+            rets = pd.Series(fwd_ret[mask]).dropna()
+            _mean = float(rets.mean())
+            _med = float(rets.median())
+            _std = float(rets.std())
             rows.append({
                 'state':     state,
                 'horizon':   h,
                 'n_bars':    len(rets),
-                'mean_ret':  float(rets.mean()),
-                'median':    float(rets.median()),
-                'std':       float(rets.std()),
-                'sharpe':    float(rets.mean() / rets.std()) if float(rets.std()) > 0 else np.nan,
+                'mean_ret':  _mean,
+                'median':    _med,
+                'std':       _std,
+                'sharpe':    _mean / _std if _std > 0 else np.nan,
                 'win_rate':  float((rets > 0).mean()),
                 'pct_bars':  float(mask.sum() / len(df_feat) * 100),
             })
@@ -198,15 +201,17 @@ def test_smc_edge(df: pd.DataFrame, horizons: list = [1, 3, 5]) -> pd.DataFrame:
     for h in horizons:
         fwd = df['close'].pct_change(h).shift(-h)
         for name, mask in [('BullishOB', bull_ob), ('BearishOB', bear_ob)]:
-            rets: pd.Series = fwd[mask].dropna()
+            rets = pd.Series(fwd[mask]).dropna()
             if len(rets) < 5:
                 continue
+            _mean = float(rets.mean())
+            _std = float(rets.std())
             rows.append({
                 'pattern':  name,
                 'horizon':  h,
                 'n_signals': len(rets),
-                'mean_ret':  float(rets.mean()),
-                'sharpe':    float(rets.mean() / rets.std()) if float(rets.std()) > 0 else np.nan,
+                'mean_ret':  _mean,
+                'sharpe':    _mean / _std if _std > 0 else np.nan,
                 'win_rate':  float((rets > 0).mean()),
             })
 
@@ -260,15 +265,17 @@ def test_combined_edge(df: pd.DataFrame, train_df: "pd.DataFrame | None" = None,
             ('Pattern only',  bull_ob),
             ('Combined',      combined),
         ]:
-            rets: pd.Series = fwd[mask].dropna()
+            rets = pd.Series(fwd[mask]).dropna()
             if len(rets) < 3:
                 continue
+            _mean = float(rets.mean())
+            _std = float(rets.std())
             rows.append({
                 'signal':    name,
                 'horizon':   h,
                 'n_signals': len(rets),
-                'mean_ret':  float(rets.mean()),
-                'sharpe':    float(rets.mean() / rets.std()) if float(rets.std()) > 0 else np.nan,
+                'mean_ret':  _mean,
+                'sharpe':    _mean / _std if _std > 0 else np.nan,
                 'win_rate':  float((rets > 0).mean()),
             })
 
@@ -319,14 +326,15 @@ def main():
     df_all = load_ohlcv(csv_path)
 
     # Split by year
-    df_test = df_all[pd.DatetimeIndex(df_all.index).year == args.year]
+    _dti = pd.DatetimeIndex(df_all.index)
+    df_test = df_all[_dti.year == args.year]
     if df_test.empty:
         print(f"ERROR: No data for year {args.year}")
         sys.exit(1)
 
     train_df = None
     if args.pretrain_year:
-        train_raw = df_all[pd.DatetimeIndex(df_all.index).year == args.pretrain_year]
+        train_raw = df_all[_dti.year == args.pretrain_year]
         if not train_raw.empty:
             train_df = prepare_features(pd.DataFrame(train_raw.copy()))
             print(f"Pre-train period: {args.pretrain_year} ({len(train_df)} bars)")

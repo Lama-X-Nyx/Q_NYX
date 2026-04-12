@@ -92,7 +92,8 @@ class SetupAgent:
                 )
             )
             tr[0] = high[0] - low[0]
-            df_prepared['atr_14'] = pd.Series(tr).rolling(14).mean().to_numpy()
+            atr_series: pd.Series = pd.Series(tr).rolling(14).mean()
+            df_prepared['atr_14'] = atr_series.values
 
         if 'sma_20' not in df_prepared.columns:
             df_prepared['sma_20'] = df_prepared['close'].rolling(window=20).mean()
@@ -111,7 +112,8 @@ class SetupAgent:
         # Add HTF context feature: (close - htf_sma20) / htf_sma20
         # Uses pd.merge_asof for O(n log n) alignment without look-ahead.
         if df_htf is not None and not df_htf.empty and 'htf_pos' not in df_prepared.columns:
-            htf_sma20: pd.Series = df_htf['close'].rolling(20).mean().rename('_htf_sma20')
+            _htf_close: pd.Series = df_htf['close']
+            htf_sma20: pd.Series = _htf_close.rolling(20).mean().rename('_htf_sma20')
             htf_ref = htf_sma20.reset_index()
             htf_ref.columns = ['_ts', '_htf_sma20']
             htf_ref = htf_ref.dropna(subset=['_htf_sma20']).sort_values('_ts')

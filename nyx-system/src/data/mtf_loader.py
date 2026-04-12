@@ -163,7 +163,9 @@ class MTFLoader:
         # Subtract one period to get the last CLOSED candle
         closed_epoch -= tf_seconds
         
-        return pd.Timestamp(closed_epoch, unit='s', tz=target_time.tz)
+        ts = pd.Timestamp(closed_epoch, unit='s', tz=target_time.tz)
+        assert isinstance(ts, pd.Timestamp), "Expected Timestamp, got NaT"
+        return ts
     
     def get_lookback_window(self, mtf_data: Dict[str, pd.DataFrame],
                            end_time: pd.Timestamp,
@@ -232,8 +234,8 @@ class MTFLoader:
             # Stats
             report['stats'][tf] = {
                 'bars': len(df),
-                'start': df.index[0].isoformat() if len(df) > 0 else None,
-                'end': df.index[-1].isoformat() if len(df) > 0 else None
+                'start': pd.Timestamp(df.index[0]).isoformat() if len(df) > 0 else None,
+                'end': pd.Timestamp(df.index[-1]).isoformat() if len(df) > 0 else None
             }
         
         return report
@@ -273,8 +275,8 @@ def load_mtf_sample(pair: str = 'BTCUSDT',
         
         # Slice all TFs to this range
         for tf in mtf_data:
-            mtf_data[tf] = mtf_data[tf][(mtf_data[tf].index >= start_time) & 
-                                        (mtf_data[tf].index <= end_time)]
+            mtf_data[tf] = pd.DataFrame(mtf_data[tf][(mtf_data[tf].index >= start_time) &
+                                        (mtf_data[tf].index <= end_time)])
     
     return mtf_data
 
@@ -387,8 +389,8 @@ if __name__ == "__main__":
     
     # Test alignment
     if '15m' in mtf_data and len(mtf_data['15m']) > 0:
-        target_time = mtf_data['15m'].index[-100]
-        
+        target_time = pd.Timestamp(mtf_data['15m'].index[-100])
+
         print(f"\nAligning at {target_time}:")
         aligned = loader.align_at_timestamp(mtf_data, target_time, '15m')
         
