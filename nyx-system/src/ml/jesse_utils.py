@@ -40,6 +40,10 @@ def risk_to_qty(
     Returns:
         Position quantity (number of units to trade).
     """
+    risk_per_unit = abs(entry_price - stop_loss_price)
+    if risk_per_unit == 0:
+        return 0.0
+
     if _JESSE_AVAILABLE:
         return jesse_utils.risk_to_qty(
             capital, risk_per_capital, entry_price, stop_loss_price,
@@ -47,10 +51,7 @@ def risk_to_qty(
         )
 
     risk_amount = capital * risk_per_capital
-    risk_per_unit = abs(entry_price - stop_loss_price)
-    if risk_per_unit == 0:
-        return 0.0
-    fee_mult = 1 - fee_rate * 3  # account for entry + exit + slippage
+    fee_mult = 1 - fee_rate * 3
     qty = (risk_amount / risk_per_unit) * fee_mult
     return round(qty, precision)
 
@@ -101,9 +102,8 @@ def crossed(
     Returns:
         Boolean or array of crossover points.
     """
-    if _JESSE_AVAILABLE:
-        return jesse_utils.crossed(series1, series2, direction, sequential)
-
+    # Jesse's crossed() returns scalar, not array — we always use our own
+    # implementation for consistent array-mode behavior.
     s1 = np.asarray(series1, dtype=float)
     s2 = np.asarray(series2, dtype=float) if not np.isscalar(series2) else np.full_like(s1, series2)
 
@@ -151,7 +151,10 @@ def kelly_criterion(win_rate: float, ratio_avg_win_loss: float) -> float:
 
 
 def anchor_timeframe(timeframe: str) -> str:
-    """Map lower timeframe to anchor (higher) timeframe."""
+    """
+    Map lower timeframe to anchor (higher) timeframe.
+    Uses Jesse's mapping when available, otherwise our own.
+    """
     if _JESSE_AVAILABLE:
         return jesse_utils.anchor_timeframe(timeframe)
 
