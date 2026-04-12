@@ -177,9 +177,10 @@ class MLEntryAgent:
                 ]
             )
 
-            preds = fold_model.predict(X_val)
-            auc   = roc_auc_score(y_val, preds)
-            fold_aucs.append(auc)
+            if fold_model is not None:
+                preds = fold_model.predict(X_val)
+                auc   = roc_auc_score(y_val, preds)
+                fold_aucs.append(auc)
 
         mean_auc = float(np.mean(fold_aucs))
         print(f'    [ML-ENTRY]  Walk-forward AUC: {mean_auc:.4f}  '

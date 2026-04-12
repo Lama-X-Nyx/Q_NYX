@@ -152,10 +152,10 @@ class WalkForwardSplitter:
                 'test_bars':    len(te),
             }
             if has_dt_index:
-                row['train_date_start'] = str(pd.Timestamp(df.index[tr[0]]).strftime('%Y-%m-%d'))
-                row['train_date_end']   = str(pd.Timestamp(df.index[tr[-1]]).strftime('%Y-%m-%d'))
-                row['test_date_start']  = str(pd.Timestamp(df.index[te[0]]).strftime('%Y-%m-%d'))
-                row['test_date_end']    = str(pd.Timestamp(df.index[te[-1]]).strftime('%Y-%m-%d'))
+                row['train_date_start'] = str(pd.Timestamp(str(df.index[tr[0]])).strftime('%Y-%m-%d'))
+                row['train_date_end']   = str(pd.Timestamp(str(df.index[tr[-1]])).strftime('%Y-%m-%d'))
+                row['test_date_start']  = str(pd.Timestamp(str(df.index[te[0]])).strftime('%Y-%m-%d'))
+                row['test_date_end']    = str(pd.Timestamp(str(df.index[te[-1]])).strftime('%Y-%m-%d'))
             rows.append(row)
         result = pd.DataFrame(rows)
         if not result.empty:

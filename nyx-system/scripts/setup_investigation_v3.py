@@ -445,7 +445,7 @@ def run_setup_investigation_v3(
     pair: str,
     config: Dict,
     output_dir: str,
-    dates: List[datetime] = None,
+    dates: "List[datetime] | None" = None,
 ) -> Dict:
     """
     Run Setup Investigation V3 — pattern-centric, level-separated.

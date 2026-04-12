@@ -108,7 +108,7 @@ def run_regime_feature_check(
     pair: str,
     config: Dict,
     output_dir: str,
-    sample_date: datetime = None
+    sample_date: "datetime | None" = None
 ) -> Dict:
     """
     Run regime feature alignment check

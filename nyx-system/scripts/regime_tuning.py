@@ -339,7 +339,7 @@ def run_regime_tuning(
     pair: str,
     config: Dict,
     output_dir: str,
-    dates: List[datetime] = None
+    dates: "List[datetime] | None" = None
 ) -> Dict:
     """
     Run regime sensitivity tuning

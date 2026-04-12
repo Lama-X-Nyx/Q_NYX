@@ -66,11 +66,13 @@ def create_manifest(data_dir: str, pairs: Optional[List[str]] = None) -> Dict:
         Manifest dictionary
     """
     
+    pairs = pairs or []
+
     data_path = Path(data_dir)
-    
+
     if not data_path.exists():
         raise FileNotFoundError(f"Data directory not found: {data_dir}")
-    
+
     manifest = {
         'created_at': datetime.now().isoformat(),
         'data_directory': str(data_path),

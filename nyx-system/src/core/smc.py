@@ -25,6 +25,7 @@ import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional
 
+_smc_lib = None
 try:
     from smartmoneyconcepts import smc as _smc_lib
     _LIB_AVAILABLE = True
@@ -116,6 +117,7 @@ class SMCDetector:
         """
         Use smartmoneyconcepts (numba) for OB and FVG, custom code for ChoCH.
         """
+        assert _smc_lib is not None
         # Library requires integer-indexed DataFrame
         df = data.reset_index(drop=True)
         T = len(df)
@@ -483,7 +485,7 @@ class SMCDetector:
     # ------------------------------------------------------------------
 
     def get_ob_zones(self, data: pd.DataFrame, lookback: int = 50) -> List[Dict]:
-        if _LIB_AVAILABLE:
+        if _LIB_AVAILABLE and _smc_lib is not None:
             try:
                 df = data.reset_index(drop=True)
                 swings = _smc_lib.swing_highs_lows(df, swing_length=self.swing_lookback)
@@ -509,7 +511,7 @@ class SMCDetector:
         return bull + bear
 
     def get_fvg_zones(self, data: pd.DataFrame, lookback: int = 50) -> List[Dict]:
-        if _LIB_AVAILABLE:
+        if _LIB_AVAILABLE and _smc_lib is not None:
             try:
                 df = data.reset_index(drop=True)
                 fvg_df = _smc_lib.fvg(df)

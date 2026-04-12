@@ -22,6 +22,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.core.nyx_engine import NYXEngine
+from src.core.smc import SMCDetector
 
 
 class SimpleBacktestEngine:
@@ -41,7 +42,8 @@ class SimpleBacktestEngine:
         
         # Use NYXEngine (unified signal generation)
         self.engine = NYXEngine(config)
-        
+        self.smc = SMCDetector(config)
+
         # State
         self.trades = []
         self.position = None

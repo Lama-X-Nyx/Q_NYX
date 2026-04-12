@@ -317,6 +317,7 @@ class PrecomputedStates:
                    (HSMM forward pass still runs on all history)
         end_ts   : ISO date — only compute SMC up to this date
         """
+        path: Optional[Path] = None
         if cache_key:
             path = self._cache_dir / f'precomp_{cache_key}_{self.CACHE_VERSION}.pkl'
             if self._load_cache(path):
@@ -345,9 +346,10 @@ class PrecomputedStates:
 
         obs_1h   = _build_obs_arrays(df_1h_prep)
         log_B_1h = _compute_log_B_from_arrays(regime_hsmm, obs_1h)
-        self.gamma_1h  = forward_streaming(regime_hsmm, log_B_1h)
+        g_1h = forward_streaming(regime_hsmm, log_B_1h)
+        self.gamma_1h  = g_1h
         self._idx_1h   = df_1h.index.values.astype(np.int64)
-        print(f'    regime 1H  : {len(self.gamma_1h)} bars  '
+        print(f'    regime 1H  : {len(g_1h)} bars  '
               f'({regime_hsmm.n_states} states)')
 
         # ---- Setup HSMM (15M + HTF=1H) ----
@@ -359,9 +361,10 @@ class PrecomputedStates:
 
         obs_15m   = _build_obs_arrays(df_15m_prep)
         log_B_15m = _compute_log_B_from_arrays(setup_hsmm, obs_15m)
-        self.gamma_15m  = forward_streaming(setup_hsmm, log_B_15m)
+        g_15m = forward_streaming(setup_hsmm, log_B_15m)
+        self.gamma_15m  = g_15m
         self._idx_15m   = df_15m.index.values.astype(np.int64)
-        print(f'    setup 15M  : {len(self.gamma_15m)} bars  '
+        print(f'    setup 15M  : {len(g_15m)} bars  '
               f'({setup_hsmm.n_states} states)')
 
         # ---- SMC patterns (15M rolling 200-bar, restricted range) ----
@@ -401,7 +404,7 @@ class PrecomputedStates:
         elapsed = time.time() - t0
         print(f'  [PRECOMPUTE] Done in {elapsed:.1f}s')
 
-        if cache_key:
+        if cache_key and path is not None:
             self._save_cache(path)
 
     # -----------------------------------------------------------------------
@@ -423,12 +426,19 @@ class PrecomputedStates:
             raise RuntimeError('Call precompute() first.')
 
         cfg = self._orch.config
+        context_arr = self.context_arr
+        gamma_1h = self.gamma_1h
+        gamma_15m = self.gamma_15m
+        smc_list = self.smc_list
+
+        if context_arr is None or gamma_1h is None or gamma_15m is None or smc_list is None:
+            raise RuntimeError('Precomputed arrays are None despite _ready=True.')
 
         # ---- Context ----
         i_1d = pos['1d'][1] - 1        # last closed 1D bar
-        if i_1d < 0 or i_1d >= len(self.context_arr):
+        if i_1d < 0 or i_1d >= len(context_arr):
             return self._wait('Context: index out of range')
-        ctx = str(self.context_arr[i_1d])
+        ctx = str(context_arr[i_1d])
         if ctx == 'insufficient':
             return self._wait('Context: SMA200 NaN (warmup)', ready=False)
 
@@ -440,7 +450,7 @@ class PrecomputedStates:
         if i_1h < readiness_cfg.get('regime_min_bars', 100):
             return self._wait('Regime: warmup', ready=False)
 
-        regime_probs = self.gamma_1h[i_1h]
+        regime_probs = gamma_1h[i_1h]
         regime_result = self._score_regime(regime_probs, ctx)
 
         # ---- Setup (15M) ----
@@ -448,11 +458,11 @@ class PrecomputedStates:
         if i_15m < readiness_cfg.get('setup_min_bars', 50):
             return self._wait('Setup: warmup', ready=False)
 
-        setup_probs   = self.gamma_15m[i_15m]
+        setup_probs   = gamma_15m[i_15m]
         smc_idx = i_15m - self._smc_start_iloc
-        if smc_idx < 0 or smc_idx >= len(self.smc_list):
+        if smc_idx < 0 or smc_idx >= len(smc_list):
             return self._wait('SMC: index out of precomputed range')
-        smc_patterns  = self.smc_list[smc_idx]
+        smc_patterns  = smc_list[smc_idx]
         setup_result  = self._score_setup(setup_probs, smc_patterns, ctx)
 
         # ---- Pipeline gate ----

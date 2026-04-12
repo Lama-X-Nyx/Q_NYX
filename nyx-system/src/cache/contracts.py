@@ -122,20 +122,20 @@ class FractalCacheState:
         return {
             'context': {
                 'cached': self.context_cache is not None,
-                'last_timestamp': self.context_cache.last_closed_bar_timestamp.isoformat() 
+                'last_timestamp': self.context_cache.last_closed_bar_timestamp.isoformat()
                     if self.context_cache else None,
-                'stats': self.context_stats.to_dict()
+                'stats': self.context_stats.to_dict() if self.context_stats else {}
             },
             'regime': {
                 'cached': self.regime_cache is not None,
                 'last_timestamp': self.regime_cache.last_closed_bar_timestamp.isoformat()
                     if self.regime_cache else None,
-                'stats': self.regime_stats.to_dict()
+                'stats': self.regime_stats.to_dict() if self.regime_stats else {}
             },
             'setup': {
                 'cached': self.setup_cache is not None,
                 'last_timestamp': self.setup_cache.last_closed_bar_timestamp.isoformat()
                     if self.setup_cache else None,
-                'stats': self.setup_stats.to_dict()
+                'stats': self.setup_stats.to_dict() if self.setup_stats else {}
             }
         }

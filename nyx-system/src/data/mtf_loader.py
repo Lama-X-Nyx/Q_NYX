@@ -56,9 +56,8 @@ class MTFLoader:
             Dict mapping TF name to DataFrame
         """
         
-        if tfs is None:
-            tfs = ['1d', '4h', '1h', '15m']
-        
+        tfs = tfs or ['1d', '4h', '1h', '15m']
+
         data = {}
         
         for tf in tfs:

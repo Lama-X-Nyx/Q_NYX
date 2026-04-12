@@ -123,10 +123,10 @@ class MLOrchestrator:
         p_entry = float(entry_result.score) if entry_result else 0.5
 
         # 15m bar micro-features
-        close  = float(df_15m_row.get('close', 1.0))
-        high   = float(df_15m_row.get('high',  close))
-        low    = float(df_15m_row.get('low',   close))
-        volume = float(df_15m_row.get('volume', 1.0))
+        close  = float(df_15m_row.get('close', 1.0) or 1.0)
+        high   = float(df_15m_row.get('high',  close) or close)
+        low    = float(df_15m_row.get('low',   close) or close)
+        volume = float(df_15m_row.get('volume', 1.0) or 1.0)
 
         denom        = (high - low) if (high - low) > 0 else 1e-9
         buy_pressure = (close - low) / denom
@@ -202,7 +202,8 @@ class MLOrchestrator:
 
             # Drop rows with NaNs
             mask = X.notna().all(axis=1)
-            X, y = X[mask], y[mask]
+            X = pd.DataFrame(X[mask])
+            y = pd.Series(y[mask])
 
             self._feat_names = X.columns.tolist()
             params = dict(
@@ -426,10 +427,10 @@ class MLOrchestrator:
         smc_start_iloc : absolute iloc offset for smc_list[0]
         warmup         : bars to skip at start
         """
-        close = df_15m['close'].values
-        high  = df_15m['high'].values
-        low   = df_15m['low'].values
-        vol   = df_15m['volume'].values
+        close = np.asarray(df_15m['close'].values, dtype=float)
+        high  = np.asarray(df_15m['high'].values, dtype=float)
+        low   = np.asarray(df_15m['low'].values, dtype=float)
+        vol   = np.asarray(df_15m['volume'].values, dtype=float)
         n     = len(df_15m)
 
         # Build a 1D context index mapping: one context per day

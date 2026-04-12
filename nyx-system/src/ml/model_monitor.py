@@ -186,7 +186,7 @@ class ModelMonitor:
             if len(baseline_col) < 10 or len(recent_col) < 10:
                 continue
             ks_result = ks_2samp(baseline_col, recent_col)
-            pvalue = float(ks_result[1])
+            pvalue: float = ks_result.pvalue  # type: ignore[assignment]
             if pvalue < 0.01:
                 drifted.append(col)
 
