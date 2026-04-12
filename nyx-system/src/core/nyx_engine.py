@@ -134,10 +134,10 @@ class NYXEngine:
         data_slice = prepared_data.iloc[start_idx:i+1]
         
         if current_date is None:
-            current_date = data_slice.index[-1].isoformat()
-        
+            current_date = str(data_slice.index[-1].isoformat())
+
         # Call standard generate_signal with bounded window
-        return self.generate_signal(pair, data_slice, current_date)
+        return self.generate_signal(pair, data_slice, current_date or "")
     
     def generate_signal(
         self, 
@@ -447,13 +447,13 @@ class NYXEngine:
         return size
     
     def _hold_signal(
-        self, 
-        reason: str, 
+        self,
+        reason: str,
         confidence: float = 0,
         regime: str = 'Unknown',
-        macro_signal: Dict = None,
-        hsmm_state: str = None,
-        smc_patterns: Dict = None
+        macro_signal: Optional[Dict] = None,
+        hsmm_state: Optional[str] = None,
+        smc_patterns: Optional[Dict] = None
     ) -> Dict:
         """Generate HOLD signal"""
         

@@ -379,7 +379,7 @@ def run_funnel(pair: str, config: dict, output_dir: Path):
     }
 
 
-def run_funnel_compare(pair: str, config: dict, output_dir: Path, sample_bars: int = None):
+def run_funnel_compare(pair: str, config: dict, output_dir: Path, sample_bars: "int | None" = None):
     """Run funnel comparison between min_required_bars=50 and 100"""
     print(f"\n{'='*80}")
     print(f"FUNNEL COMPARE MODE - {pair}")
@@ -441,7 +441,7 @@ def run_funnel_compare(pair: str, config: dict, output_dir: Path, sample_bars: i
     }
 
 
-def run_smc_diagnostics(pair: str, config: dict, output_dir: Path, sample_bars: int = None):
+def run_smc_diagnostics(pair: str, config: dict, output_dir: Path, sample_bars: "int | None" = None):
     """Run SMC pattern coverage diagnostics"""
     print(f"\n{'='*80}")
     print(f"SMC DIAGNOSTICS MODE - {pair}")
@@ -498,7 +498,7 @@ def run_smc_diagnostics(pair: str, config: dict, output_dir: Path, sample_bars: 
     }
 
 
-def run_ob_audit(pair: str, config: dict, output_dir: Path, sample_bars: int = None, sensitivity: bool = False):
+def run_ob_audit(pair: str, config: dict, output_dir: Path, sample_bars: "int | None" = None, sensitivity: bool = False):
     """Run Order Block coverage audit"""
     print(f"\n{'='*80}")
     print(f"ORDER BLOCK AUDIT MODE - {pair}")
@@ -573,7 +573,7 @@ def run_ob_audit(pair: str, config: dict, output_dir: Path, sample_bars: int = N
     }
 
 
-def run_pattern_quality(pair: str, config: dict, output_dir: Path, sample_bars: int = None):
+def run_pattern_quality(pair: str, config: dict, output_dir: Path, sample_bars: "int | None" = None):
     """Run pattern quality attribution analysis"""
     print(f"\n{'='*80}")
     print(f"PATTERN QUALITY MODE - {pair}")
@@ -630,7 +630,7 @@ def run_pattern_quality(pair: str, config: dict, output_dir: Path, sample_bars: 
     }
 
 
-def run_mtf_baseline_check(pair: str, config: dict, output_dir: Path, sample_bars: int = None):
+def run_mtf_baseline_check(pair: str, config: dict, output_dir: Path, sample_bars: "int | None" = None):
     """Run MTF baseline validation check"""
     print(f"\n{'='*80}")
     print(f"MTF BASELINE CHECK - {pair}")

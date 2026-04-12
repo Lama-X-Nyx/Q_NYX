@@ -304,6 +304,7 @@ def pretrain_agents(orchestrator: Orchestrator, mtf_all: dict,
           f"({pretrain_months}M, {em_iters} iters, structure-lock)")
 
     # ---- Cache lookup ----
+    cache_path = CACHE_DIR / "default.pkl"
     if use_cache:
         cache_key  = _pretrain_cache_key(pair, pretrain_end, pretrain_months, em_iters)
         cache_path = CACHE_DIR / f"{cache_key}.pkl"
@@ -601,12 +602,12 @@ class MTFBacktest:
             # 5. Orchestrator decision
             # ----------------------------------------------------------------
             try:
-                if _precomputed:
+                if _precomputed and precomputed_states is not None:
                     decision = precomputed_states.decide_fast(
                         aligned_idx[bar_i], current_price
                     )
                 else:
-                    decision = self.orchestrator.decide(slices, current_price=current_price)
+                    decision = self.orchestrator.decide(slices or {}, current_price=current_price)
             except Exception as exc:
                 self.decision_log.append({'ts': ts, 'price': current_price,
                                           'action': 'ERROR', 'reason': str(exc)[:80],

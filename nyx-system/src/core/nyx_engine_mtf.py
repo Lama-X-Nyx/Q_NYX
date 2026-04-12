@@ -53,7 +53,7 @@ class NYXEngineMTF:
         
         # Import SMC
         from src.core.smc import SMCDetector
-        self.smc = SMCDetector(config)
+        self.smc = SMCDetector()
         
         # Import Risk Manager
         from src.core.risk_manager_mtf import RiskManagerMTF
@@ -246,7 +246,7 @@ class NYXEngineMTF:
         
         return df_prepared
     
-    def _compute_intent_daily(self, df_1d: pd.DataFrame, fractal_states_1d: Dict = None) -> str:
+    def _compute_intent_daily(self, df_1d: pd.DataFrame, fractal_states_1d: Optional[Dict] = None) -> str:
         """
         Compute Intent_Daily from 1D HSMM states
         
@@ -324,7 +324,10 @@ class NYXEngineMTF:
                 current_state_idx = np.argmax(current_probs)
                 
                 # Stability = transition probability of staying in same state
-                stability = self.hsmm.transition_matrix[current_state_idx, current_state_idx]
+                tm = self.hsmm.transition_matrix
+                if tm is None:
+                    return 0.5
+                stability = tm[current_state_idx, current_state_idx]
                 
                 return stability
             else:

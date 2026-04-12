@@ -292,7 +292,7 @@ class MLContextAgent:
 
         # --- pass-through: SMA200 rule-based ---
         close_s: pd.Series = df_1d['close']  # type: ignore[assignment]
-        sma200 = close_s.rolling(200).mean()
+        sma200: pd.Series = close_s.rolling(200).mean()  # type: ignore[assignment]
         last_close = float(close_s.iloc[-1])
         last_sma   = float(sma200.iloc[-1]) if not np.isnan(sma200.iloc[-1]) else last_close
 

@@ -133,17 +133,17 @@ class PaperEngine:
         """
         
         # Log snapshot
-        snapshot_id = self._log_snapshot(pair, signal, current_price)
-        
+        snapshot_id = self._log_snapshot(pair, signal, current_price) or 0
+
         # Log signal
-        signal_id = self._log_signal(snapshot_id, signal)
-        
+        signal_id = self._log_signal(snapshot_id, signal) or 0
+
         # Check existing position first
         if pair in self.positions:
             # Manage position
             action = self._manage_position(pair, signal, current_price, signal_id)
             return action
-        
+
         # Check entry
         if signal['action'] == 'BUY' and pair not in self.positions:
             self._enter_position(pair, signal, current_price, signal_id)
