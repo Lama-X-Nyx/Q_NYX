@@ -400,7 +400,7 @@ class Orchestrator:
         lowest_tf = min(mtf_data.keys(), key=lambda x: self._tf_to_minutes(x))
         df = mtf_data[lowest_tf]
         if not df.empty and hasattr(df.index, 'max'):
-            ts = pd.Timestamp(df.index.max())
+            ts = pd.Timestamp(str(df.index.max()))
             return ts.strftime('%Y-%m-%d')
         import datetime
         return datetime.date.today().isoformat()

@@ -355,8 +355,8 @@ def main():
 
     if not hsmm_edge.empty:
         h1 = hsmm_edge[hsmm_edge['horizon'] == horizons[0]]
-        tp_df: pd.DataFrame = h1[h1['state'] == 'Trend+']
-        tm_df: pd.DataFrame = h1[h1['state'] == 'Trend-']
+        tp_df = pd.DataFrame(h1[h1['state'] == 'Trend+'])
+        tm_df = pd.DataFrame(h1[h1['state'] == 'Trend-'])
         tp_ok = len(tp_df) > 0 and float(np.asarray(tp_df['mean_ret'].values)[0]) > 0
         tm_ok = len(tm_df) > 0 and float(np.asarray(tm_df['mean_ret'].values)[0]) < 0
         hsmm_pass = tp_ok and tm_ok
@@ -364,8 +364,8 @@ def main():
 
     if not smc_edge.empty:
         h1_smc = smc_edge[smc_edge['horizon'] == horizons[0]]
-        bull_ok: pd.Series = h1_smc[h1_smc['pattern'] == 'BullishOB']['mean_ret']
-        bear_ok: pd.Series = h1_smc[h1_smc['pattern'] == 'BearishOB']['mean_ret']
+        bull_ok = pd.Series(h1_smc[h1_smc['pattern'] == 'BullishOB']['mean_ret'])
+        bear_ok = pd.Series(h1_smc[h1_smc['pattern'] == 'BearishOB']['mean_ret'])
         smc_pass = (
             (len(bull_ok) > 0 and float(np.asarray(bull_ok.values)[0]) > 0) and
             (len(bear_ok) > 0 and float(np.asarray(bear_ok.values)[0]) < 0)
@@ -374,8 +374,8 @@ def main():
 
     if not combo_edge.empty:
         h1_c = combo_edge[combo_edge['horizon'] == horizons[0]]
-        combo_sharpe: pd.Series = h1_c[h1_c['signal'] == 'Combined']['sharpe']
-        regime_sharpe: pd.Series = h1_c[h1_c['signal'] == 'Regime only']['sharpe']
+        combo_sharpe = pd.Series(h1_c[h1_c['signal'] == 'Combined']['sharpe'])
+        regime_sharpe = pd.Series(h1_c[h1_c['signal'] == 'Regime only']['sharpe'])
         if len(combo_sharpe) > 0 and len(regime_sharpe) > 0:
             combo_wins = float(np.asarray(combo_sharpe.values)[0]) > float(np.asarray(regime_sharpe.values)[0])
             print(f"Combined > Regime alone: {'YES ✓' if combo_wins else 'NO ✗'}")
