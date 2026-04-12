@@ -44,7 +44,7 @@ class MTFLoader:
             '5m': 5
         }
     
-    def load(self, pair: str, tfs: list = None) -> Dict[str, pd.DataFrame]:
+    def load(self, pair: str, tfs: Optional[list] = None) -> Dict[str, pd.DataFrame]:
         """
         Load multiple timeframes for a pair
         

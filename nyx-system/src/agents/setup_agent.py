@@ -257,7 +257,7 @@ class SetupAgent:
         except Exception:
             return fallback
 
-    def analyze(self, df: pd.DataFrame, context_state: str = None,
+    def analyze(self, df: pd.DataFrame, context_state: str = "",
                 df_htf: pd.DataFrame = None) -> AgentResult:
         """
         Analyze SMC patterns and alignment
@@ -270,6 +270,7 @@ class SetupAgent:
         Returns:
             AgentResult with setup decision
         """
+        context_state = context_state or ""
 
         # Get minimum bars from config
         readiness_config = self.config.get('fractal_readiness', {})
@@ -325,6 +326,7 @@ class SetupAgent:
         smc_bear_score = float(patterns.get('smc_score_bearish', 0.0))
 
         # No context provided - neutral
+        hsmm_result = None
         if not context_state:
             if has_bullish or has_bearish:
                 state = 'pattern_found'
@@ -435,7 +437,7 @@ class SetupAgent:
             'bars': len(df),
             'min_bars': min_bars
         }
-        if context_state in ('bullish', 'bearish'):
+        if context_state in ('bullish', 'bearish') and hsmm_result is not None:
             meta.update({
                 'hsmm_p_trend_plus':   hsmm_result['p_trend_plus'],
                 'hsmm_p_trend_minus':  hsmm_result['p_trend_minus'],

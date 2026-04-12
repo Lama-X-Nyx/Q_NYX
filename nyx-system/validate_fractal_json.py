@@ -20,7 +20,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
     temp_dir = Path(tmpdir)
     
     print("Running fractal_check...")
-    result = run_fractal_check('BTCUSDT', config, temp_dir, sample_bars=500)
+    result = run_fractal_check('BTCUSDT', config, temp_dir)
     
     # Load JSON
     json_path = temp_dir / 'fractal' / 'BTCUSDT_fractal_check.json'

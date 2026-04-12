@@ -7,7 +7,7 @@ Technical audit of the SMC detector to understand why it's globally silent.
 import sys
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from collections import Counter
 
 sys.path.insert(0, '.')
@@ -26,7 +26,7 @@ class SMCAutopsy:
     - Failure reasons by category
     """
     
-    def __init__(self, config: dict = None):
+    def __init__(self, config: Optional[dict] = None):
         """
         Initialize autopsy with instrumentation
         

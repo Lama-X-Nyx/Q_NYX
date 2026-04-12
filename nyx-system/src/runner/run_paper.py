@@ -20,6 +20,7 @@ import time
 import yaml
 from pathlib import Path
 from datetime import datetime
+from typing import Optional
 
 # Add project to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -82,7 +83,7 @@ class PaperTradingRunner:
         print(f"Update:   {update_seconds}s")
         print("█"*80 + "\n")
     
-    def run(self, duration_hours: float = None):
+    def run(self, duration_hours: Optional[float] = None):
         """
         Run paper trading
         

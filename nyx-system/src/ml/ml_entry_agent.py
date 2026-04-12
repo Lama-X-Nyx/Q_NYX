@@ -158,6 +158,7 @@ class MLEntryAgent:
 
         X_arr = X.values
         y_arr = y.values
+        fold_model: Optional[lgb.Booster] = None
 
         for fold, (tr_idx, val_idx) in enumerate(splitter.split(X)):
             X_tr, y_tr = X_arr[tr_idx], y_arr[tr_idx]
@@ -186,11 +187,10 @@ class MLEntryAgent:
 
         # --- Train final model on all data ---
         ds_full = lgb.Dataset(X_arr, label=y_arr)
+        best_iter = fold_model.best_iteration if fold_model is not None else n_rounds
         self._lgb_model = lgb.train(
             lgb_params, ds_full,
-            num_boost_round=int(np.mean([
-                m.best_iteration for m in [fold_model]  # approx from last fold
-            ]) * 1.1),
+            num_boost_round=int(best_iter * 1.1),
             callbacks=[lgb.log_evaluation(period=-1)]
         )
         self._lgb_trained = True
@@ -208,7 +208,7 @@ class MLEntryAgent:
             'deployed':   deployed,
             'mean_auc':   mean_auc,
             'fold_aucs':  fold_aucs,
-            'n_features': len(self._feature_names),
+            'n_features': len(self._feature_names or []),
         }
 
     # -----------------------------------------------------------------------
@@ -414,7 +414,7 @@ class MLEntryAgent:
 
     def get_feature_importance(self, top_n: int = 15) -> Optional[pd.DataFrame]:
         """Return top-N features by gain importance."""
-        if not self._lgb_trained:
+        if not self._lgb_trained or self._lgb_model is None:
             return None
         imp = self._lgb_model.feature_importance(importance_type='gain')
         df = pd.DataFrame({

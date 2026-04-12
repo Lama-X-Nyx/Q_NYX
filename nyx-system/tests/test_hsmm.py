@@ -115,6 +115,7 @@ class TestHSMMParameterLearning:
         hsmm.initialize_parameters(sample_data)
         
         # Diagonal elements should be larger (persistence)
+        assert hsmm.transition_matrix is not None
         for i in range(3):
             assert hsmm.transition_matrix[i, i] >= 0.5
 
@@ -346,12 +347,14 @@ class TestHSMMP4FiveState:
         """Transition matrix is 5×5 for 5-state model."""
         hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution'])
         hsmm.initialize_parameters(sample_data_5state)
+        assert hsmm.transition_matrix is not None
         assert hsmm.transition_matrix.shape == (5, 5)
 
     def test_5state_transition_rows_sum_to_one(self, sample_data_5state):
         """Every row of the 5-state transition matrix sums to 1."""
         hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution'])
         hsmm.initialize_parameters(sample_data_5state)
+        assert hsmm.transition_matrix is not None
         row_sums = hsmm.transition_matrix.sum(axis=1)
         assert np.allclose(row_sums, 1.0, atol=1e-6)
 
@@ -383,6 +386,7 @@ class TestHSMMP4FiveState:
         """All 5 states have emission params after init."""
         hsmm = SemiMarkovHMM(states=['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution'])
         hsmm.initialize_parameters(sample_data_5state)
+        assert hsmm.emission_params is not None
         for state in hsmm.states:
             assert state in hsmm.emission_params
             assert 'price_mu' in hsmm.emission_params[state]
@@ -503,6 +507,7 @@ class TestBaumWelchEM:
             for i in range(200)
         ]
         hsmm.fit(observations, n_iter=10)
+        assert hsmm.transition_matrix is not None
         row_sums = hsmm.transition_matrix.sum(axis=1)
         assert np.allclose(row_sums, 1.0, atol=1e-6)
 
@@ -516,6 +521,7 @@ class TestBaumWelchEM:
             for i in range(200)
         ]
         hsmm.fit(observations, n_iter=10)
+        assert hsmm.emission_params is not None
         for state, params in hsmm.emission_params.items():
             assert params['price_sigma'] > 0, f"{state} price_sigma not positive"
             assert params['atr_sigma']   > 0, f"{state} atr_sigma not positive"
@@ -547,6 +553,8 @@ class TestBaumWelchEM:
         ]
         log_B = hsmm._compute_log_B(observations)
         log_alpha = np.full((T, n), -np.inf)
+        assert hsmm.transition_matrix is not None
+        assert hsmm.initial_probs is not None
         log_A     = np.log(hsmm.transition_matrix + 1e-10)
         log_alpha[0] = np.log(hsmm.initial_probs + 1e-10) + log_B[0]
         for t in range(1, T):
@@ -567,6 +575,8 @@ class TestBaumWelchEM:
              'atr':   sample_data_5state['atr_14'].iloc[i]}
             for i in range(T)
         ]
+        assert hsmm.transition_matrix is not None
+        assert hsmm.initial_probs is not None
         log_B    = hsmm._compute_log_B(observations)
         log_A    = np.log(hsmm.transition_matrix + 1e-10)
         log_alpha = np.full((T, n), -np.inf)

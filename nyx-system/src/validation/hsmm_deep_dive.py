@@ -35,7 +35,7 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 from src.data.mtf_loader import load_fractal_context
 from src.agents.regime_agent import RegimeAgent
@@ -169,7 +169,10 @@ def inspect_hsmm_states(
     
     # Compute SdC and stability
     sdc = 10 * current_probs[state_idx]
-    stability = regime_agent.hsmm.transition_matrix[state_idx, state_idx]
+    if regime_agent.hsmm.transition_matrix is not None:
+        stability = regime_agent.hsmm.transition_matrix[state_idx, state_idx]
+    else:
+        stability = 0.0
     
     return {
         'state_probabilities': state_probabilities,
@@ -351,7 +354,7 @@ def _determine_verdict(
     range_probs: List[float],
     returns_means: List[float],
     returns_stds: List[float],
-    selected_states: List[str] = None
+    selected_states: Optional[List[str]] = None
 ) -> tuple:
     """
     Determine main issue and verdict
@@ -446,7 +449,7 @@ def run_hsmm_deep_dive(
     pair: str,
     config: Dict,
     output_dir: str,
-    dates: List[datetime] = None
+    dates: Optional[List[datetime]] = None
 ) -> Dict:
     """
     Run HSMM deep dive analysis

@@ -66,7 +66,7 @@ class RegimeAgent:
         df_prepared = self._prepare_data(df, df_htf=df_htf)
         return self.hsmm.initialize_parameters_with_em(df_prepared, n_iter=n_iter, tol=tol)
 
-    def analyze(self, df: pd.DataFrame, context_state: str = None,
+    def analyze(self, df: pd.DataFrame, context_state: str = "",
                 df_htf: pd.DataFrame = None) -> AgentResult:
         """
         Analyze market regime using HSMM
@@ -79,6 +79,7 @@ class RegimeAgent:
         Returns:
             AgentResult with regime decision
         """
+        context_state = context_state or ""
 
         # Get minimum bars from config
         readiness_config = self.config.get('fractal_readiness', {})
@@ -149,7 +150,7 @@ class RegimeAgent:
             # Cast to Python float — numpy.float64 propagates to numpy.bool_ in comparisons,
             # which breaks AgentResult's isinstance(passed, bool) contract.
             current_state_idx = int(np.argmax(current_probs))
-            stability = float(self.hsmm.transition_matrix[current_state_idx, current_state_idx])
+            stability = float(self.hsmm.transition_matrix[current_state_idx, current_state_idx]) if self.hsmm.transition_matrix is not None else 0.0
             
             # Map to standardized state names (P4b: 6-state)
             state_mapping = {
@@ -179,7 +180,7 @@ class RegimeAgent:
                         'sdc': sdc,
                         'stability': stability,
                         'hsmm_states': hsmm_states,
-                        'transition_matrix': self.hsmm.transition_matrix.tolist(),
+                        'transition_matrix': self.hsmm.transition_matrix.tolist() if self.hsmm.transition_matrix is not None else [],
                         'context_aligned': False,
                         'bars': len(df),
                         'min_bars': min_bars,
@@ -251,7 +252,7 @@ class RegimeAgent:
                     'stability': stability,
                     'hsmm_states': hsmm_states,
                     # transition_matrix exposed so ContextAgent can compute Intent_1D = argmax(π_4H · A^k)
-                    'transition_matrix': self.hsmm.transition_matrix.tolist(),
+                    'transition_matrix': self.hsmm.transition_matrix.tolist() if self.hsmm.transition_matrix is not None else [],
                     'context_aligned': context_aligned,
                     'bars': len(df),
                     'min_bars': min_bars

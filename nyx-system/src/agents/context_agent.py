@@ -203,6 +203,9 @@ class ContextAgent:
         # ---- Try HSMM projection first --------------------------------
         intent_method = 'sma_heuristic'
         hsmm_meta: Dict = {}
+        score: float = 0.0
+        passed: bool = False
+        reason: str = ''
 
         if (
             regime_4h_result is not None

@@ -151,7 +151,7 @@ class PaperEngine:
         
         return 'HOLD'
     
-    def _log_snapshot(self, pair: str, signal: Dict, price: float) -> int:
+    def _log_snapshot(self, pair: str, signal: Dict, price: float) -> Optional[int]:
         """Log market snapshot"""
         
         cursor = self.db.execute('''
@@ -172,7 +172,7 @@ class PaperEngine:
         self.db.commit()
         return cursor.lastrowid
     
-    def _log_signal(self, snapshot_id: int, signal: Dict) -> int:
+    def _log_signal(self, snapshot_id: int, signal: Dict) -> Optional[int]:
         """Log trading signal"""
         
         cursor = self.db.execute('''

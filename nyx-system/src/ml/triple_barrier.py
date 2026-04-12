@@ -91,7 +91,7 @@ def triple_barrier_labels(
     for i in range(n - num_bars):
         c  = close[i]
         # Effective stop distance (floor to min_atr_pct × price)
-        atr_eff = max(atr_arr[i], c * min_atr_pct)
+        atr_eff = max(float(atr_arr[i]), c * min_atr_pct)
 
         if bullish:
             tp_price = c + pt_mult * atr_eff   # upper barrier

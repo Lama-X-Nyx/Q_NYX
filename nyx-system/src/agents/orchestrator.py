@@ -57,7 +57,7 @@ class Orchestrator:
         else:
             self.macro_engine = None
     
-    def decide(self, mtf_data: Dict[str, pd.DataFrame], current_price: float = None) -> OrchestratorDecision:
+    def decide(self, mtf_data: Dict[str, pd.DataFrame], current_price: Optional[float] = None) -> OrchestratorDecision:
         """
         Make final trading decision using active agents
         
@@ -75,8 +75,9 @@ class Orchestrator:
         # Get current price if not provided
         if current_price is None:
             lowest_tf = min(mtf_data.keys(), key=lambda x: self._tf_to_minutes(x))
-            current_price = mtf_data[lowest_tf].iloc[-1]['close']
-        
+            current_price = float(mtf_data[lowest_tf].iloc[-1]['close'])
+        current_price = current_price or 0.0
+
         # Get fractal config
         fractal_config = self.config.get('fractal', {})
         use_entry_agent = fractal_config.get('use_entry_agent', False)
@@ -259,13 +260,13 @@ class Orchestrator:
         context_result = components.get('context')
         regime_result = components.get('regime')
         setup_result = components.get('setup')
-        
+
         # Step 1: Check readiness FIRST
         all_ready = all([result.ready for result in components.values()])
-        
+
         if not all_ready:
             not_ready_agents = [name for name, result in components.items() if not result.ready]
-            
+
             return OrchestratorDecision(
                 action='WAIT',
                 score=0.0,
@@ -273,12 +274,12 @@ class Orchestrator:
                 blocked_by=['readiness'],
                 components=components
             )
-        
+
         # Step 2: All agents READY - check logic (all must pass)
         all_passed = all([result.passed for result in components.values()])
-        
+
         blocked_by = [name for name, result in components.items() if not result.passed]
-        
+
         if not all_passed:
             return OrchestratorDecision(
                 action='WAIT',
@@ -287,7 +288,17 @@ class Orchestrator:
                 blocked_by=blocked_by,
                 components=components
             )
-        
+
+        # Guard: all three core agents must be present
+        if regime_result is None or setup_result is None or context_result is None:
+            return OrchestratorDecision(
+                action='WAIT',
+                score=0.0,
+                reason='Missing required agent result (context, regime, or setup)',
+                blocked_by=['missing_agent'],
+                components=components
+            )
+
         # Step 3: Risk check (P2: pass emission_params for Monte Carlo hitting probs)
         risk_conditions = self.risk_manager.check_risk_conditions(
             entry_price=current_price,
@@ -319,9 +330,9 @@ class Orchestrator:
             action = 'SELL'
         else:
             action = 'WAIT'
-        
+
         aggregate_score = self._calculate_aggregate_score(components)
-        
+
         return OrchestratorDecision(
             action=action,
             score=aggregate_score,

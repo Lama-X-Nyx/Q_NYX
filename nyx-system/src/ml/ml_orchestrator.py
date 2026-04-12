@@ -23,6 +23,10 @@ from src.agents.contracts import AgentResult, OrchestratorDecision
 from src.ml.triple_barrier import label_with_context
 from src.ml.walk_forward_splitter import WalkForwardSplitter
 
+compose: Any = None
+preprocessing: Any = None
+linear_model: Any = None
+river_metrics: Any = None
 try:
     from river import linear_model, preprocessing, compose, metrics as river_metrics
     _RIVER_OK = True
@@ -229,7 +233,8 @@ class MLOrchestrator:
                     pass
 
             self._lgb = lgb.LGBMClassifier(**params)
-            self._lgb.fit(X, y, callbacks=[lgb.log_evaluation(-1)])
+            if self._lgb is not None:
+                self._lgb.fit(X, y, callbacks=[lgb.log_evaluation(-1)])
             self._trained = True
             self._save()
 
@@ -321,6 +326,8 @@ class MLOrchestrator:
                 p_online = 0.5
 
             X_row = pd.DataFrame([meta_feats])[self._feat_names]
+            if self._lgb is None:
+                raise RuntimeError('LGB model not initialized')
             p_lgb = float(self._lgb.predict_proba(X_row)[0, 1])
 
             if self._n_online >= 20:

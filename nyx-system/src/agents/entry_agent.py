@@ -36,6 +36,7 @@ class EntryAgent:
         self.timeframe = timeframes.get('entry', '5m')
     
     def analyze(self, df: pd.DataFrame, setup_state: str = None) -> AgentResult:
+        setup_state = setup_state or ""
         """
         Analyze entry timing
         

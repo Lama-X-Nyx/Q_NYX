@@ -27,6 +27,10 @@ from src.ml.triple_barrier import triple_barrier_labels, label_with_context
 from src.ml.walk_forward_splitter import WalkForwardSplitter
 
 # River is optional — wrap all usage in try/except
+compose: Any = None
+preprocessing: Any = None
+linear_model: Any = None
+river_metrics: Any = None
 try:
     from river import linear_model, preprocessing, compose, metrics as river_metrics
     _RIVER_OK = True
@@ -248,10 +252,12 @@ class MLContextAgent:
 
             # Final models on full data
             self._lgb_bull = lgb.LGBMClassifier(**params)
-            self._lgb_bull.fit(X, y_bull, callbacks=[lgb.log_evaluation(-1)])
+            if self._lgb_bull is not None:
+                self._lgb_bull.fit(X, y_bull, callbacks=[lgb.log_evaluation(-1)])
 
             self._lgb_bear = lgb.LGBMClassifier(**params)
-            self._lgb_bear.fit(X, y_bear, callbacks=[lgb.log_evaluation(-1)])
+            if self._lgb_bear is not None:
+                self._lgb_bear.fit(X, y_bear, callbacks=[lgb.log_evaluation(-1)])
 
             self._trained = True
             self._save()
@@ -309,6 +315,8 @@ class MLContextAgent:
                     metadata={'p_bull': 0.5, 'p_bear': 0.5, 'p_neutral': 0.0}
                 )
 
+            if self._lgb_bull is None or self._lgb_bear is None:
+                raise RuntimeError('LGB models not initialized')
             p_bull = float(self._lgb_bull.predict_proba(last)[0, 1])
             p_bear = float(self._lgb_bear.predict_proba(last)[0, 1])
 
@@ -508,7 +516,8 @@ class MLRegimeAgent:
                     pass
 
             self._lgb = lgb.LGBMClassifier(**params)
-            self._lgb.fit(X, y, callbacks=[lgb.log_evaluation(-1)])
+            if self._lgb is not None:
+                self._lgb.fit(X, y, callbacks=[lgb.log_evaluation(-1)])
             self._trained = True
             self._save()
 
@@ -564,6 +573,8 @@ class MLRegimeAgent:
                     reason='MLRegimeAgent: NaN features, pass-through'
                 )
 
+            if self._lgb is None:
+                raise RuntimeError('LGB model not initialized')
             p_bull = float(self._lgb.predict_proba(last)[0, 1])
 
             feats_dict = last.iloc[0].to_dict()
@@ -811,7 +822,8 @@ class MLSetupAgent:
                     pass
 
             self._lgb = lgb.LGBMClassifier(**params)
-            self._lgb.fit(X, y, callbacks=[lgb.log_evaluation(-1)])
+            if self._lgb is not None:
+                self._lgb.fit(X, y, callbacks=[lgb.log_evaluation(-1)])
             self._trained = True
             self._save()
 
@@ -885,6 +897,8 @@ class MLSetupAgent:
                     reason='MLSetupAgent: NaN features, pass-through'
                 )
 
+            if self._lgb is None:
+                raise RuntimeError('LGB model not initialized')
             score = float(self._lgb.predict_proba(last)[0, 1])
             feats_dict = last.iloc[0].to_dict()
             if self._n_online >= 20:

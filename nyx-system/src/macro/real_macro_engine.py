@@ -275,8 +275,8 @@ class RealMacroEngine:
         impact: str,
         strength: float = 1.0,
         decay_days: int = 60,
-        assets_affected: List[str] = None,
-        asset_sensitivity: Dict = None
+        assets_affected: Optional[List[str]] = None,
+        asset_sensitivity: Optional[Dict] = None
     ):
         """
         Add a new macro event

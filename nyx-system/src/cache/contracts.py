@@ -104,9 +104,9 @@ class FractalCacheState:
     regime_cache: Optional[CacheEntry] = None
     setup_cache: Optional[CacheEntry] = None
     
-    context_stats: CacheStats = None
-    regime_stats: CacheStats = None
-    setup_stats: CacheStats = None
+    context_stats: Optional[CacheStats] = None
+    regime_stats: Optional[CacheStats] = None
+    setup_stats: Optional[CacheStats] = None
     
     def __post_init__(self):
         """Initialize stats if not provided"""
