@@ -179,14 +179,22 @@ class TestStationaryFeatures:
             f"EMA ratio mean {ema_ratio.mean():.4f} too far from 0 for ranging data"
 
     def test_no_nan_in_features_after_warmup(self):
-        """After warmup period (50 bars), no NaN should remain."""
+        """After warmup period, no NaN should remain (core=50, full=210)."""
         from src.ml.jesse_features import compute_stationary_features
+        # Core features: 50 bars warmup is enough
         df = make_bullish_candles(300)
-        features = compute_stationary_features(df)
-        after_warmup = features.iloc[50:]
+        features_core = compute_stationary_features(df, feature_set='core')
+        after_warmup = features_core.iloc[50:]
         nan_counts = after_warmup.isna().sum()
         assert nan_counts.sum() == 0, \
-            f"NaN found after warmup: {nan_counts[nan_counts > 0].to_dict()}"
+            f"NaN in core features after warmup: {nan_counts[nan_counts > 0].to_dict()}"
+        # Full features: need 210 bars warmup (EMA200)
+        df_long = make_bullish_candles(500)
+        features_full = compute_stationary_features(df_long, feature_set='full')
+        after_warmup_full = features_full.iloc[210:]
+        nan_full = after_warmup_full.isna().sum()
+        assert nan_full.sum() == 0, \
+            f"NaN in full features after warmup: {nan_full[nan_full > 0].to_dict()}"
 
     def test_features_different_price_levels_same_distribution(self):
         """Same trend at price=100 vs price=10000 → features should be similar."""
