@@ -39,6 +39,7 @@ sys.path.insert(0, '.')
 import yaml
 import json
 import numpy as np
+import pandas as pd
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Any
@@ -118,8 +119,8 @@ def analyze_setup_period(
     
     for i in range(warmup, warmup + n_signals):
         try:
-            current_time = mtf_data[lowest_tf].index[i]
-            
+            current_time = pd.Timestamp(mtf_data[lowest_tf].index[i])
+
             # Align data at this timestamp
             aligned_data = loader.align_at_timestamp(mtf_data, current_time, lowest_tf)
             

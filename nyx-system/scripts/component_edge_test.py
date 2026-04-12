@@ -44,7 +44,7 @@ def prepare_features(df: pd.DataFrame) -> pd.DataFrame:
     """Add returns, ATR, SMAs required by HSMM."""
     df = df.copy()
     df['returns'] = df['close'].pct_change()
-    high, low, close = df['high'].values, df['low'].values, df['close'].values
+    high, low, close = np.asarray(df['high'].values), np.asarray(df['low'].values), np.asarray(df['close'].values)
     tr = np.maximum(high - low,
                     np.maximum(np.abs(high - np.roll(close, 1)),
                                np.abs(low  - np.roll(close, 1))))
@@ -60,7 +60,7 @@ def prepare_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def label_regime_series(df: pd.DataFrame, use_em: bool = True,
-                         train_df: pd.DataFrame = None) -> pd.Series:
+                         train_df: "pd.DataFrame | None" = None) -> pd.Series:
     """
     Run HSMM regime detection across a DataFrame bar by bar.
 
@@ -101,7 +101,7 @@ def label_regime_series(df: pd.DataFrame, use_em: bool = True,
 # Test 1 — HSMM regime predictive edge
 # ---------------------------------------------------------------------------
 
-def test_hsmm_edge(df: pd.DataFrame, train_df: pd.DataFrame = None,
+def test_hsmm_edge(df: pd.DataFrame, train_df: "pd.DataFrame | None" = None,
                    horizons: list = [1, 3, 5]) -> pd.DataFrame:
     """
     For each horizon h (bars), compute mean forward return per regime state.
@@ -122,7 +122,7 @@ def test_hsmm_edge(df: pd.DataFrame, train_df: pd.DataFrame = None,
             mask = labels == state
             if mask.sum() < 10:
                 continue
-            rets = fwd_ret[mask].dropna()
+            rets: pd.Series = fwd_ret[mask].dropna()
             rows.append({
                 'state':     state,
                 'horizon':   h,
@@ -130,7 +130,7 @@ def test_hsmm_edge(df: pd.DataFrame, train_df: pd.DataFrame = None,
                 'mean_ret':  float(rets.mean()),
                 'median':    float(rets.median()),
                 'std':       float(rets.std()),
-                'sharpe':    float(rets.mean() / rets.std()) if rets.std() > 0 else np.nan,
+                'sharpe':    float(rets.mean() / rets.std()) if float(rets.std()) > 0 else np.nan,
                 'win_rate':  float((rets > 0).mean()),
                 'pct_bars':  float(mask.sum() / len(df_feat) * 100),
             })
@@ -147,8 +147,10 @@ def test_hsmm_edge(df: pd.DataFrame, train_df: pd.DataFrame = None,
 
     # Edge validation
     h1 = result[result['horizon'] == horizons[0]]
-    tp = h1[h1['state'] == 'Trend+']['mean_ret'].values
-    tm = h1[h1['state'] == 'Trend-']['mean_ret'].values
+    tp_s: pd.Series = h1[h1['state'] == 'Trend+']['mean_ret']
+    tm_s: pd.Series = h1[h1['state'] == 'Trend-']['mean_ret']
+    tp = np.asarray(tp_s.values)
+    tm = np.asarray(tm_s.values)
     if len(tp) and len(tm):
         print(f"\n  Edge check (h={horizons[0]}):")
         print(f"    Trend+  mean_ret = {tp[0]:.4%}  {'✓' if tp[0] > 0 else '✗'}")
@@ -196,7 +198,7 @@ def test_smc_edge(df: pd.DataFrame, horizons: list = [1, 3, 5]) -> pd.DataFrame:
     for h in horizons:
         fwd = df['close'].pct_change(h).shift(-h)
         for name, mask in [('BullishOB', bull_ob), ('BearishOB', bear_ob)]:
-            rets = fwd[mask].dropna()
+            rets: pd.Series = fwd[mask].dropna()
             if len(rets) < 5:
                 continue
             rows.append({
@@ -204,7 +206,7 @@ def test_smc_edge(df: pd.DataFrame, horizons: list = [1, 3, 5]) -> pd.DataFrame:
                 'horizon':  h,
                 'n_signals': len(rets),
                 'mean_ret':  float(rets.mean()),
-                'sharpe':    float(rets.mean() / rets.std()) if rets.std() > 0 else np.nan,
+                'sharpe':    float(rets.mean() / rets.std()) if float(rets.std()) > 0 else np.nan,
                 'win_rate':  float((rets > 0).mean()),
             })
 
@@ -225,7 +227,7 @@ def test_smc_edge(df: pd.DataFrame, horizons: list = [1, 3, 5]) -> pd.DataFrame:
 # Test 3 — Combined signal edge
 # ---------------------------------------------------------------------------
 
-def test_combined_edge(df: pd.DataFrame, train_df: pd.DataFrame = None,
+def test_combined_edge(df: pd.DataFrame, train_df: "pd.DataFrame | None" = None,
                        horizons: list = [1, 3, 5]) -> pd.DataFrame:
     """
     Combined signal: regime in (Trend+, Squeeze) AND bullish OB proxy.
@@ -258,7 +260,7 @@ def test_combined_edge(df: pd.DataFrame, train_df: pd.DataFrame = None,
             ('Pattern only',  bull_ob),
             ('Combined',      combined),
         ]:
-            rets = fwd[mask].dropna()
+            rets: pd.Series = fwd[mask].dropna()
             if len(rets) < 3:
                 continue
             rows.append({
@@ -266,7 +268,7 @@ def test_combined_edge(df: pd.DataFrame, train_df: pd.DataFrame = None,
                 'horizon':   h,
                 'n_signals': len(rets),
                 'mean_ret':  float(rets.mean()),
-                'sharpe':    float(rets.mean() / rets.std()) if rets.std() > 0 else np.nan,
+                'sharpe':    float(rets.mean() / rets.std()) if float(rets.std()) > 0 else np.nan,
                 'win_rate':  float((rets > 0).mean()),
             })
 
@@ -317,16 +319,16 @@ def main():
     df_all = load_ohlcv(csv_path)
 
     # Split by year
-    df_test = df_all[df_all.index.year == args.year]
+    df_test = df_all[pd.DatetimeIndex(df_all.index).year == args.year]
     if df_test.empty:
         print(f"ERROR: No data for year {args.year}")
         sys.exit(1)
 
     train_df = None
     if args.pretrain_year:
-        train_raw = df_all[df_all.index.year == args.pretrain_year]
+        train_raw = df_all[pd.DatetimeIndex(df_all.index).year == args.pretrain_year]
         if not train_raw.empty:
-            train_df = prepare_features(train_raw.copy())
+            train_df = prepare_features(pd.DataFrame(train_raw.copy()))
             print(f"Pre-train period: {args.pretrain_year} ({len(train_df)} bars)")
         else:
             print(f"WARNING: No data for pretrain year {args.pretrain_year}")
@@ -335,9 +337,9 @@ def main():
     print(f"Horizons:     {horizons} bars")
     print("=" * 60)
 
-    hsmm_edge  = test_hsmm_edge(df_test, train_df=train_df, horizons=horizons)
-    smc_edge   = test_smc_edge(df_test, horizons=horizons)
-    combo_edge = test_combined_edge(df_test, train_df=train_df, horizons=horizons)
+    hsmm_edge  = test_hsmm_edge(pd.DataFrame(df_test), train_df=train_df, horizons=horizons)
+    smc_edge   = test_smc_edge(pd.DataFrame(df_test), horizons=horizons)
+    combo_edge = test_combined_edge(pd.DataFrame(df_test), train_df=train_df, horizons=horizons)
 
     print("\n" + "=" * 60)
     print("SUMMARY")
@@ -345,29 +347,29 @@ def main():
 
     if not hsmm_edge.empty:
         h1 = hsmm_edge[hsmm_edge['horizon'] == horizons[0]]
-        tp = h1[h1['state'] == 'Trend+']
-        tm = h1[h1['state'] == 'Trend-']
-        tp_ok = len(tp) > 0 and float(tp['mean_ret'].values[0]) > 0
-        tm_ok = len(tm) > 0 and float(tm['mean_ret'].values[0]) < 0
+        tp_df: pd.DataFrame = h1[h1['state'] == 'Trend+']
+        tm_df: pd.DataFrame = h1[h1['state'] == 'Trend-']
+        tp_ok = len(tp_df) > 0 and float(np.asarray(tp_df['mean_ret'].values)[0]) > 0
+        tm_ok = len(tm_df) > 0 and float(np.asarray(tm_df['mean_ret'].values)[0]) < 0
         hsmm_pass = tp_ok and tm_ok
         print(f"HSMM edge:    {'PASS ✓' if hsmm_pass else 'FAIL ✗'}")
 
     if not smc_edge.empty:
         h1_smc = smc_edge[smc_edge['horizon'] == horizons[0]]
-        bull_ok = h1_smc[h1_smc['pattern'] == 'BullishOB']['mean_ret']
-        bear_ok = h1_smc[h1_smc['pattern'] == 'BearishOB']['mean_ret']
+        bull_ok: pd.Series = h1_smc[h1_smc['pattern'] == 'BullishOB']['mean_ret']
+        bear_ok: pd.Series = h1_smc[h1_smc['pattern'] == 'BearishOB']['mean_ret']
         smc_pass = (
-            (len(bull_ok) > 0 and float(bull_ok.values[0]) > 0) and
-            (len(bear_ok) > 0 and float(bear_ok.values[0]) < 0)
+            (len(bull_ok) > 0 and float(np.asarray(bull_ok.values)[0]) > 0) and
+            (len(bear_ok) > 0 and float(np.asarray(bear_ok.values)[0]) < 0)
         )
         print(f"SMC edge:     {'PASS ✓' if smc_pass else 'FAIL ✗'}")
 
     if not combo_edge.empty:
         h1_c = combo_edge[combo_edge['horizon'] == horizons[0]]
-        combo_sharpe  = h1_c[h1_c['signal'] == 'Combined']['sharpe']
-        regime_sharpe = h1_c[h1_c['signal'] == 'Regime only']['sharpe']
+        combo_sharpe: pd.Series = h1_c[h1_c['signal'] == 'Combined']['sharpe']
+        regime_sharpe: pd.Series = h1_c[h1_c['signal'] == 'Regime only']['sharpe']
         if len(combo_sharpe) > 0 and len(regime_sharpe) > 0:
-            combo_wins = float(combo_sharpe.values[0]) > float(regime_sharpe.values[0])
+            combo_wins = float(np.asarray(combo_sharpe.values)[0]) > float(np.asarray(regime_sharpe.values)[0])
             print(f"Combined > Regime alone: {'YES ✓' if combo_wins else 'NO ✗'}")
 
 

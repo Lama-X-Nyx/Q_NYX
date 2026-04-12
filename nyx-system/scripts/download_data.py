@@ -116,11 +116,12 @@ class BinanceDownloader:
         filename = f"{symbol}_{interval}.csv"
         filepath = os.path.join(output_dir, filename)
         
-        df.to_csv(filepath, index=False)
-        
-        print(f"\n  ✓ Saved {len(df):,} candles to {filepath}")
-        print(f"  Period: {df['datetime'].iloc[0]} → {df['datetime'].iloc[-1]}")
-        print(f"  Price range: ${df['close'].min():.2f} - ${df['close'].max():.2f}")
+        result_df: pd.DataFrame = pd.DataFrame(df)
+        result_df.to_csv(filepath, index=False)
+
+        print(f"\n  ✓ Saved {len(result_df):,} candles to {filepath}")
+        print(f"  Period: {result_df['datetime'].iloc[0]} → {result_df['datetime'].iloc[-1]}")
+        print(f"  Price range: ${result_df['close'].min():.2f} - ${result_df['close'].max():.2f}")
         
         return filepath
     

@@ -6,6 +6,7 @@ Verify that each timeframe is loaded with the correct context window.
 
 import sys
 import json
+import pandas as pd
 from pathlib import Path
 from datetime import datetime
 
@@ -74,8 +75,8 @@ def run_fractal_geometry(pair: str, config: dict, output_dir: Path, sample_date:
             bars_loaded = len(df)
             
             if bars_loaded > 0:
-                start_date = df.index[0]
-                end_date = df.index[-1]
+                start_date = pd.Timestamp(df.index[0])
+                end_date = pd.Timestamp(df.index[-1])
                 days_span = (end_date - start_date).days
                 
                 # Expected bars (approximate)
@@ -98,7 +99,7 @@ def run_fractal_geometry(pair: str, config: dict, output_dir: Path, sample_date:
                 
                 print(f"\n{tf.upper()} Window:")
                 print(f"  Bars loaded:     {bars_loaded}")
-                print(f"  Date range:      {start_date.strftime('%Y-%m-%d')} → {end_date.strftime('%Y-%m-%d')}")
+                print(f"  Date range:      {start_date.strftime('%Y-%m-%d')} → {end_date.strftime('%Y-%m-%d')}")  # type: ignore[union-attr]
                 print(f"  Days span:       {days_span} days (expected ~{expected_days})")
                 print(f"  Aligned:         {'✅' if aligned else '❌'}")
                 print(f"  Closed candles:  {'✅' if closed_only else '❌'}")

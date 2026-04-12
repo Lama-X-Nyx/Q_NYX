@@ -64,18 +64,18 @@ def extract_features(df: pd.DataFrame) -> Dict[str, Any]:
     
     # Compute ATR if not present
     if 'atr_14' not in df.columns:
-        high = df['high'].values
-        low = df['low'].values
-        close = df['close'].values
-        
-        tr = np.maximum(high - low, 
+        high = np.asarray(df['high'].values)
+        low = np.asarray(df['low'].values)
+        close = np.asarray(df['close'].values)
+
+        tr = np.maximum(high - low,
                        np.maximum(np.abs(high - np.roll(close, 1)),
                                  np.abs(low - np.roll(close, 1))))
         tr[0] = high[0] - low[0]
-        
-        atr = pd.Series(tr).rolling(14).mean()
+
+        atr: pd.Series = pd.Series(tr).rolling(14).mean()
     else:
-        atr = df['atr_14']
+        atr: pd.Series = df['atr_14']
     
     # Get recent window (last 50 bars as used by RegimeAgent)
     window_size = min(50, len(df))
@@ -84,12 +84,12 @@ def extract_features(df: pd.DataFrame) -> Dict[str, Any]:
     
     # Compute statistics
     features = {
-        'returns_mean': float(recent_returns.mean()) if len(recent_returns) > 0 else 0.0,
-        'returns_std': float(recent_returns.std()) if len(recent_returns) > 0 else 0.0,
-        'returns_median': float(recent_returns.median()) if len(recent_returns) > 0 else 0.0,
-        'returns_skew': float(recent_returns.skew()) if len(recent_returns) > 2 else 0.0,
-        'atr_mean': float(recent_atr.mean()) if len(recent_atr) > 0 else 0.0,
-        'atr_std': float(recent_atr.std()) if len(recent_atr) > 0 else 0.0,
+        'returns_mean': float(recent_returns.mean(axis=0)) if len(recent_returns) > 0 else 0.0,
+        'returns_std': float(recent_returns.std(axis=0)) if len(recent_returns) > 0 else 0.0,
+        'returns_median': float(recent_returns.median(axis=0)) if len(recent_returns) > 0 else 0.0,
+        'returns_skew': float(recent_returns.skew(axis=0)) if len(recent_returns) > 2 else 0.0,
+        'atr_mean': float(recent_atr.mean(axis=0)) if len(recent_atr) > 0 else 0.0,
+        'atr_std': float(recent_atr.std(axis=0)) if len(recent_atr) > 0 else 0.0,
         'price_slope': float(np.polyfit(range(len(recent_returns)), recent_returns.cumsum(), 1)[0]) if len(recent_returns) > 1 else 0.0,
         'window_size': window_size
     }

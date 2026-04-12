@@ -213,7 +213,7 @@ def main():
     if args.train_end:
         end_ts = pd.Timestamp(args.train_end)
         for tf in list(mtf_all.keys()):
-            mtf_all[tf] = mtf_all[tf][mtf_all[tf].index < end_ts]
+            mtf_all[tf] = pd.DataFrame(mtf_all[tf][mtf_all[tf].index < end_ts])
         print(f'  Sliced to <= {args.train_end}')
 
     df_1d  = mtf_all['1d']
@@ -265,7 +265,7 @@ def main():
     # Build context series aligned to 15M
     # Reindex 1D context to 15M using forward-fill
     ctx_1d_df = pd.DataFrame({'ctx': context_arr}, index=df_1d.index)
-    ctx_15m = ctx_1d_df.reindex(df_15m.index, method='ffill')['ctx'].fillna('neutral')
+    ctx_15m: pd.Series = ctx_1d_df.reindex(df_15m.index, method='ffill')['ctx'].fillna('neutral')
 
     setup_agent = MLSetupAgent()
     setup_result = setup_agent.pretrain(

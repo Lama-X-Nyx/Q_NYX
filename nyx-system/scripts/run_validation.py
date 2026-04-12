@@ -680,13 +680,13 @@ def run_mtf_baseline_check(pair: str, config: dict, output_dir: Path, sample_bar
     
     # Test alignment at specific timestamp
     if '15m' in mtf_data and len(mtf_data['15m']) > 100:
-        test_time = mtf_data['15m'].index[-100]
-        
+        test_time = pd.Timestamp(mtf_data['15m'].index[-100])
+
         print(f"\n🔗 Testing closed-candle alignment at {test_time}:")
         aligned = loader.align_at_timestamp(mtf_data, test_time, '15m')
-        
+
         for tf, df in aligned.items():
-            last_time = df.index[-1] if len(df) > 0 else None
+            last_time = pd.Timestamp(df.index[-1]) if len(df) > 0 else None
             delta = (test_time - last_time).total_seconds() / 60 if last_time else None
             print(f"  {tf}: last candle at {last_time} (Δ={delta:.0f}m)")
     
@@ -695,8 +695,8 @@ def run_mtf_baseline_check(pair: str, config: dict, output_dir: Path, sample_bar
     engine = NYXEngineMTF(config)
     
     # Generate sample signal
-    current_time = mtf_data['15m'].index[-1] if '15m' in mtf_data else mtf_data['1h'].index[-1]
-    
+    current_time = pd.Timestamp(mtf_data['15m'].index[-1]) if '15m' in mtf_data else pd.Timestamp(mtf_data['1h'].index[-1])
+
     signal = engine.generate_signal_mtf(
         pair=pair,
         mtf_data=mtf_data,
@@ -853,6 +853,7 @@ Examples:
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # Run validation
+    results: dict = {}
     if args.mode == 'benchmark':
         results = run_benchmark(args.pair, config, output_dir)
     elif args.mode == 'walkforward':
@@ -940,11 +941,11 @@ Examples:
                 print("   Expected format: YYYY-MM-DD,YYYY-MM-DD,...")
                 sys.exit(1)
         
-        results = run_regime_tuning(args.pair, config, output_dir, dates=dates)
+        results = run_regime_tuning(args.pair, config, str(output_dir), dates=dates)
     elif args.mode == 'hsmm_deep_dive':
         from src.validation.hsmm_deep_dive import run_hsmm_deep_dive
         from datetime import datetime
-        
+
         # Parse dates if provided
         dates = None
         if args.dates:
@@ -954,12 +955,12 @@ Examples:
                 print(f"\n❌ Invalid date format: {e}")
                 print("   Expected format: YYYY-MM-DD,YYYY-MM-DD,...")
                 sys.exit(1)
-        
-        results = run_hsmm_deep_dive(args.pair, config, output_dir, dates=dates)
+
+        results = run_hsmm_deep_dive(args.pair, config, str(output_dir), dates=dates)
     elif args.mode == 'regime_feature_check':
         from scripts.regime_feature_check import run_regime_feature_check
         from datetime import datetime
-        
+
         # Parse sample date if provided
         sample_date = None
         if hasattr(args, 'sample_date') and args.sample_date:
@@ -969,42 +970,42 @@ Examples:
                 print(f"\n❌ Invalid sample-date format: {e}")
                 print("   Expected format: YYYY-MM-DD")
                 sys.exit(1)
-        
-        results = run_regime_feature_check(args.pair, config, output_dir, sample_date=sample_date)
+
+        results = run_regime_feature_check(args.pair, config, str(output_dir), sample_date=sample_date)
     elif args.mode == 'phase1_rerun':
         from scripts.phase1_rerun import run_phase1_rerun
-        
+
         results = run_phase1_rerun(args.pair, config, output_dir)
     elif args.mode == 'setup_deep_dive':
         from scripts.setup_deep_dive import run_setup_deep_dive
         from datetime import datetime
-        
+
         # Parse dates if provided
         dates = None
         if hasattr(args, 'dates') and args.dates:
             dates = [datetime.strptime(d, '%Y-%m-%d') for d in args.dates.split(',')]
-        
-        results = run_setup_deep_dive(args.pair, config, output_dir, dates=dates)
+
+        results = run_setup_deep_dive(args.pair, config, str(output_dir), dates=dates)
     elif args.mode == 'setup_investigation':
         from scripts.setup_investigation import run_setup_investigation
         from datetime import datetime
-        
+
         # Parse dates if provided
         dates = None
         if hasattr(args, 'dates') and args.dates:
             dates = [datetime.strptime(d, '%Y-%m-%d') for d in args.dates.split(',')]
-        
-        results = run_setup_investigation(args.pair, config, output_dir, dates=dates)
+
+        results = run_setup_investigation(args.pair, config, str(output_dir), dates=dates)
     elif args.mode == 'setup_investigation_v2':
         from scripts.setup_investigation_v2 import run_setup_investigation_v2
         from datetime import datetime
-        
+
         # Parse dates if provided
         dates = None
         if hasattr(args, 'dates') and args.dates:
             dates = [datetime.strptime(d, '%Y-%m-%d') for d in args.dates.split(',')]
-        
-        results = run_setup_investigation_v2(args.pair, config, output_dir, dates=dates)
+
+        results = run_setup_investigation_v2(args.pair, config, str(output_dir), dates=dates)
     elif args.mode == 'montecarlo':
         results = run_montecarlo(args.pair, config, output_dir)
     elif args.mode == 'sensitivity':

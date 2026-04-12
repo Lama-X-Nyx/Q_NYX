@@ -136,7 +136,7 @@ class ContextAgent:
         Returns (state, score, reason)
         """
         close = df['close'].values
-        sma_200 = pd.Series(close).rolling(200).mean().values[-1]
+        sma_200 = float(pd.Series(close).rolling(200).mean().iloc[-1])
 
         if np.isnan(sma_200):
             return 'neutral', 0.0, 'SMA200 NaN — insufficient data (need 200 bars)'

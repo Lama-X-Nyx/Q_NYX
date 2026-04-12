@@ -110,8 +110,8 @@ def run_fractal_bottleneck(pair: str, config: dict, output_dir: Path, sample_dat
     
     for i in range(warmup, warmup + n_signals):
         try:
-            current_time = mtf_data[lowest_tf].index[i]
-            
+            current_time = pd.Timestamp(mtf_data[lowest_tf].index[i])
+
             # Align data at this timestamp
             from src.data.mtf_loader import MTFLoader
             loader = MTFLoader('data/raw/mtf')

@@ -42,7 +42,12 @@ class SimpleBacktestEngine:
         
         # Use NYXEngine (unified signal generation)
         self.engine = NYXEngine(config)
-        self.smc = SMCDetector(config)
+        smc_cfg = config.get('strategy', {}).get('smc', {})
+        self.smc = SMCDetector(
+            ob_range_threshold=smc_cfg.get('ob_range_threshold', 0.015),
+            fvg_min_gap=smc_cfg.get('fvg_min_gap', 0.005),
+            liquidity_lookback=smc_cfg.get('liquidity_lookback', 20),
+        )
 
         # State
         self.trades = []
@@ -478,12 +483,13 @@ def main():
             if args.end:
                 data = data[data.index <= args.end]
             
-            print(f"  Period: {data.index[0]} → {data.index[-1]}")
-            print(f"  Bars: {len(data):,}")
-            
+            data_df: pd.DataFrame = pd.DataFrame(data)
+            print(f"  Period: {data_df.index[0]} → {data_df.index[-1]}")
+            print(f"  Bars: {len(data_df):,}")
+
             # Run backtest
             engine = SimpleBacktestEngine(config, args.capital)
-            results = engine.run(pair, data)
+            results = engine.run(pair, data_df)
             
             all_results[pair] = results
             
@@ -537,12 +543,13 @@ def main():
         if args.end:
             data = data[data.index <= args.end]
         
-        print(f"  Period: {data.index[0]} → {data.index[-1]}")
-        print(f"  Bars: {len(data):,}")
-        
+        data_df2: pd.DataFrame = pd.DataFrame(data)
+        print(f"  Period: {data_df2.index[0]} → {data_df2.index[-1]}")
+        print(f"  Bars: {len(data_df2):,}")
+
         # Run backtest
         engine = SimpleBacktestEngine(config, args.capital)
-        results = engine.run(args.pair, data)
+        results = engine.run(args.pair, data_df2)
         
         # Print results
         print(f"\n{'='*80}")
