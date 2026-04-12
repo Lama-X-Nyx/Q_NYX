@@ -469,12 +469,15 @@ class NYXEngineMTF:
         if '15m' in mtf_data and len(mtf_data['15m']) > 0:
             entry_price = mtf_data['15m'].iloc[-1]['close']
             
+            tm = self.hsmm.transition_matrix
+            if tm is None:
+                tm = np.ones((self.hsmm.n_states, self.hsmm.n_states)) / self.hsmm.n_states
             risk_conditions = self.risk_manager.check_risk_conditions(
                 entry_price=entry_price,
                 fractal_states=signal['fractal_states'],
                 smc_patterns=signal.get('smc_patterns', {}),
                 intent_daily=signal['intent_daily'],
-                transition_matrix=self.hsmm.transition_matrix
+                transition_matrix=tm
             )
             
             conditions['rr'] = risk_conditions['rr_ratio']

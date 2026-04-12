@@ -5,6 +5,7 @@ Coordinates the 4 fractal agents and makes final decision.
 """
 
 from typing import Dict, List, Any, Optional
+import numpy as np
 import pandas as pd
 from src.agents.contracts import AgentResult, OrchestratorDecision
 from src.agents.context_agent import ContextAgent
@@ -108,7 +109,7 @@ class Orchestrator:
         regime_result = self.regime_agent.analyze(
             mtf_data.get(regime_tf, pd.DataFrame()),
             context_state=context_result.state,
-            df_htf=mtf_data.get(structure_tf)
+            df_htf=mtf_data.get(structure_tf, pd.DataFrame())
         )
 
         # Step 3: Call Setup Agent (with context)
@@ -116,7 +117,7 @@ class Orchestrator:
         setup_result = self.setup_agent.analyze(
             mtf_data.get(setup_tf, pd.DataFrame()),
             context_state=context_result.state,
-            df_htf=mtf_data.get(regime_tf)
+            df_htf=mtf_data.get(regime_tf, pd.DataFrame())
         )
         
         # Aggregate results (3 agents only)
@@ -193,12 +194,15 @@ class Orchestrator:
                 )
 
         # Step 7b: Risk check (P2: pass emission_params for Monte Carlo hitting probs)
+        _tm = self.regime_agent.hsmm.transition_matrix
+        if _tm is None:
+            _tm = np.eye(len(self.regime_agent.hsmm.states))
         risk_conditions = self.risk_manager.check_risk_conditions(
             entry_price=current_price,
             fractal_states=self._extract_fractal_states(regime_result),
             smc_patterns=setup_result.metadata.get('patterns', {}),
             intent_daily=context_result.state,
-            transition_matrix=self.regime_agent.hsmm.transition_matrix,
+            transition_matrix=_tm,
             emission_params=self.regime_agent.hsmm.emission_params,
             hsmm_states_list=self.regime_agent.hsmm.states,
         )
@@ -305,12 +309,15 @@ class Orchestrator:
         context_result_: AgentResult = context_result
 
         # Step 3: Risk check (P2: pass emission_params for Monte Carlo hitting probs)
+        _tm2 = self.regime_agent.hsmm.transition_matrix
+        if _tm2 is None:
+            _tm2 = np.eye(len(self.regime_agent.hsmm.states))
         risk_conditions = self.risk_manager.check_risk_conditions(
             entry_price=current_price,
             fractal_states=self._extract_fractal_states(regime_result_),
             smc_patterns=setup_result_.metadata.get('patterns', {}),
             intent_daily=context_result_.state,
-            transition_matrix=self.regime_agent.hsmm.transition_matrix,
+            transition_matrix=_tm2,
             emission_params=self.regime_agent.hsmm.emission_params,
             hsmm_states_list=self.regime_agent.hsmm.states,
         )
@@ -393,9 +400,8 @@ class Orchestrator:
         lowest_tf = min(mtf_data.keys(), key=lambda x: self._tf_to_minutes(x))
         df = mtf_data[lowest_tf]
         if not df.empty and hasattr(df.index, 'max'):
-            ts = df.index.max()
-            if hasattr(ts, 'strftime'):
-                return ts.strftime('%Y-%m-%d')
+            ts = pd.Timestamp(df.index.max())
+            return ts.strftime('%Y-%m-%d')
         import datetime
         return datetime.date.today().isoformat()
 

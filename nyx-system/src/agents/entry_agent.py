@@ -35,7 +35,7 @@ class EntryAgent:
         timeframes = mtf_config.get('timeframes', {})
         self.timeframe = timeframes.get('entry', '5m')
     
-    def analyze(self, df: pd.DataFrame, setup_state: str = None) -> AgentResult:
+    def analyze(self, df: pd.DataFrame, setup_state: "str | None" = None) -> AgentResult:
         """
         Analyze entry timing
 
@@ -74,7 +74,7 @@ class EntryAgent:
         close = df['close'].values
         
         # Check recent momentum (last 5 bars)
-        recent_changes = np.diff(close[-6:])
+        recent_changes = np.diff(np.asarray(close[-6:]))
         momentum_up = np.sum(recent_changes > 0)
         momentum_down = np.sum(recent_changes < 0)
         

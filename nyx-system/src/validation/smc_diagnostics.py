@@ -14,7 +14,7 @@ Usage:
 
 import pandas as pd
 import numpy as np
-from typing import Dict, List
+from typing import Dict, List, cast
 import json
 from pathlib import Path
 
@@ -98,7 +98,7 @@ class SMCDiagnostics:
         
         # Analyze patterns
         for i in range(warmup, len(prepared_data)):
-            current_date = prepared_data.index[i]
+            current_date = cast(pd.Timestamp, prepared_data.index[i])
             
             # Get signal
             signal = engine.generate_signal_at_index(
@@ -119,8 +119,8 @@ class SMCDiagnostics:
         report = {
             'pair': pair,
             'period': {
-                'start': prepared_data.index[0].isoformat(),
-                'end': prepared_data.index[-1].isoformat()
+                'start': cast(pd.Timestamp, prepared_data.index[0]).isoformat(),
+                'end': cast(pd.Timestamp, prepared_data.index[-1]).isoformat()
             },
             'bars_analyzed': self.counters['bars_analyzed'],
             'hsmm_passed': self.counters['hsmm_passed'],

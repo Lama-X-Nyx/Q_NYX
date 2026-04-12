@@ -14,7 +14,7 @@ Usage:
 
 import pandas as pd
 import numpy as np
-from typing import Dict, List
+from typing import Dict, List, cast
 import json
 from pathlib import Path
 
@@ -85,7 +85,7 @@ class PatternQuality:
         capital = 10000
         
         for i in range(warmup, len(prepared_data)):
-            current_date = prepared_data.index[i]
+            current_date = cast(pd.Timestamp, prepared_data.index[i])
             
             # Get signal
             signal = engine.generate_signal_at_index(

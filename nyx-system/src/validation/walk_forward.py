@@ -17,7 +17,7 @@ Usage:
 
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, cast
 from datetime import datetime, timedelta
 import yaml
 
@@ -173,7 +173,7 @@ class WalkForward:
         
         # Start after warmup
         for i in range(warmup, len(prepared_data)):
-            current_date = prepared_data.index[i]
+            current_date = cast(pd.Timestamp, prepared_data.index[i])
             
             # Get signal (bounded lookback)
             signal = engine.generate_signal_at_index(
@@ -235,10 +235,10 @@ class WalkForward:
         
         return {
             'window': window_num,
-            'train_start': train_data.index[0].isoformat(),
-            'train_end': train_data.index[-1].isoformat(),
-            'test_start': prepared_data.index[0].isoformat(),
-            'test_end': prepared_data.index[-1].isoformat(),
+            'train_start': cast(pd.Timestamp, train_data.index[0]).isoformat(),
+            'train_end': cast(pd.Timestamp, train_data.index[-1]).isoformat(),
+            'test_start': cast(pd.Timestamp, prepared_data.index[0]).isoformat(),
+            'test_end': cast(pd.Timestamp, prepared_data.index[-1]).isoformat(),
             'trades': trades_df,
             'metrics': metrics,
             'performance': {

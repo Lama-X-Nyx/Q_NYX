@@ -14,7 +14,7 @@ Usage:
 
 import pandas as pd
 import numpy as np
-from typing import Dict, List
+from typing import Dict, List, cast
 from collections import Counter
 import json
 from pathlib import Path
@@ -169,7 +169,7 @@ class SignalFunnel:
         
         # Track through pipeline
         for i in range(warmup, len(prepared_data)):
-            current_date = prepared_data.index[i]
+            current_date = cast(pd.Timestamp, prepared_data.index[i])
             
             # Every bar is a raw opportunity
             self.counters['raw_opportunities'] += 1
@@ -193,8 +193,8 @@ class SignalFunnel:
         report = {
             'pair': pair,
             'period': {
-                'start': prepared_data.index[0].isoformat(),
-                'end': prepared_data.index[-1].isoformat()
+                'start': cast(pd.Timestamp, prepared_data.index[0]).isoformat(),
+                'end': cast(pd.Timestamp, prepared_data.index[-1]).isoformat()
             },
             'counters': self.counters,
             'pass_rates': pass_rates,

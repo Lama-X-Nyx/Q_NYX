@@ -91,23 +91,27 @@ def _prepare_features_full(df: pd.DataFrame,
     """
     out = df[['open', 'high', 'low', 'close', 'volume']].copy()
 
-    out['returns']     = out['close'].pct_change()
-    high = out['high'].values
-    low  = out['low'].values
-    cl   = out['close'].values
+    close_s: pd.Series = out['close']  # type: ignore[assignment]
+    out['returns']     = close_s.pct_change()
+    high = np.asarray(out['high'].values)
+    low  = np.asarray(out['low'].values)
+    cl   = np.asarray(out['close'].values)
     prev = np.roll(cl, 1); prev[0] = cl[0]
     tr   = np.maximum(high - low,
                       np.maximum(np.abs(high - prev), np.abs(low - prev)))
     out['atr_14'] = pd.Series(tr, index=out.index).rolling(14).mean()
-    out['sma_20'] = out['close'].rolling(20).mean()
-    out['sma_50'] = out['close'].rolling(50).mean()
-    out['atr_50'] = out['atr_14'].rolling(50).mean()
+    out['sma_20'] = close_s.rolling(20).mean()
+    out['sma_50'] = close_s.rolling(50).mean()
+    atr_s: pd.Series = out['atr_14']  # type: ignore[assignment]
+    out['atr_50'] = atr_s.rolling(50).mean()
     if 'volume' in out.columns:
-        out['volume_ma20'] = out['volume'].rolling(20).mean()
+        vol_s: pd.Series = out['volume']  # type: ignore[assignment]
+        out['volume_ma20'] = vol_s.rolling(20).mean()
 
     # HTF context feature (merge_asof, no look-ahead)
     if df_htf is not None and not df_htf.empty:
-        htf_sma20 = df_htf['close'].rolling(20).mean().rename('_htf_sma20')
+        htf_close: pd.Series = df_htf['close']  # type: ignore[assignment]
+        htf_sma20 = htf_close.rolling(20).mean().rename('_htf_sma20')
         htf_ref = htf_sma20.reset_index()
         htf_ref.columns = ['_ts', '_htf_sma20']
         htf_ref = htf_ref.dropna(subset=['_htf_sma20']).sort_values('_ts')
@@ -122,7 +126,7 @@ def _prepare_features_full(df: pd.DataFrame,
             htf_pos = (merged['_close'] - merged['_htf_sma20']) / merged['_htf_sma20'].replace(0, np.nan)
         out['htf_pos'] = htf_pos.values
 
-    return out
+    return pd.DataFrame(out)
 
 
 def _build_obs_arrays(df_prepared: pd.DataFrame) -> Dict[str, np.ndarray]:
@@ -246,8 +250,8 @@ def _precompute_context(df_1d: pd.DataFrame,
     Returns string array of length len(df_1d) with values
     'bullish' | 'bearish' | 'neutral' | 'insufficient'.
     """
-    close   = df_1d['close'].values.astype(float)
-    sma200  = pd.Series(close).rolling(200).mean().values
+    close   = np.asarray(df_1d['close'].values, dtype=float)
+    sma200  = np.asarray(pd.Series(close).rolling(200).mean().values)
     diff    = (close - sma200) / sma200
 
     ctx = np.full(len(df_1d), 'insufficient', dtype=object)

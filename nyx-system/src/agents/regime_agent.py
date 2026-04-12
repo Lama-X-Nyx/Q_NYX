@@ -47,7 +47,7 @@ class RegimeAgent:
         self.stability_min = mtf_conditions.get('stability_4h_min', 0.60)
     
     def pretrain(self, df: pd.DataFrame, n_iter: int = 30, tol: float = 1e-4,
-                 df_htf: pd.DataFrame = None) -> list:
+                 df_htf: "pd.DataFrame | None" = None) -> list:
         """
         Train HSMM via Baum-Welch EM on historical data.
 
@@ -67,7 +67,7 @@ class RegimeAgent:
         return self.hsmm.initialize_parameters_with_em(df_prepared, n_iter=n_iter, tol=tol)
 
     def analyze(self, df: pd.DataFrame, context_state: str = "",
-                df_htf: pd.DataFrame = None) -> AgentResult:
+                df_htf: "pd.DataFrame | None" = None) -> AgentResult:
         """
         Analyze market regime using HSMM
 
@@ -272,7 +272,7 @@ class RegimeAgent:
                 metadata={'timeframe': self.timeframe, 'error': str(e)}
             )
     
-    def _prepare_data(self, df: pd.DataFrame, df_htf: pd.DataFrame = None) -> pd.DataFrame:
+    def _prepare_data(self, df: pd.DataFrame, df_htf: "pd.DataFrame | None" = None) -> pd.DataFrame:
         """
         Prepare data for HSMM (add returns, ATR, and moving averages).
 
@@ -295,16 +295,16 @@ class RegimeAgent:
 
         # Add ATR
         if 'atr_14' not in df_prepared.columns:
-            high = df_prepared['high'].values
-            low = df_prepared['low'].values
-            close = df_prepared['close'].values
+            high = np.asarray(df_prepared['high'].values)
+            low = np.asarray(df_prepared['low'].values)
+            close = np.asarray(df_prepared['close'].values)
 
             tr = np.maximum(high - low,
                            np.maximum(np.abs(high - np.roll(close, 1)),
                                      np.abs(low - np.roll(close, 1))))
             tr[0] = high[0] - low[0]
 
-            atr = pd.Series(tr).rolling(14).mean().values
+            atr = pd.Series(tr).rolling(14).mean().to_numpy()
             df_prepared['atr_14'] = atr
 
         # Add SMA_20 (required by HSMM heuristic labeling)
@@ -326,7 +326,7 @@ class RegimeAgent:
         # Add HTF context feature: (close - htf_sma20) / htf_sma20
         # Uses pd.merge_asof for O(n log n) alignment without look-ahead.
         if df_htf is not None and not df_htf.empty and 'htf_pos' not in df_prepared.columns:
-            htf_sma20 = df_htf['close'].rolling(20).mean().rename('_htf_sma20')
+            htf_sma20: pd.Series = df_htf['close'].rolling(20).mean().rename('_htf_sma20')
             htf_ref = htf_sma20.reset_index()
             htf_ref.columns = ['_ts', '_htf_sma20']
             htf_ref = htf_ref.dropna(subset=['_htf_sma20']).sort_values('_ts')

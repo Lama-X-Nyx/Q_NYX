@@ -121,22 +121,22 @@ class SemiMarkovHMM:
         for state in self.states:
             state_data = data[labeled_states == state]
             if len(state_data) > 10 and 'returns' in state_data.columns:
-                returns = state_data['returns'].dropna()
+                returns: pd.Series = state_data['returns'].dropna()  # type: ignore[assignment]
                 self.emission_params[state] = {
                     'price_mu':    float(returns.mean()),
-                    'price_sigma': float(max(returns.std(), 0.001)),
+                    'price_sigma': float(max(float(returns.std()), 0.001)),
                     'atr_mu':    float(state_data['atr_14'].mean()) if 'atr_14' in state_data else 100.0,
-                    'atr_sigma': float(max(state_data['atr_14'].std(), 0.001)) if 'atr_14' in state_data else 50.0,
+                    'atr_sigma': float(max(float(state_data['atr_14'].std()), 0.001)) if 'atr_14' in state_data else 50.0,
                 }
             else:
                 self.emission_params[state] = self._default_emission(state)
 
             # Optional HTF context feature
             if 'htf_pos' in data.columns:
-                htf_vals = state_data['htf_pos'].dropna()
+                htf_vals: pd.Series = state_data['htf_pos'].dropna()  # type: ignore[assignment]
                 if len(htf_vals) > 5:
                     self.emission_params[state]['context_mu']    = float(htf_vals.mean())
-                    self.emission_params[state]['context_sigma'] = float(max(htf_vals.std(), 0.001))
+                    self.emission_params[state]['context_sigma'] = float(max(float(htf_vals.std()), 0.001))
                 else:
                     self.emission_params[state]['context_mu']    = 0.0
                     self.emission_params[state]['context_sigma'] = 0.02
@@ -250,9 +250,9 @@ class SemiMarkovHMM:
         has_liquidation  = 'Liquidation' in self.states
 
         # ---- Fully vectorised labeling (no iterrows) ----
-        sma20 = df['sma_20'].values
-        sma50 = df['sma_50'].values
-        close = df['close'].values
+        sma20 = np.asarray(df['sma_20'].values)
+        sma50 = np.asarray(df['sma_50'].values)
+        close = np.asarray(df['close'].values)
         nan_mask = np.isnan(sma20) | np.isnan(sma50)
 
         # Base: Range everywhere (default)
@@ -269,17 +269,17 @@ class SemiMarkovHMM:
         if has_distribution:
             dm = self._compute_distribution_mask(df)
             if dm is not None:
-                labels[dm.fillna(False).values] = 'Distribution'
+                labels[np.asarray(dm.fillna(False).values)] = 'Distribution'
 
         if has_squeeze:
             sm = self._compute_squeeze_mask(df)
             if sm is not None:
-                labels[sm.fillna(False).values] = 'Squeeze'
+                labels[np.asarray(sm.fillna(False).values)] = 'Squeeze'
 
         if has_liquidation:
             lm = self._compute_liquidation_mask(df)
             if lm is not None:
-                labels[lm.fillna(False).values] = 'Liquidation'
+                labels[np.asarray(lm.fillna(False).values)] = 'Liquidation'
 
         # NaN warm-up bars always → Range (applied last to guarantee correctness)
         labels[nan_mask] = 'Range'
@@ -368,7 +368,7 @@ class SemiMarkovHMM:
                 scale=params['atr_sigma']
             )
 
-        return log_prob
+        return float(log_prob)
 
     def _compute_log_B(self, observations: List[Dict]) -> np.ndarray:
         """
@@ -1030,11 +1030,11 @@ if __name__ == "__main__":
         'low':        close - np.abs(np.random.randn(n) * 100),
         'volume':     np.abs(np.random.randn(n) * 500) + 100,
         'returns':    np.concatenate([[0], np.diff(close) / close[:-1]]),
-        'atr_14':     pd.Series(tr).rolling(14).mean().values,
-        'atr_50':     pd.Series(tr).rolling(50).mean().values,
-        'sma_20':     pd.Series(close).rolling(20).mean().values,
-        'sma_50':     pd.Series(close).rolling(50).mean().values,
-        'volume_ma20': pd.Series(np.abs(np.random.randn(n) * 500) + 100).rolling(20).mean().values,
+        'atr_14':     np.asarray(pd.Series(tr).rolling(14).mean().values),
+        'atr_50':     np.asarray(pd.Series(tr).rolling(50).mean().values),
+        'sma_20':     np.asarray(pd.Series(close).rolling(20).mean().values),
+        'sma_50':     np.asarray(pd.Series(close).rolling(50).mean().values),
+        'volume_ma20': np.asarray(pd.Series(np.abs(np.random.randn(n) * 500) + 100).rolling(20).mean().values),
     }, index=dates)
 
     for state_set, label in [
