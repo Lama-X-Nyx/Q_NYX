@@ -260,6 +260,7 @@ class TestOrchestrator:
         orch = Orchestrator(config)
 
         # Force macro engine to return a strong BEARISH signal
+        assert orch.macro_engine is not None
         orch.macro_engine.get_macro_signal = MagicMock(return_value={
             'signal': 'BEARISH', 'strength': 0.80,
             'active_events': [], 'cumulative_impact': -0.80

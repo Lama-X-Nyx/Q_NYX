@@ -242,7 +242,8 @@ class MLFeatureEngine:
         gain  = delta.clip(lower=0).ewm(alpha=1/period, adjust=False).mean()
         loss  = (-delta.clip(upper=0)).ewm(alpha=1/period, adjust=False).mean()
         rs    = gain / (loss + 1e-9)
-        return 100 - 100 / (1 + rs)
+        result: pd.Series = 100 - 100 / (1 + rs)  # type: ignore[assignment]
+        return result
 
     @staticmethod
     def _parkinson(high: pd.Series, low: pd.Series, window: int) -> pd.Series:

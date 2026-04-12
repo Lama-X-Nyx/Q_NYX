@@ -14,7 +14,7 @@ sys.path.insert(0, '.')
 from src.data.mtf_loader import load_fractal_context
 
 
-def run_fractal_geometry(pair: str, config: dict, output_dir: Path, sample_date: str = None):
+def run_fractal_geometry(pair: str, config: dict, output_dir: Path, sample_date: str = ""):
     """
     Validate fractal geometry - proper context windows per TF
     

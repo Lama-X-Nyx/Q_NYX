@@ -650,7 +650,7 @@ class SemiMarkovHMM:
         self.transition_matrix = A_new / A_new.sum(axis=1, keepdims=True)
 
         # ---- Emission params (Huber-robust IRLS, per state) ----
-        ep = self.emission_params or {}
+        ep: Dict = self.emission_params or {}
         for i, state in enumerate(self.states):
             w = gamma[:, i]                                     # (T,)
 
@@ -760,9 +760,11 @@ class SemiMarkovHMM:
         self._fb_fingerprint   = None
         self._fb_cache         = None
 
-        # Partial lock: save learned A and π so they survive heuristic re-init
-        self._locked_transition = self.transition_matrix.copy() if self.transition_matrix is not None else None
-        self._locked_initial    = self.initial_probs.copy() if self.initial_probs is not None else None
+        # Partial lock: save learned A and pi so they survive heuristic re-init
+        _tm = self.transition_matrix
+        _ip = self.initial_probs
+        self._locked_transition = _tm.copy() if _tm is not None else None
+        self._locked_initial    = _ip.copy() if _ip is not None else None
         self._locked_structure  = True   # default: adaptive emissions, frozen structure
 
         # Full lock (opt-in via lock_all()): keep everything frozen
@@ -1047,7 +1049,8 @@ if __name__ == "__main__":
                for i in range(50)]
         probs = hsmm.forward_backward(obs)
         dom, p = hsmm.get_dominant_state(probs[-1])
-        print(f"\n{label}: dominant={dom} ({p:.2%})  A shape={hsmm.transition_matrix.shape}")
-        print(f"  Liquidation row: {hsmm.transition_matrix[-1] if 'Liquidation' in state_set else 'N/A'}")
+        A_mat = hsmm.transition_matrix
+        print(f"\n{label}: dominant={dom} ({p:.2%})  A shape={A_mat.shape if A_mat is not None else 'N/A'}")
+        print(f"  Liquidation row: {A_mat[-1] if A_mat is not None and 'Liquidation' in state_set else 'N/A'}")
 
     print("\n✅ P4 HSMM Working")

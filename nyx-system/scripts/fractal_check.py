@@ -17,7 +17,7 @@ from src.data.mtf_loader import load_fractal_context
 from src.agents.orchestrator import Orchestrator
 
 
-def run_fractal_check(pair: str, config: dict, output_dir: Path, sample_date: str = None):
+def run_fractal_check(pair: str, config: dict, output_dir: Path, sample_date: str = ""):
     """
     Run fractal architecture validation
     
@@ -301,4 +301,4 @@ if __name__ == "__main__":
     with open('config/validation_baseline.yaml') as f:
         config = yaml.safe_load(f)
     
-    run_fractal_check('BTCUSDT', config, Path('reports/validation'), sample_bars=1000)
+    run_fractal_check('BTCUSDT', config, Path('reports/validation'))

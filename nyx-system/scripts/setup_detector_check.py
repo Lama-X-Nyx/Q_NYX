@@ -16,7 +16,7 @@ from src.data.mtf_loader import load_fractal_context
 from src.agents.setup_agent import SetupAgent
 
 
-def run_setup_detector_check(pair: str, config: dict, output_dir: Path, sample_date: str = None):
+def run_setup_detector_check(pair: str, config: dict, output_dir: Path, sample_date: str = ""):
     """
     Check SetupAgent → SMCDetector wiring
     
@@ -48,6 +48,7 @@ def run_setup_detector_check(pair: str, config: dict, output_dir: Path, sample_d
     error_type = None
     error_message = None
     
+    agent = None
     try:
         agent = SetupAgent(config)
         detector_initialized = True
@@ -81,7 +82,7 @@ def run_setup_detector_check(pair: str, config: dict, output_dir: Path, sample_d
     test_error_type = None
     test_error_message = None
     
-    if detector_initialized:
+    if detector_initialized and agent is not None:
         try:
             # Load data
             print(f"Loading fractal context...")

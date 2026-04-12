@@ -18,7 +18,7 @@ from src.data.mtf_loader import load_fractal_context
 from src.agents.orchestrator import Orchestrator
 
 
-def run_setup_bottleneck(pair: str, config: dict, output_dir: Path, sample_date: str = None):
+def run_setup_bottleneck(pair: str, config: dict, output_dir: Path, sample_date: str = ""):
     """
     Diagnose Setup Agent bottleneck
     

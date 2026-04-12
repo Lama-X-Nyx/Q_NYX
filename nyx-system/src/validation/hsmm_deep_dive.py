@@ -169,8 +169,9 @@ def inspect_hsmm_states(
     
     # Compute SdC and stability
     sdc = 10 * current_probs[state_idx]
-    if regime_agent.hsmm.transition_matrix is not None:
-        stability = regime_agent.hsmm.transition_matrix[state_idx, state_idx]
+    trans_matrix = regime_agent.hsmm.transition_matrix
+    if trans_matrix is not None:
+        stability = trans_matrix[state_idx, state_idx]
     else:
         stability = 0.0
     
@@ -358,17 +359,18 @@ def _determine_verdict(
 ) -> tuple:
     """
     Determine main issue and verdict
-    
+
     Args:
         trend_plus_probs: List of trend+ probabilities per period
         range_probs: List of range probabilities per period
         returns_means: List of returns means per period
         returns_stds: List of returns stds per period
         selected_states: List of selected states per period
-    
+
     Returns:
         (main_issue, verdict) tuple
     """
+    selected_states = selected_states or []
     
     avg_trend_plus = np.mean(trend_plus_probs)
     avg_range = np.mean(range_probs)
@@ -453,23 +455,23 @@ def run_hsmm_deep_dive(
 ) -> Dict:
     """
     Run HSMM deep dive analysis
-    
+
     Args:
         pair: Trading pair
         config: System config
         output_dir: Output directory
         dates: Optional list of dates (defaults to 4 test periods)
-    
+
     Returns:
         Results dict
     """
-    
+
     print(f"\n{'='*80}")
     print(f"HSMM DEEP DIVE - {pair}")
     print(f"{'='*80}\n")
-    
+
     # Default test dates if not provided
-    if dates is None:
+    if dates is None or len(dates) == 0:
         dates = [
             datetime(2023, 1, 15),
             datetime(2023, 3, 15),

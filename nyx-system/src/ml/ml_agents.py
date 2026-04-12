@@ -54,7 +54,8 @@ def _safe_rsi(close: pd.Series, period: int = 14) -> pd.Series:
     avg_g = gain.ewm(alpha=1 / period, min_periods=period).mean()
     avg_l = loss.ewm(alpha=1 / period, min_periods=period).mean()
     rs    = avg_g / (avg_l + 1e-9)
-    return 100 - (100 / (1 + rs))
+    result: pd.Series = 100 - (100 / (1 + rs))  # type: ignore[assignment]
+    return result
 
 
 def _parkinson_vol(high: pd.Series, low: pd.Series, window: int) -> pd.Series:
@@ -120,10 +121,10 @@ class MLContextAgent:
 
     def compute_features(self, df_1d: pd.DataFrame) -> pd.DataFrame:
         f = pd.DataFrame(index=df_1d.index)
-        c = df_1d['close']
-        h = df_1d['high']
-        l = df_1d['low']
-        v = df_1d['volume']
+        c: pd.Series = df_1d['close']  # type: ignore[assignment]
+        h: pd.Series = df_1d['high']   # type: ignore[assignment]
+        l: pd.Series = df_1d['low']    # type: ignore[assignment]
+        v: pd.Series = df_1d['volume'] # type: ignore[assignment]
         ret = c.pct_change()
 
         # Momentum
@@ -212,7 +213,8 @@ class MLContextAgent:
 
             mask = X.notna().all(axis=1) & y.notna()
             mask.iloc[-5:] = False
-            X, y = X[mask], y[mask]
+            X = pd.DataFrame(X[mask])
+            y = pd.Series(y[mask])
 
             if len(X) < 300:
                 print(f'  [MLContextAgent] Not enough data ({len(X)} rows)')
@@ -289,8 +291,9 @@ class MLContextAgent:
             )
 
         # --- pass-through: SMA200 rule-based ---
-        sma200 = df_1d['close'].rolling(200).mean()
-        last_close = float(df_1d['close'].iloc[-1])
+        close_s: pd.Series = df_1d['close']  # type: ignore[assignment]
+        sma200 = close_s.rolling(200).mean()
+        last_close = float(close_s.iloc[-1])
         last_sma   = float(sma200.iloc[-1]) if not np.isnan(sma200.iloc[-1]) else last_close
 
         pt_state = 'bullish' if last_close > last_sma * 1.02 else \
@@ -484,7 +487,8 @@ class MLRegimeAgent:
 
             mask = X.notna().all(axis=1) & y.notna()
             mask.iloc[-8:] = False
-            X, y = X[mask], y[mask]
+            X = pd.DataFrame(X[mask])
+            y = pd.Series(y[mask])
 
             if len(X) < 300:
                 print(f'  [MLRegimeAgent] Not enough data ({len(X)} rows)')
@@ -789,7 +793,8 @@ class MLSetupAgent:
 
             mask = X.notna().all(axis=1) & y.notna()
             mask.iloc[-16:] = False   # embargo = num_bars of triple barrier
-            X, y = X[mask], y[mask]
+            X = pd.DataFrame(X[mask])
+            y = pd.Series(y[mask])
 
             if len(X) < 300:
                 print(f'  [MLSetupAgent] Not enough data ({len(X)} rows)')

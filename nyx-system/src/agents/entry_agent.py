@@ -36,17 +36,17 @@ class EntryAgent:
         self.timeframe = timeframes.get('entry', '5m')
     
     def analyze(self, df: pd.DataFrame, setup_state: str = None) -> AgentResult:
-        setup_state = setup_state or ""
         """
         Analyze entry timing
-        
+
         Args:
             df: DataFrame for entry timeframe (5M)
             setup_state: Setup state from Setup Agent
-        
+
         Returns:
             AgentResult with entry decision
         """
+        setup_state = setup_state or ""
         
         # Require minimum data
         if len(df) < 20:

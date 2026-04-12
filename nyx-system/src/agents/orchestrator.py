@@ -299,12 +299,17 @@ class Orchestrator:
                 components=components
             )
 
+        # Narrow types for Pyright after None guard
+        regime_result_: AgentResult = regime_result
+        setup_result_: AgentResult = setup_result
+        context_result_: AgentResult = context_result
+
         # Step 3: Risk check (P2: pass emission_params for Monte Carlo hitting probs)
         risk_conditions = self.risk_manager.check_risk_conditions(
             entry_price=current_price,
-            fractal_states=self._extract_fractal_states(regime_result),
-            smc_patterns=setup_result.metadata.get('patterns', {}),
-            intent_daily=context_result.state,
+            fractal_states=self._extract_fractal_states(regime_result_),
+            smc_patterns=setup_result_.metadata.get('patterns', {}),
+            intent_daily=context_result_.state,
             transition_matrix=self.regime_agent.hsmm.transition_matrix,
             emission_params=self.regime_agent.hsmm.emission_params,
             hsmm_states_list=self.regime_agent.hsmm.states,
@@ -324,9 +329,9 @@ class Orchestrator:
             )
 
         # Step 4: All passed - determine action
-        if context_result.state == 'bullish':
+        if context_result_.state == 'bullish':
             action = 'BUY'
-        elif context_result.state == 'bearish':
+        elif context_result_.state == 'bearish':
             action = 'SELL'
         else:
             action = 'WAIT'
@@ -336,7 +341,7 @@ class Orchestrator:
         return OrchestratorDecision(
             action=action,
             score=aggregate_score,
-            reason=f'All agents approved: Context={context_result.state}, Regime={regime_result.state}, Setup={setup_result.state}',
+            reason=f'All agents approved: Context={context_result_.state}, Regime={regime_result_.state}, Setup={setup_result_.state}',
             blocked_by=[],
             components=components,
             risk_analysis=risk_conditions

@@ -42,7 +42,7 @@ class TestSMCDetectorInit:
         """Test that passing dict for ob_range_threshold raises TypeError"""
         with pytest.raises(TypeError) as exc_info:
             SMCDetector(
-                ob_range_threshold={'value': 0.015},  # Invalid
+                ob_range_threshold={'value': 0.015},  # type: ignore[arg-type]  # Invalid
                 fvg_min_gap=0.005,
                 liquidity_lookback=20
             )
@@ -55,7 +55,7 @@ class TestSMCDetectorInit:
         with pytest.raises(TypeError) as exc_info:
             SMCDetector(
                 ob_range_threshold=0.015,
-                fvg_min_gap={'value': 0.005},  # Invalid
+                fvg_min_gap={'value': 0.005},  # type: ignore[arg-type]  # Invalid
                 liquidity_lookback=20
             )
         
@@ -66,7 +66,7 @@ class TestSMCDetectorInit:
         """Test that passing string raises TypeError"""
         with pytest.raises(TypeError) as exc_info:
             SMCDetector(
-                ob_range_threshold="0.015",  # Invalid
+                ob_range_threshold="0.015",  # type: ignore[arg-type]  # Invalid
                 fvg_min_gap=0.005,
                 liquidity_lookback=20
             )
@@ -79,7 +79,7 @@ class TestSMCDetectorInit:
             SMCDetector(
                 ob_range_threshold=0.015,
                 fvg_min_gap=0.005,
-                liquidity_lookback="20"  # Invalid
+                liquidity_lookback="20"  # type: ignore[arg-type]  # Invalid
             )
         
         assert 'liquidity_lookback must be int' in str(exc_info.value)
@@ -97,7 +97,7 @@ class TestSMCDetectorInit:
         detector = SMCDetector(
             ob_range_threshold=15,  # int -> should become float
             fvg_min_gap=5,          # int -> should become float
-            liquidity_lookback=20.0 # float -> should become int
+            liquidity_lookback=20.0 # type: ignore[arg-type]  # float -> should become int
         )
         
         assert isinstance(detector.ob_range_threshold, float)

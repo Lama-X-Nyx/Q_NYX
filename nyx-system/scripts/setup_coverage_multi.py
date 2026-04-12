@@ -22,7 +22,7 @@ DEFAULT_DATES = [
 ]
 
 
-def run_setup_coverage_multi(pair: str, config: dict, output_dir: Path, dates: list = None):
+def run_setup_coverage_multi(pair: str, config: dict, output_dir: Path, dates: "list | None" = None):
     """
     Compare Setup coverage across multiple periods
     

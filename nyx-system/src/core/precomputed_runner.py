@@ -60,10 +60,12 @@ def forward_streaming(hsmm: SemiMarkovHMM,
     gamma   : (T, n_states) normalised forward probabilities (causal)
     """
     T, n = log_B.shape
-    log_A = np.log(hsmm.transition_matrix + 1e-10)          # (n, n)
+    tm = hsmm.transition_matrix if hsmm.transition_matrix is not None else np.ones((n, n)) / n
+    log_A = np.log(tm + 1e-10)          # (n, n)
 
     log_alpha = np.empty((T, n), dtype=np.float64)
-    log_alpha[0] = np.log(hsmm.initial_probs + 1e-10) + log_B[0]
+    ip = hsmm.initial_probs if hsmm.initial_probs is not None else np.ones(n) / n
+    log_alpha[0] = np.log(ip + 1e-10) + log_B[0]
 
     for t in range(1, T):
         # Vectorised: (n,1) + (n,n) → broadcast (n,n), logsumexp over axis=0 → (n,)
@@ -147,7 +149,7 @@ def _compute_log_B_from_arrays(hsmm: SemiMarkovHMM,
     from scipy import stats
     T    = len(obs['price'])
     n    = hsmm.n_states
-    ep   = hsmm.emission_params
+    ep: Dict   = hsmm.emission_params or {}
 
     pm   = np.array([ep[s]['price_mu']    for s in hsmm.states])
     ps   = np.array([ep[s]['price_sigma'] for s in hsmm.states])
@@ -173,8 +175,8 @@ def _compute_log_B_from_arrays(hsmm: SemiMarkovHMM,
         ctx = obs['context']
         has_ctx = all('context_mu' in ep.get(s, {}) for s in hsmm.states)
         if has_ctx:
-            cm = np.array([ep[s].get('context_mu', 0.0)   for s in hsmm.states])
-            cs = np.array([ep[s].get('context_sigma', 0.02) for s in hsmm.states])
+            cm = np.array([ep.get(s, {}).get('context_mu', 0.0)   for s in hsmm.states])
+            cs = np.array([ep.get(s, {}).get('context_sigma', 0.02) for s in hsmm.states])
             valid_c = ~np.isnan(ctx)
             if valid_c.any():
                 log_B[valid_c] += stats.norm.logpdf(
@@ -326,11 +328,12 @@ class PrecomputedStates:
         # ---- Context (1D SMA200) ----
         df_1d = mtf_all['1d']
         trend_thr = self._orch.context_agent.trend_threshold
-        self.context_arr = _precompute_context(df_1d, trend_thr)
+        ctx_arr = _precompute_context(df_1d, trend_thr)
+        self.context_arr = ctx_arr
         self._idx_1d = df_1d.index.values.astype(np.int64)
-        print(f'    context    : {len(self.context_arr)} bars  '
-              f'({(self.context_arr=="bullish").sum()} bullish / '
-              f'{(self.context_arr=="bearish").sum()} bearish)')
+        print(f'    context    : {len(ctx_arr)} bars  '
+              f'({(ctx_arr=="bullish").sum()} bullish / '
+              f'{(ctx_arr=="bearish").sum()} bearish)')
 
         # ---- Regime HSMM (1H + HTF=4H) ----
         df_1h  = mtf_all['1h']
