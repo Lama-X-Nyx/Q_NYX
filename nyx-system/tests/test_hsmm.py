@@ -315,11 +315,11 @@ def sample_data_5state():
     close = 10000 + np.cumsum(np.random.randn(n) * 100)
     atr_14 = np.abs(100 + np.random.randn(n) * 20)
     # atr_50 is smoothed version of atr_14
-    atr_50 = pd.Series(atr_14).rolling(50, min_periods=1).mean().values
+    atr_50 = np.asarray(pd.Series(atr_14).rolling(50, min_periods=1).mean())
     volume = np.abs(1000 + np.random.randn(n) * 200)
-    volume_ma20 = pd.Series(volume).rolling(20, min_periods=1).mean().values
-    sma_20 = pd.Series(close).rolling(20, min_periods=1).mean().values
-    sma_50 = pd.Series(close).rolling(50, min_periods=1).mean().values
+    volume_ma20 = np.asarray(pd.Series(volume).rolling(20, min_periods=1).mean())
+    sma_20 = np.asarray(pd.Series(close).rolling(20, min_periods=1).mean())
+    sma_50 = np.asarray(pd.Series(close).rolling(50, min_periods=1).mean())
 
     return pd.DataFrame({
         'close':       close,

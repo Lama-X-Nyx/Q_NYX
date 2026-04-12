@@ -181,9 +181,11 @@ class TestOrchestrator:
             50000, fractal_states, A, emission_params=emission_params
         )
 
-        assert 0.0 <= result['minus_0_05'] <= 1.0
-        assert 0.0 <= result['minus_0_10'] <= 1.0
-        assert result['minus_0_10'] <= result['minus_0_05'] + 1e-9, \
+        p05 = float(result['minus_0_05'])
+        p10 = float(result['minus_0_10'])
+        assert 0.0 <= p05 <= 1.0
+        assert 0.0 <= p10 <= 1.0
+        assert p10 <= p05 + 1e-9, \
             "P(-10%) must be ≤ P(-5%)"
         assert result.get('method') == 'monte_carlo'
 
