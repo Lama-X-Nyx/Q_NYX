@@ -15,7 +15,6 @@ import numpy as np
 import pandas as pd
 from typing import Any, Dict, Optional
 from src.ml.jesse_features import _ema, _atr, _adx
-from src.ml.nyx_pipeline import NYXPipeline
 from src.ml.bear_risk_dial import get_risk_params, detect_regime
 from src.ml.soft_gate import compute_disagreement
 
@@ -144,6 +143,7 @@ class ConditionalNYXPipeline:
 
         # Run base pipeline with BULL params (most permissive) to get all trades
         bull_params = get_risk_params('bull')
+        from src.ml.nyx_pipeline import NYXPipeline  # lazy import to avoid circular
         base_pipe = NYXPipeline(
             risk_pct=bull_params['risk_pct'],
             ml_threshold=bull_params['ml_threshold'],

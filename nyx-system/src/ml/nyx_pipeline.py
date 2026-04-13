@@ -20,11 +20,14 @@ from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.preprocessing import StandardScaler
 from src.ml.jesse_features import _ema, _atr, _rsi, _adx
 from src.ml.soft_gate import compute_disagreement, compute_size_factor
+from src.ml.conditional_dial import should_activate_bear_dial, _compute_bar_signals
+from src.ml.bear_risk_dial import get_risk_params
 
 
 class NYXPipeline:
     """
-    Unified MTF pipeline. One class, one call, everything merged.
+    Unified MTF pipeline v0.3.1. One class, one call, everything merged.
+    Includes conditional bear dial by default.
     """
 
     def __init__(
@@ -43,6 +46,8 @@ class NYXPipeline:
         initial_capital: float = 10_000.0,
         cooldown_bars: int = 32,
         max_daily_trades: int = 1,
+        # Conditional bear dial
+        use_conditional_dial: bool = True,
     ):
         self.vol_min = vol_min
         self.tp_mult = tp_mult
@@ -55,6 +60,7 @@ class NYXPipeline:
         self.initial_capital = initial_capital
         self.cooldown_bars = cooldown_bars
         self.max_daily_trades = max_daily_trades
+        self.use_conditional_dial = use_conditional_dial
 
     def run(
         self,
@@ -120,7 +126,22 @@ class NYXPipeline:
         p1_idx = classes.index(1) if 1 in classes else 0
         scores = proba[:, p1_idx]
 
-        # --- Step 5: Filter + soft gate sizing + execute ---
+        # --- Step 5: Precompute conditional dial signals ---
+        bear_dial_signals = None
+        if self.use_conditional_dial:
+            try:
+                test_15m = mtf_data['15m'].loc[test_start:te]
+                test_1h = mtf_data.get('1h', pd.DataFrame())
+                if not test_1h.empty:
+                    test_1h = test_1h.loc[test_start:te]
+                bear_dial_signals = _compute_bar_signals(test_15m, test_1h)
+            except Exception:
+                bear_dial_signals = None
+
+        bear_params = get_risk_params('bear')
+        n_bear_active = 0
+
+        # --- Step 6: Filter + conditional dial + soft gate sizing + execute ---
         capital = self.initial_capital
         trades: List[Dict] = []
         equity_curve = [capital]
@@ -129,12 +150,28 @@ class NYXPipeline:
         total_fees = 0.0
 
         for i, (cand, score) in enumerate(zip(test_cands, scores)):
-            # ML filter
-            if score < self.ml_threshold:
+            # Conditional bear dial check
+            bear_active = False
+            if self.use_conditional_dial and bear_dial_signals is not None:
+                idx = cand['bar_idx']
+                if idx < len(bear_dial_signals.get('regime_1h', [])):
+                    regime_1h = str(bear_dial_signals['regime_1h'][idx])
+                    vol_r = float(bear_dial_signals['atr_ratio'][idx]) if idx < len(bear_dial_signals['atr_ratio']) else 1.0
+                    tq = float(bear_dial_signals['trend_quality'][idx]) if idx < len(bear_dial_signals['trend_quality']) else 0.5
+                    dis_check = cand['features'].get('disagreement', 0.1)
+                    bear_active = should_activate_bear_dial(regime_1h, vol_r, tq, dis_check)
+
+            if bear_active:
+                n_bear_active += 1
+
+            # ML filter — use bear threshold if dial active
+            threshold = bear_params['ml_threshold'] if bear_active else self.ml_threshold
+            if score < threshold:
                 continue
 
-            # Cooldown
-            if cand['bar_idx'] - last_bar < self.cooldown_bars:
+            # Cooldown — use bear cooldown if dial active
+            cooldown = bear_params['cooldown_bars'] if bear_active else self.cooldown_bars
+            if cand['bar_idx'] - last_bar < cooldown:
                 continue
 
             # Daily limit
@@ -151,21 +188,26 @@ class NYXPipeline:
             ])
             sf = compute_size_factor(float(score), dis, rule_avg)
 
+            # Bear dial size reduction
+            if bear_active:
+                sf *= bear_params['size_mult']
+
             # Hour bonus
             hour = cand['timestamp'].hour if hasattr(cand['timestamp'], 'hour') else 12
             sf *= 1.1 if 8 <= hour <= 18 else 0.8
 
             # Position sizing
+            risk_pct = bear_params['risk_pct'] if bear_active else self.risk_pct
             atr_est = cand['features'].get('atr_pct', 0.005) * cand['entry_price']
             atr_est = max(atr_est, 1.0)
-            risk_dollars = capital * self.risk_pct * sf
+            risk_dollars = capital * risk_pct * sf
             qty = min(risk_dollars / atr_est, capital / cand['entry_price'])
             if qty <= 0 or capital <= 0:
                 continue
 
             # Execute
             net_pnl = cand['outcome_net'] * qty
-            fee = cand['entry_price'] * self.fee_rate * qty * 2  # approx both sides
+            fee = cand['entry_price'] * self.fee_rate * qty * 2
             total_fees += fee
             capital += net_pnl
             capital = max(capital, 0)
@@ -224,6 +266,7 @@ class NYXPipeline:
             'total_fees': total_fees,
             'feature_names': feature_names,
             'feature_importance': feat_imp,
+            'bear_dial_activation_rate': n_bear_active / max(len(test_cands), 1) if self.use_conditional_dial else 0,
             'trades': trades,
         }
 

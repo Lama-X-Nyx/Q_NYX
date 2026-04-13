@@ -12,7 +12,6 @@ import numpy as np
 import pandas as pd
 from typing import Any, Dict, Optional
 from src.ml.jesse_features import _ema
-from src.ml.nyx_pipeline import NYXPipeline
 
 
 # ===================================================================
@@ -121,6 +120,7 @@ class AdaptiveNYXPipeline:
 
         # Step 1: run base pipeline to get candidates + ML scores
         # Use bull params (most permissive) to generate all candidates
+        from src.ml.nyx_pipeline import NYXPipeline  # lazy import
         base_pipe = NYXPipeline(
             risk_pct=RISK_PARAMS['bull']['risk_pct'],
             ml_threshold=RISK_PARAMS['bear']['ml_threshold'],  # strictest to get all scored

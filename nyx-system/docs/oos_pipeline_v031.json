@@ -1,0 +1,82 @@
+{
+  "conditional": {
+    "2020": {
+      "n_trades": 57,
+      "win_rate": 0.509,
+      "sharpe": 0.378,
+      "return_pct": 0.0184,
+      "max_dd": 0.0321,
+      "bear_dial_rate": 0.387
+    },
+    "2021": {
+      "n_trades": 57,
+      "win_rate": 0.632,
+      "sharpe": 3.048,
+      "return_pct": 0.1705,
+      "max_dd": 0.0245,
+      "bear_dial_rate": 0.412
+    },
+    "2022": {
+      "n_trades": 83,
+      "win_rate": 0.59,
+      "sharpe": 1.758,
+      "return_pct": 0.1154,
+      "max_dd": 0.0255,
+      "bear_dial_rate": 0.448
+    },
+    "2023": {
+      "n_trades": 42,
+      "win_rate": 0.786,
+      "sharpe": 5.184,
+      "return_pct": 0.1287,
+      "max_dd": 0.0065,
+      "bear_dial_rate": 0.466
+    }
+  },
+  "static": {
+    "2020": {
+      "n_trades": 68,
+      "win_rate": 0.471,
+      "sharpe": 0.159,
+      "return_pct": 0.0102,
+      "max_dd": 0.0554,
+      "bear_dial_rate": 0
+    },
+    "2021": {
+      "n_trades": 65,
+      "win_rate": 0.631,
+      "sharpe": 3.285,
+      "return_pct": 0.2079,
+      "max_dd": 0.0245,
+      "bear_dial_rate": 0
+    },
+    "2022": {
+      "n_trades": 97,
+      "win_rate": 0.567,
+      "sharpe": 1.234,
+      "return_pct": 0.0924,
+      "max_dd": 0.0486,
+      "bear_dial_rate": 0
+    },
+    "2023": {
+      "n_trades": 56,
+      "win_rate": 0.804,
+      "sharpe": 6.771,
+      "return_pct": 0.2014,
+      "max_dd": 0.0066,
+      "bear_dial_rate": 0
+    }
+  },
+  "summary": {
+    "conditional": {
+      "avg_sharpe": 2.592,
+      "total_return": 0.433,
+      "years_positive": 4
+    },
+    "static": {
+      "avg_sharpe": 2.862,
+      "total_return": 0.5119,
+      "years_positive": 4
+    }
+  }
+}
