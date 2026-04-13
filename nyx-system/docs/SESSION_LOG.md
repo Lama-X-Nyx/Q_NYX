@@ -111,10 +111,47 @@ Données extraites du `nyx-p0p1p2p3-done.tar.gz` :
 
 **Diagnostic fondamental** : les labels triple barrier donnent 60% SL même dans un +39% bull month. La cause racine est le SL trop serré (1.0x ATR). Aucune feature ne corrèle avec les labels (< 0.03).
 
+## Phase 9 : Feedback Loop (paper trading → evaluate → retrain)
+
+Implémenté en 3 niveaux, 13/13 tests GREEN :
+- **DecisionLogger** : log chaque barre (features, agents, décision, trade info)
+- **OutcomeEvaluator** : relabel avec vrais outcomes (TP/FP/TN/FN + taxonomy 10 erreurs)
+- **ChampionChallenger** : promote seulement si accuracy +2% ET drawdown pas pire
+
+## Phase 10 : Edge Strategy + Walk-Forward
+
+Edge validé en TDD (12/12 GREEN) puis yearly walk-forward (11/11 GREEN).
+
+Walk-forward annuel (volume >1.5x) :
+- Fold 1 : train 2019 → test 2020 (+303% BTC) : +12,094pts
+- Fold 2 : train 2020-2021 → test 2022 (-64% BTC, BEAR) : +16,452pts
+- Fold 3 : train 2022-2023 → test 2023-Q4 (+58% BTC) : +5,924pts
+- **3/3 folds positifs**
+
+Full OOS (train 2019-2021, test 2022-2024) :
+- 6,397 trades | WR 43% | EV +0.079 ATR | 2/2 years +
+
+## Phase 11 : Reality Check
+
+**Les chiffres sont gonflés.** Biais identifiés :
+1. PnL en points bruts (pas en dollars)
+2. **Zéro fees/slippage** (~0.1% round trip = ~$180K sur 6,396 trades)
+3. Re-entry immédiate (8.8 trades/jour irréaliste)
+4. Position sizing = 1 BTC (pas % du capital)
+5. Compounding irréaliste
+6. Overcounting des signaux
+
+**L'edge existe** (direction positive dans tous les régimes) mais le return
+réaliste est estimé à **10-30%/an** avec fees, pas 200%+.
+
+Voir `docs/REALITY_CHECK.md` pour le détail.
+
 ## Prochaines étapes
 
-- [ ] Implémenter edge stack (volume + continuation + heures)
-- [ ] Backtest sur 2020-2022 (out-of-sample)
-- [ ] Optimiser labels triple barrier (TP/SL adaptatif par régime)
-- [ ] Ajouter HSMM probs des parquets existants comme features
-- [ ] Walk-forward validation sur multiple périodes
+- [ ] Ajouter fees + slippage au backtest (P0)
+- [ ] Position sizing réaliste en % du capital (P0)
+- [ ] Max 3 trades/jour + cooldown (P1)
+- [ ] ML filtrage pour réduire de 8 trades/j à 2-3 (P1)
+- [ ] Backtest en dollars nets avec equity curve (P1)
+- [ ] HSMM probs des parquets comme features ML (P2)
+- [ ] Paper trading live avec DecisionLogger (P2)

@@ -174,14 +174,60 @@ Runtime Q1 2023 : 2.4s (precomputed)
 
 ---
 
+## Jesse ML Integration (Avril 2026)
+
+Architecture parallèle Jesse avec 5 agents, 100+ tests TDD.
+Voir `docs/JESSE_ARCHITECTURE.md` pour le détail.
+
+### Modules Jesse
+
+| Fichier | Rôle |
+|---------|------|
+| src/ml/jesse_agents.py | 5 agents Jesse (Context/Regime/Setup/Entry/Orchestrator) |
+| src/ml/jesse_features.py | 24 features stationnaires (ratios, jamais bruts) |
+| src/ml/jesse_labeler.py | Triple barrier (+1/-1/0) |
+| src/ml/jesse_strategy.py | Gather/Deploy + RandomForest |
+| src/ml/jesse_backtest.py | FastBacktester vectorisé (128K bars/sec) |
+| src/ml/edge_strategy.py | Edge walk-forward validé |
+| src/ml/feedback_loop.py | DecisionLogger + OutcomeEvaluator + ChampionChallenger |
+| src/ml/jesse_research.py | Feature importance 4 méthodes |
+| src/ml/jesse_utils.py | risk_to_qty, crossed, kelly |
+
+### Edge validé (walk-forward, 3 folds annuels)
+
+| Edge | WR | EV/trade | Quarters+ | Anti-overfit |
+|------|-----|----------|-----------|-------------|
+| Trend + Volume >1.5x | 43% | +0.079 ATR | 14/14 | **Validé** |
+| + Hours 8-18 UTC | 46% | +0.154 ATR | 14/14 | **Validé** |
+
+**⚠ REALITY CHECK** : Les PnL bruts sont gonflés.
+Sans fees, slippage, sizing réaliste, le return est estimé à 10-30%/an.
+Voir `docs/REALITY_CHECK.md`.
+
+### Tests TDD
+
+| Suite | Tests |
+|-------|-------|
+| Pipeline ML | 18 |
+| Integration Jesse | 23 |
+| FastBacktester | 14 |
+| 5 Agents (Context/Regime/Setup/Entry/Orchestrator) | 45 |
+| Feedback Loop | 13 |
+| Edge Walk-Forward | 12 |
+| Yearly WF + OOS | 11 |
+| **Total** | **136** |
+
+---
+
 ## Prochaines étapes
 
-| Priorité | Tâche |
-|----------|-------|
-| P0 | train_ml_ecosystem.py --train-end 2022-12-31 |
-| P0 | Backtest OOS 2023 avec ML entraîné |
-| P1 | Validation 2021 (bull) + 2022 (bear) |
-| P1 | Mode --ml-ecosystem dans backtest_mtf.py |
-| P2 | Triple Barrier labelling (Ticket 2) |
-| P2 | Walk-Forward Splitter dédié (Ticket 3) |
-| P2 | Données order book L2 réelles |
+| Priorité | Tâche | Status |
+|----------|-------|--------|
+| P0 | Ajouter fees + slippage au backtest | TODO |
+| P0 | Position sizing réaliste (% capital) | TODO |
+| P1 | Max 3 trades/jour + cooldown | TODO |
+| P1 | Backtest en dollars nets avec equity curve | TODO |
+| P1 | ML filtrage (réduire de 8 trades/j à 2-3) | TODO |
+| P2 | HSMM probs des parquets comme features ML | TODO |
+| P2 | Paper trading live avec DecisionLogger | TODO |
+| P2 | Données order book L2 réelles | TODO |
