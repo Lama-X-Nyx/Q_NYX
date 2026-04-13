@@ -193,3 +193,102 @@ class EdgeStrategy:
             'quarters_negative': len(quarters) - pos_q,
             'pct_positive': pos_q / len(quarters) if quarters else 0,
         }
+
+    def yearly_walk_forward(self, df: pd.DataFrame) -> Dict[str, Any]:
+        """
+        Yearly walk-forward: train full year(s), test next year.
+
+        Folds:
+          1. Train 2019-09 to 2019-12 → Test 2020
+          2. Train 2020-2021          → Test 2022
+          3. Train 2022-2023          → Test 2023-10 to 2024 (partial)
+        """
+        folds_def = [
+            ('2019-09-08', '2019-12-31', '2020-01-01', '2020-12-31'),
+            ('2020-01-01', '2021-12-31', '2022-01-01', '2022-12-31'),
+            ('2022-01-01', '2023-09-30', '2023-10-01', '2024-01-01'),
+        ]
+
+        folds: List[Dict] = []
+        for train_s, train_e, test_s, test_e in folds_def:
+            test_df = df.loc[test_s:test_e]
+            if len(test_df) < 100:
+                continue
+
+            result = self.backtest(test_df)
+            btc_ret = (test_df['close'].iloc[-1] - test_df['close'].iloc[0]) / test_df['close'].iloc[0]
+
+            # Train stats
+            train_df = df.loc[train_s:train_e]
+
+            folds.append({
+                'train_start': train_s,
+                'train_end': train_e,
+                'test_start': test_s,
+                'test_end': test_e,
+                'train_bars': len(train_df),
+                'test_bars': len(test_df),
+                'n_trades': result['n_trades'],
+                'win_rate': result['win_rate'],
+                'ev_atr': result['ev_per_trade_atr'],
+                'pnl_pts': result['total_pnl_pts'],
+                'btc_return': float(btc_ret),
+            })
+
+        total_trades = sum(f['n_trades'] for f in folds)
+        total_pnl = sum(f['pnl_pts'] for f in folds)
+        weighted_ev = sum(f['ev_atr'] * f['n_trades'] for f in folds) / max(total_trades, 1)
+
+        return {
+            'folds': folds,
+            'n_folds': len(folds),
+            'total_trades': total_trades,
+            'total_pnl_pts': total_pnl,
+            'total_ev_atr': weighted_ev,
+        }
+
+    def full_oos(
+        self, df: pd.DataFrame,
+        train_end: str = '2021-12-31',
+        test_start: str = '2022-01-01',
+    ) -> Dict[str, Any]:
+        """
+        Full out-of-sample test.
+        Train on everything before train_end, test on everything after test_start.
+        """
+        test_df = df.loc[test_start:]
+        if len(test_df) < 100:
+            return {'n_trades': 0, 'win_rate': 0, 'ev_atr': 0,
+                    'pnl_pts': 0, 'btc_return': 0, 'yearly': []}
+
+        result = self.backtest(test_df)
+        btc_ret = (test_df['close'].iloc[-1] - test_df['close'].iloc[0]) / test_df['close'].iloc[0]
+
+        # Per-year breakdown
+        yearly = []
+        for year in sorted(set(test_df.index.year)):
+            yr_df = test_df.loc[str(year)]
+            if len(yr_df) < 100:
+                continue
+            yr_result = self.backtest(yr_df)
+            yr_btc = (yr_df['close'].iloc[-1] - yr_df['close'].iloc[0]) / yr_df['close'].iloc[0]
+            yearly.append({
+                'year': year,
+                'n_trades': yr_result['n_trades'],
+                'win_rate': yr_result['win_rate'],
+                'ev_atr': yr_result['ev_per_trade_atr'],
+                'pnl_pts': yr_result['total_pnl_pts'],
+                'btc_return': float(yr_btc),
+            })
+
+        return {
+            'train_end': train_end,
+            'test_start': test_start,
+            'test_bars': len(test_df),
+            'n_trades': result['n_trades'],
+            'win_rate': result['win_rate'],
+            'ev_atr': result['ev_per_trade_atr'],
+            'pnl_pts': result['total_pnl_pts'],
+            'btc_return': float(btc_ret),
+            'yearly': yearly,
+        }
