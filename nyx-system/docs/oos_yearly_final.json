@@ -1,0 +1,91 @@
+{
+  "hard_gate": {
+    "2020": {
+      "sharpe": 2.19,
+      "wr": 0.51,
+      "return": 0.201,
+      "dd": 0.03,
+      "trades": 152,
+      "btc": "+303%"
+    },
+    "2021": {
+      "sharpe": 1.8,
+      "wr": 0.49,
+      "return": 0.196,
+      "dd": 0.048,
+      "trades": 106,
+      "btc": "+61%"
+    },
+    "2022": {
+      "sharpe": -0.75,
+      "wr": 0.38,
+      "return": -0.064,
+      "dd": 0.1,
+      "trades": 149,
+      "btc": "-64%"
+    },
+    "2023": {
+      "sharpe": 1.86,
+      "wr": 0.48,
+      "return": 0.112,
+      "dd": 0.039,
+      "trades": 210,
+      "btc": "+156%"
+    }
+  },
+  "ml_filter_v2": {
+    "2020": {
+      "sharpe": 1.22,
+      "wr": 0.49,
+      "return": 0.116,
+      "dd": 0.051,
+      "trades": 162,
+      "reject": 0.45,
+      "threshold": 0.45
+    },
+    "2021": {
+      "sharpe": 0.8,
+      "wr": 0.48,
+      "return": 0.073,
+      "dd": 0.058,
+      "trades": 118,
+      "reject": 0.49,
+      "threshold": 0.45
+    },
+    "2022": {
+      "sharpe": -0.07,
+      "wr": 0.43,
+      "return": -0.004,
+      "dd": 0.053,
+      "trades": 60,
+      "reject": 0.85,
+      "threshold": 0.63
+    },
+    "2023": {
+      "sharpe": 1.89,
+      "wr": 0.69,
+      "return": 0.027,
+      "dd": 0.007,
+      "trades": 13,
+      "reject": 0.97,
+      "threshold": 0.63
+    }
+  },
+  "summary": {
+    "hard_gate": {
+      "avg_sharpe": 1.28,
+      "total_return": 0.445,
+      "total_trades": 617,
+      "years_positive": "3/4"
+    },
+    "ml_filter": {
+      "avg_sharpe": 0.96,
+      "total_return": 0.213,
+      "total_trades": 353,
+      "years_positive": "3/4"
+    },
+    "verdict": "Hard gate meilleur return total (+44% vs +21%), ML filter meilleur en bear (DD 5% vs 10%) et meilleur WR 2023 (69% vs 48%)",
+    "ready_for_paper": true,
+    "confidence": "Moderate \u2014 edge exists across regimes but thin after fees"
+  }
+}
