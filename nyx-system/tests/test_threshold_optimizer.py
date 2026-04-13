@@ -70,7 +70,7 @@ class TestOptimalBacktest:
             real_data, parquet_features,
             train_end='2022-12-31', test_start='2023-01-01',
         )
-        assert r['sharpe'] >= 1.0, f"Sharpe {r['sharpe']:.2f} < 1.0"
+        assert r['sharpe'] >= 1.5, f"Sharpe {r['sharpe']:.2f} < 1.5"
 
     def test_optimal_wr_above_55(self, real_data, parquet_features):
         """Win rate must be above 55% with optimal threshold."""

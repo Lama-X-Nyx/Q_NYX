@@ -152,7 +152,7 @@ class EnhancedMLFilter:
         X_s = np.nan_to_num(X_s, nan=0.0, posinf=3.0, neginf=-3.0)
 
         self._model = GradientBoostingClassifier(
-            n_estimators=150, max_depth=3, learning_rate=0.05,
+            n_estimators=300, max_depth=3, learning_rate=0.03,
             min_samples_leaf=30, subsample=0.7, random_state=42,
         )
         self._model.fit(X_s, y)
@@ -167,7 +167,7 @@ class EnhancedMLFilter:
             cv_wrs = []
             for train_idx, val_idx in tscv.split(X_s):
                 m = GradientBoostingClassifier(
-                    n_estimators=80, max_depth=3, learning_rate=0.05,
+                    n_estimators=200, max_depth=3, learning_rate=0.03,
                     min_samples_leaf=30, subsample=0.7, random_state=42)
                 m.fit(X_s[train_idx], y[train_idx])
                 proba = m.predict_proba(X_s[val_idx])
