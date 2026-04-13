@@ -1,0 +1,110 @@
+{
+  "meta": {
+    "generated": "2026-04-13",
+    "system": "NYX Jesse ML Pipeline",
+    "data": "BTCUSDT 15m/1h/4h/1d 2019-09 to 2024-01",
+    "data_source": "Binance via tar.gz (nyx-p0p1p2p3-done.tar.gz)"
+  },
+
+  "backtest_1agent_synthetic": {
+    "description": "1-agent RandomForest on synthetic Q1 2023 data",
+    "train_period": "Jan-Feb 2023 (synthetic, proportional +0.25%/bar)",
+    "test_period": "Mar 2023 (synthetic)",
+    "capital_initial": 10000,
+    "capital_final": 158.67,
+    "pnl": -9841.33,
+    "pnl_pct": -0.984,
+    "trades": 370,
+    "longs": 0,
+    "shorts": 370,
+    "win_rate": 0.184,
+    "max_drawdown": 0.984,
+    "speed_seconds": 1.12,
+    "bars_per_second": 2655,
+    "issue": "Model shorts in bull market — trained on synthetic data with label bias"
+  },
+
+  "backtest_5agent_synthetic": {
+    "description": "5-agent pipeline on synthetic Q1 2023 data",
+    "train_period": "Jan-Feb 2023 (synthetic)",
+    "test_period": "Mar 2023 (synthetic)",
+    "capital_initial": 10000,
+    "capital_final": 3772.56,
+    "pnl": -6227.44,
+    "pnl_pct": -0.623,
+    "trades": 109,
+    "longs": 0,
+    "shorts": 109,
+    "win_rate": 0.17,
+    "max_drawdown": 0.623,
+    "speed_seconds": 3.6,
+    "bars_per_second": 32722,
+    "decisions": {"BUY": 0, "SELL": 109, "WAIT": 2156},
+    "blocks": {"setup": 2152, "entry": 2105},
+    "improvement_vs_1agent": "+37% PnL, 3.4x fewer trades, -36pts drawdown"
+  },
+
+  "backtest_5agent_real_data": {
+    "description": "5-agent pipeline on REAL BTC Q1 2023",
+    "train_period": "2021-01-01 to 2022-12-31 (diverse: bull+crash+bear)",
+    "test_period": "2023-01-01 to 2023-03-31",
+    "btc_q1_2023_return": "+72% ($16,517 -> $28,455)",
+    "capital_initial": 10000,
+    "capital_final": 8360.82,
+    "pnl": -1639.18,
+    "pnl_pct": -0.164,
+    "trades": 21,
+    "longs": 21,
+    "shorts": 0,
+    "win_rate": 0.24,
+    "avg_win": 298.55,
+    "avg_loss": -195.74,
+    "wl_ratio": 1.53,
+    "max_drawdown": 0.252,
+    "speed_seconds": 4.3,
+    "bars_per_second": 128612,
+    "decisions": {"BUY": 21, "SELL": 0, "WAIT": 8472},
+    "blocks": {"entry": 8472, "setup": 4050},
+    "exits": {"SL": 15, "TP": 5, "EOD": 1},
+    "note": "Direction correct (100% long in bull), but too conservative (21 trades in 3 months). All trades clustered in late March at $28K."
+  },
+
+  "comparison_1agent_vs_5agent_synthetic": {
+    "pnl": {"1_agent": -9841, "5_agents": -6227},
+    "trades": {"1_agent": 370, "5_agents": 109},
+    "win_rate": {"1_agent": 0.18, "5_agents": 0.17},
+    "max_dd": {"1_agent": 0.984, "5_agents": 0.623},
+    "conclusion": "5 agents filter 74% of bad signals, reducing drawdown from 98% to 62%"
+  },
+
+  "individual_agent_backtests_real_data": {
+    "context_1d": {
+      "test_bars": 30,
+      "avg_score": 0.5,
+      "pct_passed": 1.0,
+      "state_distribution": {"neutral": 30},
+      "issue": "Only 30 daily bars in Q1 — insufficient for meaningful context"
+    },
+    "regime_1h": {
+      "test_bars": 713,
+      "avg_score": 0.156,
+      "pct_passed": 0.84,
+      "state_distribution": {"range": 390, "trend_plus": 206, "squeeze": 117},
+      "note": "Correct regime detection: 55% range, 29% trend+, 16% squeeze"
+    },
+    "setup_15m": {
+      "test_bars": 2852,
+      "avg_score": 0.001,
+      "pct_passed": 0.0,
+      "state_distribution": {"no_setup": 2852},
+      "issue": "100% no_setup before fix — threshold too strict. Fixed with ML+heuristic blend."
+    },
+    "entry_15m": {
+      "test_bars": 2792,
+      "avg_score": 0.522,
+      "pct_passed": 0.96,
+      "state_distribution": {"ready": 2672, "not_ready": 120},
+      "issue": "96% ready before fix — too permissive. Fixed with heuristic blend."
+    }
+  }
+}

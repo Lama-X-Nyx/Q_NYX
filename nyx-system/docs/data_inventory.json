@@ -1,0 +1,78 @@
+{
+  "meta": {
+    "generated": "2026-04-13",
+    "source": "nyx-p0p1p2p3-done.tar.gz (extracted)"
+  },
+
+  "raw_ohlcv": {
+    "location": "data/raw/mtf/",
+    "format": "CSV (datetime, open, high, low, close, volume)",
+    "files": {
+      "BTCUSDT_15m.csv": {
+        "bars": 151226,
+        "start": "2019-09-08 17:45:00",
+        "end": "2024-01-01 00:00:00",
+        "size_mb": 9.8
+      },
+      "BTCUSDT_1h.csv": {
+        "bars": 37808,
+        "start": "2019-09-08 17:00:00",
+        "end": "2024-01-01 00:00:00",
+        "size_mb": 2.5
+      },
+      "BTCUSDT_4h.csv": {
+        "bars": 9453,
+        "start": "2019-09-08 16:00:00",
+        "end": "2024-01-01 00:00:00",
+        "size_mb": 0.6
+      },
+      "BTCUSDT_1d.csv": {
+        "bars": 1577,
+        "start": "2019-09-08 00:00:00",
+        "end": "2024-01-01 00:00:00",
+        "size_mb": 0.09
+      }
+    },
+    "extra": {
+      "BTCUSDT_1h.csv": {"location": "data/raw/", "bars": 43848, "range": "2020-01-01 to 2024-12-31"},
+      "ETHUSDT_1h.csv": {"location": "data/raw/", "bars": 43848, "range": "2020-01-01 to 2024-12-31"}
+    }
+  },
+
+  "precomputed_features": {
+    "location": "data/features/",
+    "format": "Parquet",
+    "files": {
+      "BTCUSDT_features_15m.parquet": {"bars": 151226, "columns": 53, "size_mb": 61},
+      "BTCUSDT_features_1h.parquet": {"bars": 37808, "columns": 53, "size_mb": 16},
+      "BTCUSDT_features_1d.parquet": {"bars": 1577, "columns": 47, "size_mb": 0.6}
+    },
+    "columns_include": [
+      "mom_4/8/16/32/96 + acceleration",
+      "rv_8/32/96, parkinson",
+      "vol_ratio, sharpe, sortino",
+      "rsi_14/28, macd/signal/hist",
+      "buy_pressure, amihud, kyle_lambda, eff_spread",
+      "ewma_vol, gk_24h",
+      "hour_sin/cos, dow_sin/cos",
+      "context (SMA200 float)",
+      "hsmm_15m_trendp/range/trendm/squeeze/distribution/liquidation"
+    ],
+    "note": "NO OHLCV columns in parquets. Features computed from raw CSVs by MLFeatureEngine."
+  },
+
+  "market_regimes": {
+    "2020": {"return": "+302%", "type": "bull (post-COVID)"},
+    "2021": {"return": "+58%", "type": "bull (consolidation)"},
+    "2022": {"return": "-65%", "type": "bear (LUNA/FTX)"},
+    "2023": {"return": "+155%", "type": "bull (recovery)"},
+    "q1_2023": {
+      "return": "+72%",
+      "jan": "+39% (strong rally from $16.5K)",
+      "feb": "-3% (consolidation at $23K)",
+      "mar": "+20% (breakout to $28K)"
+    }
+  },
+
+  "gitignored": ["data/raw/*", "data/processed/*", "data/results/*", "data/pretrain_cache/*"]
+}
