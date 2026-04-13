@@ -1,0 +1,38 @@
+{
+  "n_sims": 5000,
+  "n_trades": 286,
+  "sharpe_distribution": {
+    "mean": 3.898,
+    "median": 3.898,
+    "p5": 3.898,
+    "p10": 3.898,
+    "p25": 3.898,
+    "p75": 3.898,
+    "p95": 3.898
+  },
+  "max_dd_distribution": {
+    "median": 0.0427,
+    "p75": 0.051,
+    "p90": 0.0605,
+    "p95": 0.0683,
+    "p99": 0.0826,
+    "worst": 0.1275,
+    "prob_dd_10": 0.0016,
+    "prob_dd_20": 0.0
+  },
+  "return_distribution": {
+    "mean": 0.5119,
+    "median": 0.5119,
+    "p5": 0.5119,
+    "p10": 0.5119,
+    "p95": 0.5119,
+    "prob_loss": 0.0
+  },
+  "pain_profile": {
+    "losing_streak_median": 5,
+    "losing_streak_p95": 8,
+    "losing_streak_worst": 13,
+    "recovery_trades_median": 35,
+    "recovery_trades_p95": 68
+  }
+}
