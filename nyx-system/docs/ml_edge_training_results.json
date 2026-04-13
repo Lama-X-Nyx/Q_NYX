@@ -1,0 +1,39 @@
+{
+  "train_period": "2020-H2 to 2022",
+  "test_period": "2023 Q1-Q4",
+  "train_bars": 9371,
+  "train_accuracy": 0.7089,
+  "test_accuracy_2023": 0.5554,
+  "edge_filter": "trend_aligned + volume > 1.5x",
+  "model": "RandomForest(300 trees, depth=12)",
+  "feature_importance": {
+    "ema_ratio_9_21": 7.8,
+    "ema_ratio_21_50": 7.2,
+    "close_vs_ema50": 7.2,
+    "rsi_14": 7.2,
+    "atr_ratio": 6.0,
+    "volume_ratio": 5.5,
+    "momentum_10": 5.2,
+    "momentum_20": 2.8,
+    "high_low_ratio": 7.2,
+    "close_position": 7.2,
+    "returns_1": 8.2,
+    "returns_5": 7.2,
+    "vol_change": 12.0
+  },
+  "feature_impact": {
+    "ema_ratio_9_21": "neutral",
+    "ema_ratio_21_50": "neutral",
+    "close_vs_ema50": "neutral",
+    "rsi_14": "neutral",
+    "atr_ratio": "neutral",
+    "volume_ratio": "neutral",
+    "momentum_10": "neutral",
+    "momentum_20": "keep",
+    "high_low_ratio": "neutral",
+    "close_position": "neutral",
+    "returns_1": "drop",
+    "returns_5": "neutral",
+    "vol_change": "neutral"
+  }
+}
