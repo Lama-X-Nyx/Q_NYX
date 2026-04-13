@@ -48,6 +48,8 @@ class NYXPipeline:
         max_daily_trades: int = 1,
         # Conditional bear dial
         use_conditional_dial: bool = True,
+        # Execution policy
+        use_execution_filter: bool = False,
     ):
         self.vol_min = vol_min
         self.tp_mult = tp_mult
@@ -61,6 +63,7 @@ class NYXPipeline:
         self.cooldown_bars = cooldown_bars
         self.max_daily_trades = max_daily_trades
         self.use_conditional_dial = use_conditional_dial
+        self.use_execution_filter = use_execution_filter
 
     def run(
         self,
@@ -140,6 +143,7 @@ class NYXPipeline:
 
         bear_params = get_risk_params('bear')
         n_bear_active = 0
+        n_exec_rejected = 0
 
         # --- Step 6: Filter + conditional dial + soft gate sizing + execute ---
         capital = self.initial_capital
@@ -195,6 +199,19 @@ class NYXPipeline:
             # Hour bonus
             hour = cand['timestamp'].hour if hasattr(cand['timestamp'], 'hour') else 12
             sf *= 1.1 if 8 <= hour <= 18 else 0.8
+
+            # Execution filter: reject if cost > alpha
+            if self.use_execution_filter:
+                from src.ml.execution_policy import execution_check
+                vol_r = cand['features'].get('volume_spike', 2.0)
+                spread_est = cand['features'].get('atr_pct', 0.005) * 0.1
+                mom_abs = abs(cand['features'].get('momentum_10', 0) if 'momentum_10' in cand['features'] else cand['features'].get('mom_4', 0))
+                alpha_est = abs(cand['outcome_net']) / max(cand['entry_price'], 1) * 100
+                ex = execution_check(vol_r, spread_est, cand['features'].get('atr_pct', 0.005),
+                                     mom_abs, alpha_est)
+                if not ex['should_trade']:
+                    n_exec_rejected += 1
+                    continue
 
             # Position sizing
             risk_pct = bear_params['risk_pct'] if bear_active else self.risk_pct
@@ -267,6 +284,7 @@ class NYXPipeline:
             'feature_names': feature_names,
             'feature_importance': feat_imp,
             'bear_dial_activation_rate': n_bear_active / max(len(test_cands), 1) if self.use_conditional_dial else 0,
+            'execution_reject_rate': n_exec_rejected / max(len(test_cands), 1) if self.use_execution_filter else 0,
             'trades': trades,
         }
 
