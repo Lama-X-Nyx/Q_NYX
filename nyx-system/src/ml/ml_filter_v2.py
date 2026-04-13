@@ -11,9 +11,7 @@ import numpy as np
 import pandas as pd
 from typing import Any, Dict, List, Optional
 from sklearn.ensemble import GradientBoostingClassifier
-from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import TimeSeriesSplit
-from sklearn.metrics import accuracy_score
 from src.ml.jesse_features import _ema, _atr
 from src.ml.soft_gate import compute_disagreement, compute_size_factor
 
@@ -65,24 +63,33 @@ def generate_enhanced_candidates(
 
         direction = 1 if uptrend else -1
 
-        # Simulate outcome
+        # Simulate outcome (vectorized slice)
         entry_price = close[i] * (1 + direction * slippage_rate)
         tp = entry_price + direction * tp_mult * atr[i]
         sl = entry_price - direction * sl_mult * atr[i]
+        end_j = min(i + max_bars + 1, n)
+        fut_high = high[i + 1:end_j]
+        fut_low = low[i + 1:end_j]
 
-        outcome = 0.0; reason = 'TIME'
-        for j in range(i + 1, min(i + max_bars + 1, n)):
-            hit_tp = (direction == 1 and high[j] >= tp) or (direction == -1 and low[j] <= tp)
-            hit_sl = (direction == 1 and low[j] <= sl) or (direction == -1 and high[j] >= sl)
-            if hit_tp:
-                exit_p = tp * (1 - direction * slippage_rate)
-                outcome = direction * (exit_p - entry_price); reason = 'TP'; break
-            if hit_sl:
-                exit_p = sl * (1 - direction * slippage_rate)
-                outcome = direction * (exit_p - entry_price); reason = 'SL'; break
+        if direction == 1:
+            tp_hits = np.where(fut_high >= tp)[0]
+            sl_hits = np.where(fut_low <= sl)[0]
+        else:
+            tp_hits = np.where(fut_low <= tp)[0]
+            sl_hits = np.where(fut_high >= sl)[0]
+
+        tp_bar = tp_hits[0] if len(tp_hits) > 0 else max_bars + 1
+        sl_bar = sl_hits[0] if len(sl_hits) > 0 else max_bars + 1
+
+        if tp_bar <= sl_bar and tp_bar < max_bars:
+            exit_p = tp * (1 - direction * slippage_rate)
+            outcome = direction * (exit_p - entry_price); reason = 'TP'
+        elif sl_bar < tp_bar and sl_bar < max_bars:
+            exit_p = sl * (1 - direction * slippage_rate)
+            outcome = direction * (exit_p - entry_price); reason = 'SL'
         else:
             exit_p = close[min(i + max_bars, n - 1)] * (1 - direction * slippage_rate)
-            outcome = direction * (exit_p - entry_price)
+            outcome = direction * (exit_p - entry_price); reason = 'TIME'
 
         fee = entry_price * fee_rate + abs(exit_p) * fee_rate
         outcome_net = outcome - fee
@@ -138,15 +145,14 @@ class EnhancedMLFilter:
         self._feature_names = sorted(candidates[0]['features'].keys())
         X = np.array([[c['features'].get(f, 0.0) for f in self._feature_names] for c in candidates])
         y = np.array([1 if c['outcome_net'] > 0 else 0 for c in candidates])
-        X = np.nan_to_num(X, nan=0.0, posinf=10.0, neginf=-10.0)
-        X = np.clip(X, -1e6, 1e6)
-
+        X = np.clip(np.nan_to_num(X, nan=0.0, posinf=10.0, neginf=-10.0), -1e6, 1e6)
+        from sklearn.preprocessing import StandardScaler
         self._scaler = StandardScaler()
         X_s = self._scaler.fit_transform(X)
         X_s = np.nan_to_num(X_s, nan=0.0, posinf=3.0, neginf=-3.0)
 
         self._model = GradientBoostingClassifier(
-            n_estimators=300, max_depth=3, learning_rate=0.03,
+            n_estimators=150, max_depth=3, learning_rate=0.05,
             min_samples_leaf=30, subsample=0.7, random_state=42,
         )
         self._model.fit(X_s, y)
@@ -161,7 +167,7 @@ class EnhancedMLFilter:
             cv_wrs = []
             for train_idx, val_idx in tscv.split(X_s):
                 m = GradientBoostingClassifier(
-                    n_estimators=200, max_depth=3, learning_rate=0.03,
+                    n_estimators=80, max_depth=3, learning_rate=0.05,
                     min_samples_leaf=30, subsample=0.7, random_state=42)
                 m.fit(X_s[train_idx], y[train_idx])
                 proba = m.predict_proba(X_s[val_idx])
@@ -185,18 +191,22 @@ class EnhancedMLFilter:
         if not self.is_trained or self._model is None:
             return 0.5
         x = np.array([[features.get(f, 0.0) for f in self._feature_names]])
-        x = np.nan_to_num(x, nan=0.0, posinf=10.0, neginf=-10.0)
-        x = np.clip(x, -1e6, 1e6)
-        x_s = self._scaler.transform(x)
-        x_s = np.nan_to_num(x_s, nan=0.0, posinf=3.0, neginf=-3.0)
-        proba = self._model.predict_proba(x_s)[0]
+        x = np.clip(np.nan_to_num(x, nan=0.0, posinf=10.0, neginf=-10.0), -1e6, 1e6)
+        if self._scaler is not None:
+            x = np.nan_to_num(self._scaler.transform(x), nan=0.0, posinf=3.0, neginf=-3.0)
+        proba = self._model.predict_proba(x)[0]
         classes = list(self._model.classes_)
         return float(proba[classes.index(1)]) if 1 in classes else 0.5
 
     def feature_importance(self) -> Dict[str, float]:
         if self._model is None:
             return {}
-        return dict(zip(self._feature_names, self._model.feature_importances_))
+        try:
+            imp = self._model.feature_importances_
+        except AttributeError:
+            # HistGBM may not expose feature_importances_ before sklearn 1.1+
+            imp = np.ones(len(self._feature_names)) / max(len(self._feature_names), 1)
+        return dict(zip(self._feature_names, imp))
 
 
 class EnhancedMLFilterBacktester:

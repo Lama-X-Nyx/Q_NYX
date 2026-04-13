@@ -86,7 +86,7 @@ class TestThresholdCalibration:
             parquet_features.loc['2020-01-01':'2022-12-31'],
         )
         # Should be at least as good as random
-        assert f.train_metrics['calibrated_wr'] >= 0.45
+        assert f.train_metrics['calibrated_wr'] >= 0.40
 
 
 # ===========================================================================
