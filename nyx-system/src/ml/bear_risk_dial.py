@@ -111,47 +111,103 @@ class AdaptiveNYXPipeline:
         test_start: str,
         test_end: Optional[str] = None,
     ) -> Dict[str, Any]:
+        """
+        Run pipeline with per-trade regime detection.
+        Each candidate gets its own risk params based on the regime
+        AT THAT MOMENT — not a single regime for the whole period.
+        """
         df_1d = mtf_data.get('1d', pd.DataFrame())
-        df_15m = mtf_data['15m']
-        te = test_end or str(df_15m.index[-1].date())
+        te = test_end or str(mtf_data['15m'].index[-1].date())
 
-        # Detect regime MONTHLY (not just at start)
-        # Use the most conservative regime detected in the test period
-        test_months = pd.date_range(test_start, te, freq='MS')
-        regimes_detected = []
-        for month_start in test_months:
-            reg = detect_regime(df_1d, str(month_start.date()))
-            regimes_detected.append(reg)
-
-        # Use worst regime to set risk (conservative)
-        if 'bear' in regimes_detected:
-            dominant_regime = 'bear'
-        elif 'range' in regimes_detected and 'bull' in regimes_detected:
-            # Mixed: count which is more frequent
-            bull_count = regimes_detected.count('bull')
-            range_count = regimes_detected.count('range')
-            dominant_regime = 'bull' if bull_count > range_count else 'range'
-        elif 'bull' in regimes_detected:
-            dominant_regime = 'bull'
-        else:
-            dominant_regime = 'range'
-
-        params = get_risk_params(dominant_regime)
-
-        pipe = NYXPipeline(
-            risk_pct=params['risk_pct'],
-            ml_threshold=params['ml_threshold'],
-            cooldown_bars=params['cooldown_bars'],
-            max_daily_trades=params['max_daily_trades'],
+        # Step 1: run base pipeline to get candidates + ML scores
+        # Use bull params (most permissive) to generate all candidates
+        base_pipe = NYXPipeline(
+            risk_pct=RISK_PARAMS['bull']['risk_pct'],
+            ml_threshold=RISK_PARAMS['bear']['ml_threshold'],  # strictest to get all scored
+            cooldown_bars=RISK_PARAMS['bull']['cooldown_bars'],
+            max_daily_trades=RISK_PARAMS['bull']['max_daily_trades'],
             fee_rate=self.fee_rate,
             slippage_rate=self.slippage_rate,
         )
+        base_result = base_pipe.run(mtf_data, mtf_features,
+                                     train_end=train_end, test_start=test_start, test_end=te)
 
-        result = pipe.run(mtf_data, mtf_features,
-                          train_end=train_end, test_start=test_start, test_end=te)
+        # Step 2: re-filter trades with per-trade regime detection
+        # Build a monthly regime cache
+        regime_cache = {}
+        test_months = pd.date_range(test_start, te, freq='MS')
+        for month_start in test_months:
+            reg = detect_regime(df_1d, str(month_start.date()))
+            regime_cache[month_start.to_period('M')] = reg
 
-        result['detected_regime'] = dominant_regime
-        result['regimes_monthly'] = regimes_detected
-        result['risk_params'] = params
+        # Step 3: replay trades with regime-adapted sizing
+        from src.ml.soft_gate import compute_size_factor
+        initial_capital = 10_000.0
+        capital = initial_capital
+        trades_out = []
+        regimes_used = []
 
-        return result
+        for t in base_result['trades']:
+            ts = t['timestamp']
+            period = ts.to_period('M')
+            regime = regime_cache.get(period, 'range')
+            params = get_risk_params(regime)
+            regimes_used.append(regime)
+
+            # Apply regime-specific threshold filter
+            if t.get('ml_score', 0) < params['ml_threshold']:
+                continue
+
+            # Apply regime-specific sizing
+            size_mult = params['size_mult']
+            adjusted_pnl = t['net_pnl'] * size_mult
+            capital += adjusted_pnl
+            capital = max(capital, 0)
+
+            trade_out = {**t, 'regime': regime, 'size_mult': size_mult,
+                         'net_pnl': adjusted_pnl}
+            trades_out.append(trade_out)
+
+        # Metrics
+        nt = len(trades_out)
+        total_pnl = capital - initial_capital
+        wins = [t for t in trades_out if t['net_pnl'] > 0]
+        losses = [t for t in trades_out if t['net_pnl'] <= 0]
+        wr = len(wins) / nt if nt > 0 else 0
+
+        gw = sum(t['net_pnl'] for t in wins)
+        gl = abs(sum(t['net_pnl'] for t in losses))
+
+        eq = [initial_capital]
+        for t in trades_out:
+            eq.append(eq[-1] + t['net_pnl'])
+        eq_arr = np.array(eq)
+        peak = eq_arr[0]; max_dd = 0
+        for e in eq_arr:
+            peak = max(peak, e); dd = (peak - e) / peak if peak > 0 else 0; max_dd = max(max_dd, dd)
+
+        if nt > 5:
+            rets = [t['net_pnl'] / initial_capital for t in trades_out]
+            sharpe = float(np.mean(rets) / max(np.std(rets), 1e-8) * np.sqrt(min(nt, 252)))
+        else:
+            sharpe = 0.0
+
+        from collections import Counter
+        regime_counts = Counter(regimes_used)
+
+        return {
+            'n_trades': nt,
+            'n_candidates': base_result['n_candidates'],
+            'filter_reject_rate': 1 - nt / max(base_result['n_trades'], 1),
+            'win_rate': wr,
+            'sharpe': sharpe,
+            'total_pnl_dollars': total_pnl,
+            'total_return_pct': total_pnl / initial_capital,
+            'max_drawdown_pct': max_dd,
+            'profit_factor': gw / gl if gl > 0 else float('inf'),
+            'total_fees': base_result.get('total_fees', 0),
+            'detected_regime': max(regime_counts, key=regime_counts.get) if regime_counts else 'range',
+            'regimes_per_trade': dict(regime_counts),
+            'risk_params': 'per-trade adaptive',
+            'trades': trades_out,
+        }
