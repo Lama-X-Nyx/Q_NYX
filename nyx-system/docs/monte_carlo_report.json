@@ -1,0 +1,31 @@
+{
+  "trade_shuffle": {
+    "n_sims": 1000,
+    "n_trades": 56,
+    "pct_profitable": 1.0,
+    "median_return": 0.20144185324467873,
+    "mean_return": 0.20144185324467878,
+    "std_return": 5.551115123125783e-17,
+    "ci_5": 0.20144185324467873,
+    "ci_95": 0.20144185324467873,
+    "dd_median": 0.007953719241562799,
+    "dd_95th": 0.013308948266179774,
+    "dd_max": 0.01960702447049387
+  },
+  "candle_noise_01": {
+    "n_sims": 20,
+    "noise_pct": 0.001,
+    "pct_profitable": 1.0,
+    "median_return": 0.15478393439954208,
+    "mean_return": 0.15903195619262722,
+    "median_sharpe": 4.15559636490158
+  },
+  "candle_noise_05": {
+    "n_sims": 10,
+    "noise_pct": 0.005,
+    "pct_profitable": 1.0,
+    "median_return": 0.14264908005338903,
+    "mean_return": 0.1471118461821586,
+    "median_sharpe": 1.9466101581188644
+  }
+}
