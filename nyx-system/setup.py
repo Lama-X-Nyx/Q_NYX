@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="nyx-trading",
-    version="0.8.0",
+    version="2.5.0",
     author="NYX Team",
     author_email="team@nyx-trading.com",
     description="Professional algorithmic trading system with HSMM and SMC",
