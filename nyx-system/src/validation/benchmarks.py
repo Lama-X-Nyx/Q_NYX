@@ -378,7 +378,7 @@ def compare_to_nyx(nyx_metrics: Dict, benchmark_results: Dict) -> pd.DataFrame:
     
     available_metrics = [m for m in key_metrics if m in df.columns]
     
-    return df[available_metrics]
+    return pd.DataFrame(df[available_metrics])
 
 
 if __name__ == "__main__":

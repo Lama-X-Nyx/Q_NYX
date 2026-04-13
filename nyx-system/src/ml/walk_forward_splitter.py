@@ -118,7 +118,7 @@ class WalkForwardSplitter:
                 train_start = 0
             else:
                 # Rolling: fixed window
-                train_start = max(0, train_end - self.train_months * self.bars_per_month)
+                train_start = max(0, train_end - (self.train_months or 12) * self.bars_per_month)
 
             if train_end - train_start < self.min_train_bars:
                 continue  # not enough training data for this fold
@@ -152,10 +152,10 @@ class WalkForwardSplitter:
                 'test_bars':    len(te),
             }
             if has_dt_index:
-                row['train_date_start'] = df.index[tr[0]].strftime('%Y-%m-%d')
-                row['train_date_end']   = df.index[tr[-1]].strftime('%Y-%m-%d')
-                row['test_date_start']  = df.index[te[0]].strftime('%Y-%m-%d')
-                row['test_date_end']    = df.index[te[-1]].strftime('%Y-%m-%d')
+                row['train_date_start'] = str(pd.Timestamp(str(df.index[tr[0]])).strftime('%Y-%m-%d'))
+                row['train_date_end']   = str(pd.Timestamp(str(df.index[tr[-1]])).strftime('%Y-%m-%d'))
+                row['test_date_start']  = str(pd.Timestamp(str(df.index[te[0]])).strftime('%Y-%m-%d'))
+                row['test_date_end']    = str(pd.Timestamp(str(df.index[te[-1]])).strftime('%Y-%m-%d'))
             rows.append(row)
         result = pd.DataFrame(rows)
         if not result.empty:

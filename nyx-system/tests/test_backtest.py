@@ -250,9 +250,10 @@ class TestEdgeCases:
         assert len(trades) == 0
         
         # Should handle gracefully
+        result = None
         if len(trades) == 0:
             result = "No trades generated"
-        
+
         assert result == "No trades generated"
     
     def test_all_losing_trades(self):

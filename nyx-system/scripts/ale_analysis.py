@@ -47,7 +47,7 @@ def load_ohlcv(csv_path: Path) -> pd.DataFrame:
 def prepare_features(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df['returns'] = df['close'].pct_change()
-    h, l, c = df['high'].values, df['low'].values, df['close'].values
+    h, l, c = np.asarray(df['high'].values), np.asarray(df['low'].values), np.asarray(df['close'].values)
     tr = np.maximum(h - l, np.maximum(np.abs(h - np.roll(c, 1)), np.abs(l - np.roll(c, 1))))
     tr[0] = h[0] - l[0]
     df['atr_14']  = pd.Series(tr, index=df.index).rolling(14).mean()
@@ -318,7 +318,7 @@ def main():
         print("No CSV provided — using synthetic data (5-regime sequence).")
         df = synthetic_data(n=800)
 
-    print(f"Bars:    {len(df)}  ({df.index[0].date()} → {df.index[-1].date()})")
+    print(f"Bars:    {len(df)}  ({pd.DatetimeIndex(df.index)[0].date()} → {pd.DatetimeIndex(df.index)[-1].date()})")
 
     # Train HSMM
     hsmm = SemiMarkovHMM(states=STATES)

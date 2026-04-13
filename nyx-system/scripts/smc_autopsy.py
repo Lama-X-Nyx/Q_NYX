@@ -16,8 +16,8 @@ from src.data.mtf_loader import load_fractal_context
 from src.validation.smc_autopsy import SMCAutopsy
 
 
-def run_smc_autopsy(pair: str, config: dict, output_dir: Path, 
-                    sample_date: str = None, sensitivity: bool = False):
+def run_smc_autopsy(pair: str, config: dict, output_dir: Path,
+                    sample_date: str = "", sensitivity: bool = False):
     """
     Run SMC detector autopsy
     

@@ -136,7 +136,7 @@ class ContextAgent:
         Returns (state, score, reason)
         """
         close = df['close'].values
-        sma_200 = pd.Series(close).rolling(200).mean().values[-1]
+        sma_200 = float(pd.Series(close).rolling(200).mean().iloc[-1])
 
         if np.isnan(sma_200):
             return 'neutral', 0.0, 'SMA200 NaN — insufficient data (need 200 bars)'
@@ -203,6 +203,9 @@ class ContextAgent:
         # ---- Try HSMM projection first --------------------------------
         intent_method = 'sma_heuristic'
         hsmm_meta: Dict = {}
+        score: float = 0.0
+        passed: bool = False
+        reason: str = ''
 
         if (
             regime_4h_result is not None

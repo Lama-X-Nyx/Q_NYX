@@ -60,10 +60,12 @@ def forward_streaming(hsmm: SemiMarkovHMM,
     gamma   : (T, n_states) normalised forward probabilities (causal)
     """
     T, n = log_B.shape
-    log_A = np.log(hsmm.transition_matrix + 1e-10)          # (n, n)
+    tm = hsmm.transition_matrix if hsmm.transition_matrix is not None else np.ones((n, n)) / n
+    log_A = np.log(tm + 1e-10)          # (n, n)
 
     log_alpha = np.empty((T, n), dtype=np.float64)
-    log_alpha[0] = np.log(hsmm.initial_probs + 1e-10) + log_B[0]
+    ip = hsmm.initial_probs if hsmm.initial_probs is not None else np.ones(n) / n
+    log_alpha[0] = np.log(ip + 1e-10) + log_B[0]
 
     for t in range(1, T):
         # Vectorised: (n,1) + (n,n) → broadcast (n,n), logsumexp over axis=0 → (n,)
@@ -89,23 +91,27 @@ def _prepare_features_full(df: pd.DataFrame,
     """
     out = df[['open', 'high', 'low', 'close', 'volume']].copy()
 
-    out['returns']     = out['close'].pct_change()
-    high = out['high'].values
-    low  = out['low'].values
-    cl   = out['close'].values
+    close_s: pd.Series = out['close']  # type: ignore[assignment]
+    out['returns']     = close_s.pct_change()
+    high = np.asarray(out['high'].values)
+    low  = np.asarray(out['low'].values)
+    cl   = np.asarray(out['close'].values)
     prev = np.roll(cl, 1); prev[0] = cl[0]
     tr   = np.maximum(high - low,
                       np.maximum(np.abs(high - prev), np.abs(low - prev)))
     out['atr_14'] = pd.Series(tr, index=out.index).rolling(14).mean()
-    out['sma_20'] = out['close'].rolling(20).mean()
-    out['sma_50'] = out['close'].rolling(50).mean()
-    out['atr_50'] = out['atr_14'].rolling(50).mean()
+    out['sma_20'] = close_s.rolling(20).mean()
+    out['sma_50'] = close_s.rolling(50).mean()
+    atr_s: pd.Series = out['atr_14']  # type: ignore[assignment]
+    out['atr_50'] = atr_s.rolling(50).mean()
     if 'volume' in out.columns:
-        out['volume_ma20'] = out['volume'].rolling(20).mean()
+        vol_s: pd.Series = out['volume']  # type: ignore[assignment]
+        out['volume_ma20'] = vol_s.rolling(20).mean()
 
     # HTF context feature (merge_asof, no look-ahead)
     if df_htf is not None and not df_htf.empty:
-        htf_sma20 = df_htf['close'].rolling(20).mean().rename('_htf_sma20')
+        htf_close: pd.Series = df_htf['close']  # type: ignore[assignment]
+        htf_sma20 = htf_close.rolling(20).mean().rename('_htf_sma20')
         htf_ref = htf_sma20.reset_index()
         htf_ref.columns = ['_ts', '_htf_sma20']
         htf_ref = htf_ref.dropna(subset=['_htf_sma20']).sort_values('_ts')
@@ -120,7 +126,7 @@ def _prepare_features_full(df: pd.DataFrame,
             htf_pos = (merged['_close'] - merged['_htf_sma20']) / merged['_htf_sma20'].replace(0, np.nan)
         out['htf_pos'] = htf_pos.values
 
-    return out
+    return pd.DataFrame(out)
 
 
 def _build_obs_arrays(df_prepared: pd.DataFrame) -> Dict[str, np.ndarray]:
@@ -147,7 +153,7 @@ def _compute_log_B_from_arrays(hsmm: SemiMarkovHMM,
     from scipy import stats
     T    = len(obs['price'])
     n    = hsmm.n_states
-    ep   = hsmm.emission_params
+    ep: Dict   = hsmm.emission_params or {}
 
     pm   = np.array([ep[s]['price_mu']    for s in hsmm.states])
     ps   = np.array([ep[s]['price_sigma'] for s in hsmm.states])
@@ -173,8 +179,8 @@ def _compute_log_B_from_arrays(hsmm: SemiMarkovHMM,
         ctx = obs['context']
         has_ctx = all('context_mu' in ep.get(s, {}) for s in hsmm.states)
         if has_ctx:
-            cm = np.array([ep[s].get('context_mu', 0.0)   for s in hsmm.states])
-            cs = np.array([ep[s].get('context_sigma', 0.02) for s in hsmm.states])
+            cm = np.array([ep.get(s, {}).get('context_mu', 0.0)   for s in hsmm.states])
+            cs = np.array([ep.get(s, {}).get('context_sigma', 0.02) for s in hsmm.states])
             valid_c = ~np.isnan(ctx)
             if valid_c.any():
                 log_B[valid_c] += stats.norm.logpdf(
@@ -244,8 +250,8 @@ def _precompute_context(df_1d: pd.DataFrame,
     Returns string array of length len(df_1d) with values
     'bullish' | 'bearish' | 'neutral' | 'insufficient'.
     """
-    close   = df_1d['close'].values.astype(float)
-    sma200  = pd.Series(close).rolling(200).mean().values
+    close   = np.asarray(df_1d['close'].values, dtype=float)
+    sma200  = np.asarray(pd.Series(close).rolling(200).mean().values)
     diff    = (close - sma200) / sma200
 
     ctx = np.full(len(df_1d), 'insufficient', dtype=object)
@@ -315,6 +321,7 @@ class PrecomputedStates:
                    (HSMM forward pass still runs on all history)
         end_ts   : ISO date — only compute SMC up to this date
         """
+        path: Optional[Path] = None
         if cache_key:
             path = self._cache_dir / f'precomp_{cache_key}_{self.CACHE_VERSION}.pkl'
             if self._load_cache(path):
@@ -326,11 +333,12 @@ class PrecomputedStates:
         # ---- Context (1D SMA200) ----
         df_1d = mtf_all['1d']
         trend_thr = self._orch.context_agent.trend_threshold
-        self.context_arr = _precompute_context(df_1d, trend_thr)
+        ctx_arr = _precompute_context(df_1d, trend_thr)
+        self.context_arr = ctx_arr
         self._idx_1d = df_1d.index.values.astype(np.int64)
-        print(f'    context    : {len(self.context_arr)} bars  '
-              f'({(self.context_arr=="bullish").sum()} bullish / '
-              f'{(self.context_arr=="bearish").sum()} bearish)')
+        print(f'    context    : {len(ctx_arr)} bars  '
+              f'({(ctx_arr=="bullish").sum()} bullish / '
+              f'{(ctx_arr=="bearish").sum()} bearish)')
 
         # ---- Regime HSMM (1H + HTF=4H) ----
         df_1h  = mtf_all['1h']
@@ -342,9 +350,10 @@ class PrecomputedStates:
 
         obs_1h   = _build_obs_arrays(df_1h_prep)
         log_B_1h = _compute_log_B_from_arrays(regime_hsmm, obs_1h)
-        self.gamma_1h  = forward_streaming(regime_hsmm, log_B_1h)
+        g_1h = forward_streaming(regime_hsmm, log_B_1h)
+        self.gamma_1h  = g_1h
         self._idx_1h   = df_1h.index.values.astype(np.int64)
-        print(f'    regime 1H  : {len(self.gamma_1h)} bars  '
+        print(f'    regime 1H  : {len(g_1h)} bars  '
               f'({regime_hsmm.n_states} states)')
 
         # ---- Setup HSMM (15M + HTF=1H) ----
@@ -356,9 +365,10 @@ class PrecomputedStates:
 
         obs_15m   = _build_obs_arrays(df_15m_prep)
         log_B_15m = _compute_log_B_from_arrays(setup_hsmm, obs_15m)
-        self.gamma_15m  = forward_streaming(setup_hsmm, log_B_15m)
+        g_15m = forward_streaming(setup_hsmm, log_B_15m)
+        self.gamma_15m  = g_15m
         self._idx_15m   = df_15m.index.values.astype(np.int64)
-        print(f'    setup 15M  : {len(self.gamma_15m)} bars  '
+        print(f'    setup 15M  : {len(g_15m)} bars  '
               f'({setup_hsmm.n_states} states)')
 
         # ---- SMC patterns (15M rolling 200-bar, restricted range) ----
@@ -398,7 +408,7 @@ class PrecomputedStates:
         elapsed = time.time() - t0
         print(f'  [PRECOMPUTE] Done in {elapsed:.1f}s')
 
-        if cache_key:
+        if cache_key and path is not None:
             self._save_cache(path)
 
     # -----------------------------------------------------------------------
@@ -420,12 +430,19 @@ class PrecomputedStates:
             raise RuntimeError('Call precompute() first.')
 
         cfg = self._orch.config
+        context_arr = self.context_arr
+        gamma_1h = self.gamma_1h
+        gamma_15m = self.gamma_15m
+        smc_list = self.smc_list
+
+        if context_arr is None or gamma_1h is None or gamma_15m is None or smc_list is None:
+            raise RuntimeError('Precomputed arrays are None despite _ready=True.')
 
         # ---- Context ----
         i_1d = pos['1d'][1] - 1        # last closed 1D bar
-        if i_1d < 0 or i_1d >= len(self.context_arr):
+        if i_1d < 0 or i_1d >= len(context_arr):
             return self._wait('Context: index out of range')
-        ctx = str(self.context_arr[i_1d])
+        ctx = str(context_arr[i_1d])
         if ctx == 'insufficient':
             return self._wait('Context: SMA200 NaN (warmup)', ready=False)
 
@@ -437,7 +454,7 @@ class PrecomputedStates:
         if i_1h < readiness_cfg.get('regime_min_bars', 100):
             return self._wait('Regime: warmup', ready=False)
 
-        regime_probs = self.gamma_1h[i_1h]
+        regime_probs = gamma_1h[i_1h]
         regime_result = self._score_regime(regime_probs, ctx)
 
         # ---- Setup (15M) ----
@@ -445,11 +462,11 @@ class PrecomputedStates:
         if i_15m < readiness_cfg.get('setup_min_bars', 50):
             return self._wait('Setup: warmup', ready=False)
 
-        setup_probs   = self.gamma_15m[i_15m]
+        setup_probs   = gamma_15m[i_15m]
         smc_idx = i_15m - self._smc_start_iloc
-        if smc_idx < 0 or smc_idx >= len(self.smc_list):
+        if smc_idx < 0 or smc_idx >= len(smc_list):
             return self._wait('SMC: index out of precomputed range')
-        smc_patterns  = self.smc_list[smc_idx]
+        smc_patterns  = smc_list[smc_idx]
         setup_result  = self._score_setup(setup_probs, smc_patterns, ctx)
 
         # ---- Pipeline gate ----

@@ -40,13 +40,13 @@ alignment_passed = 0
 trades = 0
 
 for i in range(warmup, min(len(mtf_data['15m']), 200)):  # Test 100 bars
-    current_time = mtf_data['15m'].index[i]
-    
+    current_time = pd.Timestamp(mtf_data['15m'].index[i])
+
     # Get aligned data
     from src.data.mtf_loader import MTFLoader
     loader = MTFLoader('data/raw/mtf')
     aligned_data = loader.align_at_timestamp(mtf_data, current_time, '15m')
-    
+
     # Generate signal
     signal = engine.generate_signal_mtf('BTCUSDT', aligned_data, current_time.isoformat())
     

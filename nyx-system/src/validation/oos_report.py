@@ -16,7 +16,7 @@ Usage:
 
 import pandas as pd
 import numpy as np
-from typing import Dict
+from typing import Any, Dict, cast
 import json
 from pathlib import Path
 from src.validation.metrics import calculate_metrics, compare_metrics
@@ -133,7 +133,7 @@ class OOSReport:
         
         # Start after warmup
         for i in range(warmup, len(prepared_data)):
-            current_date = prepared_data.index[i]
+            current_date = cast(pd.Timestamp, prepared_data.index[i])
             
             # Get signal (bounded lookback - constant cost per bar)
             signal = engine.generate_signal_at_index(
@@ -204,8 +204,8 @@ class OOSReport:
         
         return {
             'period': period_name,
-            'start_date': prepared_data.index[0].isoformat(),
-            'end_date': prepared_data.index[-1].isoformat(),
+            'start_date': cast(pd.Timestamp, prepared_data.index[0]).isoformat(),
+            'end_date': cast(pd.Timestamp, prepared_data.index[-1]).isoformat(),
             'trades': trades_df,
             'metrics': metrics,
             'performance': {

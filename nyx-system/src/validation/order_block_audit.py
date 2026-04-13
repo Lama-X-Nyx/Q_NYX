@@ -190,8 +190,8 @@ class OrderBlockAudit:
             return False, 'failed_followthrough_move'
         
         # Bullish OB detected
-        return True, None
-    
+        return True, ""
+
     def _check_bearish_ob(self, window: pd.DataFrame, next_bar: pd.Series,
                          threshold: float) -> Tuple[bool, str]:
         """
@@ -223,7 +223,7 @@ class OrderBlockAudit:
             return False, 'failed_followthrough_move'
         
         # Bearish OB detected
-        return True, None
+        return True, ""
     
     def _run_sensitivity(self, data: pd.DataFrame, quiet: bool = False) -> List[Dict]:
         """

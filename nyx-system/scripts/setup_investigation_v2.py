@@ -300,7 +300,7 @@ def run_setup_investigation_v2(
     pair: str,
     config: Dict,
     output_dir: str,
-    dates: List[datetime] = None
+    dates: "List[datetime] | None" = None
 ) -> Dict:
     """
     Run Setup Investigation V2 - Candidate flow and rejection ladder
@@ -385,7 +385,10 @@ def run_setup_investigation_v2(
     
     # Aggregate metrics (only from periods with valid flow)
     valid_periods = [p for p in periods_enriched.values() if p['consistency_checks']['flow_conservation_ok']]
-    
+
+    cross_flow: dict = {}
+    cross_consistency: dict = {'flow_conservation_ok': False, 'notes': []}
+
     if len(valid_periods) == 0:
         print("❌ No periods with valid flow conservation!")
         main_root_cause = "diagnostic_invalid"

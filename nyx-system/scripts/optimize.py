@@ -159,8 +159,8 @@ class ParameterOptimizer:
             config['risk']['stop_loss'] = params_dict['stop_loss']
             
             # Run backtest
-            result = self._run_backtest_simplified(config)
-            
+            result: dict = self._run_backtest_simplified(config)
+
             result['params'] = params_dict
             results.append(result)
             
@@ -321,7 +321,10 @@ def main():
     if args.param == 'all':
         best, results = optimizer.optimize_all(metric=args.metric, max_combinations=100)
     else:
-        best, results = optimizer.optimize_single_param(args.param, metric=args.metric)
+        opt_result = optimizer.optimize_single_param(args.param, metric=args.metric)
+        if opt_result is None:
+            return
+        best, results = opt_result
     
     # Save results
     os.makedirs(args.output, exist_ok=True)

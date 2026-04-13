@@ -57,10 +57,10 @@ class MLFeatureEngine:
         """
         f = pd.DataFrame(index=df.index)
 
-        close  = df['close']
-        high   = df['high']
-        low    = df['low']
-        volume = df['volume']
+        close:  pd.Series = df['close']  # type: ignore[assignment]
+        high:   pd.Series = df['high']   # type: ignore[assignment]
+        low:    pd.Series = df['low']    # type: ignore[assignment]
+        volume: pd.Series = df['volume'] # type: ignore[assignment]
         ret    = close.pct_change()
 
         # ---- Momentum ----
@@ -82,8 +82,9 @@ class MLFeatureEngine:
             vol_w = f[f'rv_{w}']
             f[f'sharpe_{w}'] = ret.rolling(w).mean() / (vol_w + 1e-9)
             # Sortino: RMS of negative returns (fixed vs original)
+            neg_ret = pd.Series(ret.clip(upper=0), index=ret.index)
             f[f'sortino_{w}'] = ret.rolling(w).mean() / (
-                ret.clip(upper=0).pow(2).rolling(w).mean().pow(0.5) + 1e-9
+                (neg_ret ** 2).rolling(w).mean().pow(0.5) + 1e-9
             )
 
         # ---- RSI (Wilder's EMA — fixed vs original SMA version) ----
@@ -137,14 +138,16 @@ class MLFeatureEngine:
         f['vol_surprise'] = volume / (volume.rolling(32).mean() + 1e-9)
 
         # Garman-Klass volatility (more efficient than realized vol)
-        f['gk_24h'] = self._garman_klass(high, low, close, df['open'], 96)
+        open_: pd.Series = df['open']  # type: ignore[assignment]
+        f['gk_24h'] = self._garman_klass(high, low, close, open_, 96)
 
         # ---- Intraday seasonality (sin/cos encoding) ----
-        if hasattr(df.index, 'hour'):
-            h = df.index.hour
+        idx = df.index
+        if hasattr(idx, 'hour'):
+            h = idx.hour  # type: ignore[attr-defined]
             f['hour_sin'] = np.sin(2 * np.pi * h / 24)
             f['hour_cos'] = np.cos(2 * np.pi * h / 24)
-            dow = df.index.dayofweek
+            dow = idx.dayofweek  # type: ignore[attr-defined]
             f['dow_sin'] = np.sin(2 * np.pi * dow / 7)
             f['dow_cos'] = np.cos(2 * np.pi * dow / 7)
 
@@ -239,7 +242,8 @@ class MLFeatureEngine:
         gain  = delta.clip(lower=0).ewm(alpha=1/period, adjust=False).mean()
         loss  = (-delta.clip(upper=0)).ewm(alpha=1/period, adjust=False).mean()
         rs    = gain / (loss + 1e-9)
-        return 100 - 100 / (1 + rs)
+        result: pd.Series = 100 - 100 / (1 + rs)  # type: ignore[assignment]
+        return result
 
     @staticmethod
     def _parkinson(high: pd.Series, low: pd.Series, window: int) -> pd.Series:

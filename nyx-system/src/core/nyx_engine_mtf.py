@@ -53,7 +53,7 @@ class NYXEngineMTF:
         
         # Import SMC
         from src.core.smc import SMCDetector
-        self.smc = SMCDetector(config)
+        self.smc = SMCDetector()
         
         # Import Risk Manager
         from src.core.risk_manager_mtf import RiskManagerMTF
@@ -191,10 +191,10 @@ class NYXEngineMTF:
                 
             except Exception as e:
                 # Fallback to simplified
-                close = df['close'].values
-                sma_20 = pd.Series(close).rolling(20).mean().values
-                sma_50 = pd.Series(close).rolling(50).mean().values
-                
+                close = np.asarray(df['close'].values)
+                sma_20 = np.asarray(pd.Series(close).rolling(20).mean().values)
+                sma_50 = np.asarray(pd.Series(close).rolling(50).mean().values)
+
                 if len(sma_20) > 0 and len(sma_50) > 0 and not np.isnan(sma_20[-1]) and not np.isnan(sma_50[-1]):
                     trend_up = sma_20[-1] > sma_50[-1]
                     trend_down = sma_20[-1] < sma_50[-1]
@@ -232,21 +232,21 @@ class NYXEngineMTF:
         
         # Add ATR if missing
         if 'atr_14' not in df_prepared.columns:
-            high = df_prepared['high'].values
-            low = df_prepared['low'].values
-            close = df_prepared['close'].values
-            
-            tr = np.maximum(high - low, 
+            high = np.asarray(df_prepared['high'].values)
+            low = np.asarray(df_prepared['low'].values)
+            close = np.asarray(df_prepared['close'].values)
+
+            tr = np.maximum(high - low,
                            np.maximum(np.abs(high - np.roll(close, 1)),
                                      np.abs(low - np.roll(close, 1))))
             tr[0] = high[0] - low[0]  # First TR
-            
-            atr = pd.Series(tr).rolling(14).mean().values
+
+            atr = np.asarray(pd.Series(tr).rolling(14).mean().values)
             df_prepared['atr_14'] = atr
         
         return df_prepared
     
-    def _compute_intent_daily(self, df_1d: pd.DataFrame, fractal_states_1d: Dict = None) -> str:
+    def _compute_intent_daily(self, df_1d: pd.DataFrame, fractal_states_1d: Optional[Dict] = None) -> str:
         """
         Compute Intent_Daily from 1D HSMM states
         
@@ -268,9 +268,9 @@ class NYXEngineMTF:
         if len(df_1d) < 50:
             return 'Range'
         
-        close = df_1d['close'].values
-        sma_20 = pd.Series(close).rolling(20).mean().values[-1]
-        sma_50 = pd.Series(close).rolling(50).mean().values[-1]
+        close = np.asarray(df_1d['close'].values)
+        sma_20 = np.asarray(pd.Series(close).rolling(20).mean().values)[-1]
+        sma_50 = np.asarray(pd.Series(close).rolling(50).mean().values)[-1]
         
         if not np.isnan(sma_20) and not np.isnan(sma_50):
             if sma_20 > sma_50 * 1.02:
@@ -324,7 +324,10 @@ class NYXEngineMTF:
                 current_state_idx = np.argmax(current_probs)
                 
                 # Stability = transition probability of staying in same state
-                stability = self.hsmm.transition_matrix[current_state_idx, current_state_idx]
+                tm = self.hsmm.transition_matrix
+                if tm is None:
+                    return 0.5
+                stability = tm[current_state_idx, current_state_idx]
                 
                 return stability
             else:
@@ -332,7 +335,7 @@ class NYXEngineMTF:
                 
         except Exception as e:
             # Fallback to simple consistency measure
-            close = df_4h['close'].values[-20:]
+            close = np.asarray(df_4h['close'].values)[-20:]
             changes = np.diff(close)
             up_count = np.sum(changes > 0)
             down_count = np.sum(changes < 0)
@@ -466,12 +469,15 @@ class NYXEngineMTF:
         if '15m' in mtf_data and len(mtf_data['15m']) > 0:
             entry_price = mtf_data['15m'].iloc[-1]['close']
             
+            tm = self.hsmm.transition_matrix
+            if tm is None:
+                tm = np.ones((self.hsmm.n_states, self.hsmm.n_states)) / self.hsmm.n_states
             risk_conditions = self.risk_manager.check_risk_conditions(
                 entry_price=entry_price,
                 fractal_states=signal['fractal_states'],
                 smc_patterns=signal.get('smc_patterns', {}),
                 intent_daily=signal['intent_daily'],
-                transition_matrix=self.hsmm.transition_matrix
+                transition_matrix=tm
             )
             
             conditions['rr'] = risk_conditions['rr_ratio']
@@ -539,7 +545,7 @@ if __name__ == "__main__":
     signal = engine.generate_signal_mtf(
         pair='BTCUSDT',
         mtf_data=mtf_data,
-        current_date=mtf_data['15m'].index[-1].isoformat()
+        current_date=pd.Timestamp(mtf_data['15m'].index[-1]).isoformat()
     )
     
     print(f"\nSignal:")

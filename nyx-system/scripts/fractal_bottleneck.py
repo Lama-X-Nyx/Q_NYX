@@ -17,7 +17,7 @@ from src.data.mtf_loader import load_fractal_context
 from src.agents.orchestrator import Orchestrator
 
 
-def run_fractal_bottleneck(pair: str, config: dict, output_dir: Path, sample_date: str = None):
+def run_fractal_bottleneck(pair: str, config: dict, output_dir: Path, sample_date: str = ""):
     """
     Run fractal bottleneck analysis
     
@@ -110,8 +110,8 @@ def run_fractal_bottleneck(pair: str, config: dict, output_dir: Path, sample_dat
     
     for i in range(warmup, warmup + n_signals):
         try:
-            current_time = mtf_data[lowest_tf].index[i]
-            
+            current_time = pd.Timestamp(mtf_data[lowest_tf].index[i])
+
             # Align data at this timestamp
             from src.data.mtf_loader import MTFLoader
             loader = MTFLoader('data/raw/mtf')
@@ -208,7 +208,7 @@ def run_fractal_bottleneck(pair: str, config: dict, output_dir: Path, sample_dat
         {'agent': 'risk', 'blocks': logic_blocks_risk}
     ], key=lambda x: x['blocks'], reverse=True)
     
-    primary_bottleneck = bottleneck_ranking[0]['agent'] if bottleneck_ranking[0]['blocks'] > 0 else 'none'
+    primary_bottleneck = str(bottleneck_ranking[0]['agent']) if int(bottleneck_ranking[0]['blocks']) > 0 else 'none'
     
     # Summary
     print(f"\n{'='*60}")
@@ -319,4 +319,4 @@ if __name__ == "__main__":
     with open('config/validation_baseline.yaml') as f:
         config = yaml.safe_load(f)
     
-    run_fractal_bottleneck('BTCUSDT', config, Path('reports/validation'), sample_bars=10000)
+    run_fractal_bottleneck('BTCUSDT', config, Path('reports/validation'))

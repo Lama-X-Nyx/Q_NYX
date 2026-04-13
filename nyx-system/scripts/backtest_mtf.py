@@ -292,8 +292,8 @@ def pretrain_agents(orchestrator: Orchestrator, mtf_all: dict,
         pretrain_months: Number of months to look back for training data
         em_iters:        EM iterations per agent (default 30)
     """
-    end_ts   = pd.Timestamp(pretrain_end)
-    start_ts = end_ts - relativedelta(months=pretrain_months)
+    end_ts: pd.Timestamp = pd.Timestamp(pretrain_end)
+    start_ts: pd.Timestamp = pd.Timestamp(end_ts - relativedelta(months=pretrain_months))
     # Cap at actual data start
     for df in mtf_all.values():
         if not df.empty:
@@ -304,6 +304,7 @@ def pretrain_agents(orchestrator: Orchestrator, mtf_all: dict,
           f"({pretrain_months}M, {em_iters} iters, structure-lock)")
 
     # ---- Cache lookup ----
+    cache_path = CACHE_DIR / "default.pkl"
     if use_cache:
         cache_key  = _pretrain_cache_key(pair, pretrain_end, pretrain_months, em_iters)
         cache_path = CACHE_DIR / f"{cache_key}.pkl"
@@ -320,7 +321,7 @@ def pretrain_agents(orchestrator: Orchestrator, mtf_all: dict,
         df_htf_full = mtf_all[htf_tf]
         df_regime_htf = df_htf_full[(df_htf_full.index >= start_ts) & (df_htf_full.index < end_ts)]
     if len(regime_window) >= 100:
-        ll = orchestrator.regime_agent.pretrain(regime_window, n_iter=em_iters, df_htf=df_regime_htf)
+        ll = orchestrator.regime_agent.pretrain(regime_window, n_iter=em_iters, df_htf=pd.DataFrame(df_regime_htf) if df_regime_htf is not None else pd.DataFrame())
         msg = f"{len(ll)} EM iters  LL={ll[-1]:.0f}" if ll else "EM skipped"
         print(f"    RegimeAgent  ({regime_tf}+htf={htf_tf})  {len(regime_window)} bars  {msg}")
     else:
@@ -335,7 +336,7 @@ def pretrain_agents(orchestrator: Orchestrator, mtf_all: dict,
         df_1h_full = mtf_all['1h']
         df_setup_htf = df_1h_full[(df_1h_full.index >= start_ts) & (df_1h_full.index < end_ts)]
     if len(setup_window) >= 100:
-        ll = orchestrator.setup_agent.pretrain(setup_window, n_iter=em_iters, df_htf=df_setup_htf)
+        ll = orchestrator.setup_agent.pretrain(setup_window, n_iter=em_iters, df_htf=pd.DataFrame(df_setup_htf) if df_setup_htf is not None else pd.DataFrame())
         msg = f"{len(ll)} EM iters  LL={ll[-1]:.0f}" if ll else "EM skipped"
         print(f"    SetupAgent   ({setup_tf}+htf=1h)  {len(setup_window)} bars  {msg}")
     else:
@@ -601,12 +602,12 @@ class MTFBacktest:
             # 5. Orchestrator decision
             # ----------------------------------------------------------------
             try:
-                if _precomputed:
+                if _precomputed and precomputed_states is not None:
                     decision = precomputed_states.decide_fast(
                         aligned_idx[bar_i], current_price
                     )
                 else:
-                    decision = self.orchestrator.decide(slices, current_price=current_price)
+                    decision = self.orchestrator.decide(slices or {}, current_price=current_price)
             except Exception as exc:
                 self.decision_log.append({'ts': ts, 'price': current_price,
                                           'action': 'ERROR', 'reason': str(exc)[:80],
@@ -1015,10 +1016,6 @@ def print_report(res: dict, start: str, end: str):
               f"PnL: ${t['pnl']:+,.2f} ({t['pnl_pct']:+.2f}%)  [{t['reason']}]")
 
     print(f"\n{'═'*70}\n")
-
-
-def pct_str(v: float) -> str:
-    return f'{v:+.2f}%'
 
 
 # ---------------------------------------------------------------------------

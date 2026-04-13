@@ -8,9 +8,9 @@ import sys
 sys.path.insert(0, '.')
 
 from scripts.setup_investigation_v2 import (
-    _estimate_candidate_flow,
-    _estimate_rejection_ladder,
-    _determine_root_cause_v2
+    _estimate_candidate_flow_corrected as _estimate_candidate_flow,
+    _estimate_rejection_ladder_corrected as _estimate_rejection_ladder,
+    _determine_root_cause_v2_corrected as _determine_root_cause_v2,
 )
 
 
@@ -73,25 +73,25 @@ def test_root_cause_determination():
     ladder = {'failed_structure_rules': 3, 'failed_gap_threshold': 1, 'failed_range_threshold': 0, 
               'failed_followthrough': 0, 'failed_alignment': 1, 'failed_other': 0}
     
-    root_cause, verdict = _determine_root_cause_v2(flow, ladder, 0)
+    root_cause, verdict = _determine_root_cause_v2(flow, ladder, 0)  # type: ignore[arg-type]
     assert root_cause == "pattern_scarcity"
     print(f"  Case A: {root_cause} ✅")
-    
+
     # Case B: Pattern filtering too severe
     flow = {'fvg_candidates_seen': 30, 'ob_candidates_seen': 20, 'patterns_kept': 5, 'patterns_rejected': 45}
     ladder = {'failed_structure_rules': 25, 'failed_gap_threshold': 10, 'failed_range_threshold': 5,
               'failed_followthrough': 2, 'failed_alignment': 3, 'failed_other': 0}
-    
-    root_cause, verdict = _determine_root_cause_v2(flow, ladder, 5)
+
+    root_cause, verdict = _determine_root_cause_v2(flow, ladder, 5)  # type: ignore[arg-type]
     assert root_cause == "pattern_filtering_too_severe"
     print(f"  Case B: {root_cause} ✅")
-    
+
     # Case C: Alignment filtering
     flow = {'fvg_candidates_seen': 20, 'ob_candidates_seen': 15, 'patterns_kept': 10, 'patterns_rejected': 25}
     ladder = {'failed_structure_rules': 5, 'failed_gap_threshold': 2, 'failed_range_threshold': 1,
               'failed_followthrough': 0, 'failed_alignment': 17, 'failed_other': 0}
-    
-    root_cause, verdict = _determine_root_cause_v2(flow, ladder, 10)
+
+    root_cause, verdict = _determine_root_cause_v2(flow, ladder, 10)  # type: ignore[arg-type]
     assert root_cause == "alignment_filtering"
     print(f"  Case C: {root_cause} ✅")
 

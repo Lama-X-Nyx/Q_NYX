@@ -27,6 +27,10 @@ from src.ml.triple_barrier import triple_barrier_labels, label_with_context
 from src.ml.walk_forward_splitter import WalkForwardSplitter
 
 # River is optional — wrap all usage in try/except
+compose: Any = None
+preprocessing: Any = None
+linear_model: Any = None
+river_metrics: Any = None
 try:
     from river import linear_model, preprocessing, compose, metrics as river_metrics
     _RIVER_OK = True
@@ -50,7 +54,8 @@ def _safe_rsi(close: pd.Series, period: int = 14) -> pd.Series:
     avg_g = gain.ewm(alpha=1 / period, min_periods=period).mean()
     avg_l = loss.ewm(alpha=1 / period, min_periods=period).mean()
     rs    = avg_g / (avg_l + 1e-9)
-    return 100 - (100 / (1 + rs))
+    result: pd.Series = 100 - (100 / (1 + rs))  # type: ignore[assignment]
+    return result
 
 
 def _parkinson_vol(high: pd.Series, low: pd.Series, window: int) -> pd.Series:
@@ -116,10 +121,10 @@ class MLContextAgent:
 
     def compute_features(self, df_1d: pd.DataFrame) -> pd.DataFrame:
         f = pd.DataFrame(index=df_1d.index)
-        c = df_1d['close']
-        h = df_1d['high']
-        l = df_1d['low']
-        v = df_1d['volume']
+        c: pd.Series = df_1d['close']  # type: ignore[assignment]
+        h: pd.Series = df_1d['high']   # type: ignore[assignment]
+        l: pd.Series = df_1d['low']    # type: ignore[assignment]
+        v: pd.Series = df_1d['volume'] # type: ignore[assignment]
         ret = c.pct_change()
 
         # Momentum
@@ -208,7 +213,8 @@ class MLContextAgent:
 
             mask = X.notna().all(axis=1) & y.notna()
             mask.iloc[-5:] = False
-            X, y = X[mask], y[mask]
+            X = pd.DataFrame(X[mask])
+            y = pd.Series(y[mask])
 
             if len(X) < 300:
                 print(f'  [MLContextAgent] Not enough data ({len(X)} rows)')
@@ -248,10 +254,12 @@ class MLContextAgent:
 
             # Final models on full data
             self._lgb_bull = lgb.LGBMClassifier(**params)
-            self._lgb_bull.fit(X, y_bull, callbacks=[lgb.log_evaluation(-1)])
+            if self._lgb_bull is not None:
+                self._lgb_bull.fit(X, y_bull, callbacks=[lgb.log_evaluation(-1)])
 
             self._lgb_bear = lgb.LGBMClassifier(**params)
-            self._lgb_bear.fit(X, y_bear, callbacks=[lgb.log_evaluation(-1)])
+            if self._lgb_bear is not None:
+                self._lgb_bear.fit(X, y_bear, callbacks=[lgb.log_evaluation(-1)])
 
             self._trained = True
             self._save()
@@ -283,8 +291,9 @@ class MLContextAgent:
             )
 
         # --- pass-through: SMA200 rule-based ---
-        sma200 = df_1d['close'].rolling(200).mean()
-        last_close = float(df_1d['close'].iloc[-1])
+        close_s: pd.Series = df_1d['close']  # type: ignore[assignment]
+        sma200: pd.Series = close_s.rolling(200).mean()  # type: ignore[assignment]
+        last_close = float(close_s.iloc[-1])
         last_sma   = float(sma200.iloc[-1]) if not np.isnan(sma200.iloc[-1]) else last_close
 
         pt_state = 'bullish' if last_close > last_sma * 1.02 else \
@@ -309,6 +318,8 @@ class MLContextAgent:
                     metadata={'p_bull': 0.5, 'p_bear': 0.5, 'p_neutral': 0.0}
                 )
 
+            if self._lgb_bull is None or self._lgb_bear is None:
+                raise RuntimeError('LGB models not initialized')
             p_bull = float(self._lgb_bull.predict_proba(last)[0, 1])
             p_bear = float(self._lgb_bear.predict_proba(last)[0, 1])
 
@@ -476,7 +487,8 @@ class MLRegimeAgent:
 
             mask = X.notna().all(axis=1) & y.notna()
             mask.iloc[-8:] = False
-            X, y = X[mask], y[mask]
+            X = pd.DataFrame(X[mask])
+            y = pd.Series(y[mask])
 
             if len(X) < 300:
                 print(f'  [MLRegimeAgent] Not enough data ({len(X)} rows)')
@@ -508,7 +520,8 @@ class MLRegimeAgent:
                     pass
 
             self._lgb = lgb.LGBMClassifier(**params)
-            self._lgb.fit(X, y, callbacks=[lgb.log_evaluation(-1)])
+            if self._lgb is not None:
+                self._lgb.fit(X, y, callbacks=[lgb.log_evaluation(-1)])
             self._trained = True
             self._save()
 
@@ -564,6 +577,8 @@ class MLRegimeAgent:
                     reason='MLRegimeAgent: NaN features, pass-through'
                 )
 
+            if self._lgb is None:
+                raise RuntimeError('LGB model not initialized')
             p_bull = float(self._lgb.predict_proba(last)[0, 1])
 
             feats_dict = last.iloc[0].to_dict()
@@ -778,7 +793,8 @@ class MLSetupAgent:
 
             mask = X.notna().all(axis=1) & y.notna()
             mask.iloc[-16:] = False   # embargo = num_bars of triple barrier
-            X, y = X[mask], y[mask]
+            X = pd.DataFrame(X[mask])
+            y = pd.Series(y[mask])
 
             if len(X) < 300:
                 print(f'  [MLSetupAgent] Not enough data ({len(X)} rows)')
@@ -811,7 +827,8 @@ class MLSetupAgent:
                     pass
 
             self._lgb = lgb.LGBMClassifier(**params)
-            self._lgb.fit(X, y, callbacks=[lgb.log_evaluation(-1)])
+            if self._lgb is not None:
+                self._lgb.fit(X, y, callbacks=[lgb.log_evaluation(-1)])
             self._trained = True
             self._save()
 
@@ -885,6 +902,8 @@ class MLSetupAgent:
                     reason='MLSetupAgent: NaN features, pass-through'
                 )
 
+            if self._lgb is None:
+                raise RuntimeError('LGB model not initialized')
             score = float(self._lgb.predict_proba(last)[0, 1])
             feats_dict = last.iloc[0].to_dict()
             if self._n_online >= 20:

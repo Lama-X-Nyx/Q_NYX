@@ -26,7 +26,7 @@ def run_setup_investigation(
     pair: str,
     config: Dict,
     output_dir: str,
-    dates: List[datetime] = None
+    dates: "List[datetime] | None" = None
 ) -> Dict:
     """
     Setup Investigation - identify root cause of Setup blocking

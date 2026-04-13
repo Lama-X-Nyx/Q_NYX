@@ -140,10 +140,14 @@ class FractalStateCache:
     def stats(self) -> Dict[str, CacheStats]:
         """
         Get cache statistics
-        
+
         Returns:
             Dictionary of agent -> CacheStats
         """
+        # __post_init__ guarantees these are not None
+        assert self.state.context_stats is not None
+        assert self.state.regime_stats is not None
+        assert self.state.setup_stats is not None
         return {
             'context': self.state.context_stats,
             'regime': self.state.regime_stats,
@@ -178,29 +182,29 @@ class FractalStateCache:
     
     def _record_hit(self, agent: str):
         """Record cache hit"""
-        if agent == 'context':
+        if agent == 'context' and self.state.context_stats is not None:
             self.state.context_stats.cache_hit_count += 1
-        elif agent == 'regime':
+        elif agent == 'regime' and self.state.regime_stats is not None:
             self.state.regime_stats.cache_hit_count += 1
-        elif agent == 'setup':
+        elif agent == 'setup' and self.state.setup_stats is not None:
             self.state.setup_stats.cache_hit_count += 1
-    
+
     def _record_miss(self, agent: str):
         """Record cache miss"""
-        if agent == 'context':
+        if agent == 'context' and self.state.context_stats is not None:
             self.state.context_stats.cache_miss_count += 1
-        elif agent == 'regime':
+        elif agent == 'regime' and self.state.regime_stats is not None:
             self.state.regime_stats.cache_miss_count += 1
-        elif agent == 'setup':
+        elif agent == 'setup' and self.state.setup_stats is not None:
             self.state.setup_stats.cache_miss_count += 1
-    
+
     def record_recompute(self, agent: str):
         """Record a recompute operation"""
-        if agent == 'context':
+        if agent == 'context' and self.state.context_stats is not None:
             self.state.context_stats.recompute_count += 1
-        elif agent == 'regime':
+        elif agent == 'regime' and self.state.regime_stats is not None:
             self.state.regime_stats.recompute_count += 1
-        elif agent == 'setup':
+        elif agent == 'setup' and self.state.setup_stats is not None:
             self.state.setup_stats.recompute_count += 1
 
 
@@ -216,5 +220,5 @@ def get_closed_bar_timestamp(df: pd.DataFrame) -> datetime:
     """
     if len(df) == 0:
         raise ValueError("DataFrame is empty")
-    
-    return df.index[-1]
+
+    return pd.Timestamp(df.index[-1]).to_pydatetime()

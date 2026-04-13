@@ -47,7 +47,7 @@ def load_ohlcv(csv_path: Path) -> pd.DataFrame:
 def prepare_features(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df['returns'] = df['close'].pct_change()
-    high, low, close = df['high'].values, df['low'].values, df['close'].values
+    high, low, close = np.asarray(df['high'].values), np.asarray(df['low'].values), np.asarray(df['close'].values)
     tr = np.maximum(high - low,
                     np.maximum(np.abs(high - np.roll(close, 1)),
                                np.abs(low  - np.roll(close, 1))))
@@ -152,8 +152,8 @@ def build_windows(
     mode: str,  # 'expanding' or 'rolling'
 ) -> list:
     """Build list of (train_start, train_end, test_start, test_end) tuples."""
-    start = index[0].to_pydatetime()
-    end   = index[-1].to_pydatetime()
+    start = pd.Timestamp(index[0]).to_pydatetime()
+    end   = pd.Timestamp(index[-1]).to_pydatetime()
 
     windows = []
     test_start = start + relativedelta(months=train_months)
@@ -179,7 +179,7 @@ def run_walk_forward(
 ) -> pd.DataFrame:
     """Run full walk-forward validation."""
     states = ['Trend+', 'Range', 'Trend-', 'Squeeze', 'Distribution']
-    windows = build_windows(df.index, train_months, test_months, mode)
+    windows = build_windows(pd.DatetimeIndex(df.index), train_months, test_months, mode)
 
     if not windows:
         print("ERROR: Not enough data to build train/test windows.")
@@ -198,8 +198,8 @@ def run_walk_forward(
             print(f"  Window {i}: skipping (train={len(train_raw)}, test={len(test_raw)})")
             continue
 
-        train_df = prepare_features(train_raw)
-        test_df  = prepare_features(test_raw)
+        train_df = prepare_features(pd.DataFrame(train_raw))
+        test_df  = prepare_features(pd.DataFrame(test_raw))
 
         # Pre-train HSMM
         hsmm = SemiMarkovHMM(states=states)
@@ -301,7 +301,7 @@ def main():
 
     df_all = load_ohlcv(csv_path)
     df_all = prepare_features(df_all)
-    print(f"Range:     {df_all.index[0].date()} → {df_all.index[-1].date()}  ({len(df_all)} bars)")
+    print(f"Range:     {pd.DatetimeIndex(df_all.index)[0].date()} → {pd.DatetimeIndex(df_all.index)[-1].date()}  ({len(df_all)} bars)")
 
     results = run_walk_forward(
         df_all,

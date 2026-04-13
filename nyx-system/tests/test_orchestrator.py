@@ -181,9 +181,11 @@ class TestOrchestrator:
             50000, fractal_states, A, emission_params=emission_params
         )
 
-        assert 0.0 <= result['minus_0_05'] <= 1.0
-        assert 0.0 <= result['minus_0_10'] <= 1.0
-        assert result['minus_0_10'] <= result['minus_0_05'] + 1e-9, \
+        p05 = float(result['minus_0_05'])
+        p10 = float(result['minus_0_10'])
+        assert 0.0 <= p05 <= 1.0
+        assert 0.0 <= p10 <= 1.0
+        assert p10 <= p05 + 1e-9, \
             "P(-10%) must be ≤ P(-5%)"
         assert result.get('method') == 'monte_carlo'
 
@@ -260,6 +262,7 @@ class TestOrchestrator:
         orch = Orchestrator(config)
 
         # Force macro engine to return a strong BEARISH signal
+        assert orch.macro_engine is not None
         orch.macro_engine.get_macro_signal = MagicMock(return_value={
             'signal': 'BEARISH', 'strength': 0.80,
             'active_events': [], 'cumulative_impact': -0.80

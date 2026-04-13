@@ -69,8 +69,8 @@ class TestHSMMInputContract:
         
         # Should raise TypeError
         with pytest.raises(TypeError, match="HSMM expects List\\[Dict\\]"):
-            hsmm.forward_backward(observations)
-    
+            hsmm.forward_backward(observations)  # type: ignore[arg-type]
+
     def test_hsmm_rejects_list_of_non_dicts(self):
         """HSMM should reject list of non-dict types"""
         hsmm = SemiMarkovHMM()
@@ -88,10 +88,10 @@ class TestHSMMInputContract:
         
         # Wrong format: list of tuples
         observations = [(0.01, 5.0), (-0.02, 5.5)]
-        
+
         # Should raise TypeError
         with pytest.raises(TypeError, match="HSMM expects observations as List\\[Dict\\]"):
-            hsmm.forward_backward(observations)
+            hsmm.forward_backward(observations)  # type: ignore[arg-type]
 
 
 class TestNYXEngineHSMMIntegration:

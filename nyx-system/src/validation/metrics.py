@@ -11,9 +11,11 @@ Usage:
     print(metrics['sharpe_ratio'])
 """
 
+from __future__ import annotations
+
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 def calculate_metrics(trades: pd.DataFrame, initial_capital: float = 10000) -> Dict:
@@ -37,13 +39,14 @@ def calculate_metrics(trades: pd.DataFrame, initial_capital: float = 10000) -> D
         return _empty_metrics(initial_capital)
     
     # Filter closed trades
-    closed = trades[trades['exit_time'].notna()].copy()
+    closed: pd.DataFrame = pd.DataFrame(trades[trades['exit_time'].notna()].copy())
     
     if len(closed) == 0:
         return _empty_metrics(initial_capital)
     
     # Basic stats
-    total_pnl = closed['pnl'].sum()
+    _pnl_col: pd.Series = pd.Series(closed['pnl'])
+    total_pnl: float = float(_pnl_col.sum())
     final_capital = initial_capital + total_pnl
     
     # Check for blown up strategy
@@ -51,7 +54,7 @@ def calculate_metrics(trades: pd.DataFrame, initial_capital: float = 10000) -> D
     
     if is_blown_up:
         # Strategy destroyed capital - return special metrics
-        return _blown_up_metrics(closed, initial_capital, total_pnl, final_capital)
+        return _blown_up_metrics(pd.DataFrame(closed), initial_capital, total_pnl, final_capital)
     
     # Normal metrics calculation
     total_return = (total_pnl / initial_capital) * 100
@@ -80,7 +83,7 @@ def calculate_metrics(trades: pd.DataFrame, initial_capital: float = 10000) -> D
     expectancy = (win_rate / 100 * avg_win) + ((100 - win_rate) / 100 * avg_loss)
     
     # Equity curve
-    closed = closed.sort_values('exit_time')
+    closed = closed.sort_values(by='exit_time')
     closed['cumulative_pnl'] = closed['pnl'].cumsum()
     closed['equity'] = initial_capital + closed['cumulative_pnl']
     
@@ -121,17 +124,17 @@ def calculate_metrics(trades: pd.DataFrame, initial_capital: float = 10000) -> D
     
     # Sharpe ratio (simplified - assuming daily returns)
     if len(closed) > 1:
-        daily_returns = closed.groupby(closed['exit_time'].dt.date)['pnl'].sum()
+        daily_returns: pd.Series = pd.Series(closed.groupby(closed['exit_time'].dt.date)['pnl'].sum())
         sharpe_ratio = (daily_returns.mean() / daily_returns.std() * np.sqrt(252)) if daily_returns.std() > 0 else 0
     else:
         sharpe_ratio = 0
     
     # Sortino ratio (downside deviation)
     if len(closed) > 1:
-        daily_returns = closed.groupby(closed['exit_time'].dt.date)['pnl'].sum()
-        downside_returns = daily_returns[daily_returns < 0]
-        downside_std = downside_returns.std() if len(downside_returns) > 0 else daily_returns.std()
-        sortino_ratio = (daily_returns.mean() / downside_std * np.sqrt(252)) if downside_std > 0 else 0
+        daily_returns_s: pd.Series = pd.Series(closed.groupby(closed['exit_time'].dt.date)['pnl'].sum())
+        downside_returns: pd.Series = pd.Series(daily_returns_s[daily_returns_s < 0])
+        downside_std = downside_returns.std() if len(downside_returns) > 0 else daily_returns_s.std()
+        sortino_ratio = (daily_returns_s.mean() / downside_std * np.sqrt(252)) if downside_std > 0 else 0
     else:
         sortino_ratio = 0
     
@@ -177,9 +180,9 @@ def calculate_metrics(trades: pd.DataFrame, initial_capital: float = 10000) -> D
         # Time
         'exposure_time': exposure_time,
         'total_days': total_days,
-        'first_trade': first_trade.isoformat() if pd.notna(first_trade) else None,
-        'last_trade': last_trade.isoformat() if pd.notna(last_trade) else None,
-        
+        'first_trade': first_trade.isoformat() if bool(pd.notna(first_trade)) else None,
+        'last_trade': last_trade.isoformat() if bool(pd.notna(last_trade)) else None,
+
         # Capital
         'initial_capital': initial_capital,
         'final_capital': final_capital,
@@ -236,9 +239,9 @@ def _blown_up_metrics(closed: pd.DataFrame, initial_capital: float, total_pnl: f
         # Time
         'exposure_time': 0,
         'total_days': total_days,
-        'first_trade': first_trade.isoformat() if pd.notna(first_trade) else None,
-        'last_trade': last_trade.isoformat() if pd.notna(last_trade) else None,
-        
+        'first_trade': first_trade.isoformat() if bool(pd.notna(first_trade)) else None,
+        'last_trade': last_trade.isoformat() if bool(pd.notna(last_trade)) else None,
+
         # Capital
         'initial_capital': initial_capital,
         'final_capital': final_capital,

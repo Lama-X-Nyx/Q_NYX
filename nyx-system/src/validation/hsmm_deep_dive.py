@@ -35,7 +35,7 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 from src.data.mtf_loader import load_fractal_context
 from src.agents.regime_agent import RegimeAgent
@@ -64,18 +64,18 @@ def extract_features(df: pd.DataFrame) -> Dict[str, Any]:
     
     # Compute ATR if not present
     if 'atr_14' not in df.columns:
-        high = df['high'].values
-        low = df['low'].values
-        close = df['close'].values
-        
-        tr = np.maximum(high - low, 
+        high = np.asarray(df['high'].values)
+        low = np.asarray(df['low'].values)
+        close = np.asarray(df['close'].values)
+
+        tr = np.maximum(high - low,
                        np.maximum(np.abs(high - np.roll(close, 1)),
                                  np.abs(low - np.roll(close, 1))))
         tr[0] = high[0] - low[0]
-        
-        atr = pd.Series(tr).rolling(14).mean()
+
+        atr: pd.Series = pd.Series(tr).rolling(14).mean()
     else:
-        atr = df['atr_14']
+        atr: pd.Series = df['atr_14']
     
     # Get recent window (last 50 bars as used by RegimeAgent)
     window_size = min(50, len(df))
@@ -84,12 +84,12 @@ def extract_features(df: pd.DataFrame) -> Dict[str, Any]:
     
     # Compute statistics
     features = {
-        'returns_mean': float(recent_returns.mean()) if len(recent_returns) > 0 else 0.0,
-        'returns_std': float(recent_returns.std()) if len(recent_returns) > 0 else 0.0,
-        'returns_median': float(recent_returns.median()) if len(recent_returns) > 0 else 0.0,
-        'returns_skew': float(recent_returns.skew()) if len(recent_returns) > 2 else 0.0,
-        'atr_mean': float(recent_atr.mean()) if len(recent_atr) > 0 else 0.0,
-        'atr_std': float(recent_atr.std()) if len(recent_atr) > 0 else 0.0,
+        'returns_mean': float(recent_returns.mean(axis=0)) if len(recent_returns) > 0 else 0.0,
+        'returns_std': float(recent_returns.std(axis=0)) if len(recent_returns) > 0 else 0.0,
+        'returns_median': float(recent_returns.median(axis=0)) if len(recent_returns) > 0 else 0.0,
+        'returns_skew': float(recent_returns.skew(axis=0)) if len(recent_returns) > 2 else 0.0,
+        'atr_mean': float(recent_atr.mean(axis=0)) if len(recent_atr) > 0 else 0.0,
+        'atr_std': float(recent_atr.std(axis=0)) if len(recent_atr) > 0 else 0.0,
         'price_slope': float(np.polyfit(range(len(recent_returns)), recent_returns.cumsum(), 1)[0]) if len(recent_returns) > 1 else 0.0,
         'window_size': window_size
     }
@@ -169,7 +169,11 @@ def inspect_hsmm_states(
     
     # Compute SdC and stability
     sdc = 10 * current_probs[state_idx]
-    stability = regime_agent.hsmm.transition_matrix[state_idx, state_idx]
+    trans_matrix = regime_agent.hsmm.transition_matrix
+    if trans_matrix is not None:
+        stability = trans_matrix[state_idx, state_idx]
+    else:
+        stability = 0.0
     
     return {
         'state_probabilities': state_probabilities,
@@ -351,21 +355,22 @@ def _determine_verdict(
     range_probs: List[float],
     returns_means: List[float],
     returns_stds: List[float],
-    selected_states: List[str] = None
+    selected_states: Optional[List[str]] = None
 ) -> tuple:
     """
     Determine main issue and verdict
-    
+
     Args:
         trend_plus_probs: List of trend+ probabilities per period
         range_probs: List of range probabilities per period
         returns_means: List of returns means per period
         returns_stds: List of returns stds per period
         selected_states: List of selected states per period
-    
+
     Returns:
         (main_issue, verdict) tuple
     """
+    selected_states = selected_states or []
     
     avg_trend_plus = np.mean(trend_plus_probs)
     avg_range = np.mean(range_probs)
@@ -446,27 +451,27 @@ def run_hsmm_deep_dive(
     pair: str,
     config: Dict,
     output_dir: str,
-    dates: List[datetime] = None
+    dates: Optional[List[datetime]] = None
 ) -> Dict:
     """
     Run HSMM deep dive analysis
-    
+
     Args:
         pair: Trading pair
         config: System config
         output_dir: Output directory
         dates: Optional list of dates (defaults to 4 test periods)
-    
+
     Returns:
         Results dict
     """
-    
+
     print(f"\n{'='*80}")
     print(f"HSMM DEEP DIVE - {pair}")
     print(f"{'='*80}\n")
-    
+
     # Default test dates if not provided
-    if dates is None:
+    if dates is None or len(dates) == 0:
         dates = [
             datetime(2023, 1, 15),
             datetime(2023, 3, 15),

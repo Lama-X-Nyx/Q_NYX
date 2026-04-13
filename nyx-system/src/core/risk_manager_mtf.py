@@ -9,7 +9,7 @@ P2: hitting probs computed via Monte Carlo simulation from HSMM dynamics
 
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 
 class RiskManagerMTF:
@@ -116,7 +116,7 @@ class RiskManagerMTF:
         transition_matrix: np.ndarray,
         emission_params: Optional[Dict] = None,
         hsmm_states_list: Optional[List[str]] = None,
-    ) -> Dict[str, float]:
+    ) -> Dict[str, Union[float, str]]:
         """
         Compute P(hit -0.05) and P(hit -0.10).
 
@@ -239,7 +239,7 @@ class RiskManagerMTF:
 
         return {
             'rr_ratio': rr_ratio >= 2.0,
-            'risk_hit': hit_probs['minus_0_10'] <= 0.20,
+            'risk_hit': float(hit_probs['minus_0_10']) <= 0.20,
             'hit_probs': hit_probs,
             'rr_value': rr_ratio,
             'levels': levels,

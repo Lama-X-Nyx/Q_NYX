@@ -46,8 +46,8 @@ class SemiMarkovHMM:
         probs = hsmm.forward_backward(observations)
     """
 
-    def __init__(self, states: List[str] = None):
-        self.states = states or ['Trend+', 'Range', 'Trend-']
+    def __init__(self, states: Optional[List[str]] = None):
+        self.states: List[str] = states or ['Trend+', 'Range', 'Trend-']
         self.n_states = len(self.states)
         self.state_to_idx = {s: i for i, s in enumerate(self.states)}
 
@@ -103,9 +103,13 @@ class SemiMarkovHMM:
         self._init_fingerprint = fp
 
         if self._locked_structure:
-            # Partial lock: restore EM-learned A and π, re-estimate emissions only
-            self.initial_probs    = self._locked_initial.copy()
-            self.transition_matrix = self._locked_transition.copy()
+            # Partial lock: restore EM-learned A and pi, re-estimate emissions only
+            locked_init = self._locked_initial
+            if locked_init is not None:
+                self.initial_probs = locked_init.copy()
+            locked_trans = self._locked_transition
+            if locked_trans is not None:
+                self.transition_matrix = locked_trans.copy()
         else:
             self.initial_probs = np.ones(self.n_states) / self.n_states
             self.transition_matrix = self._build_transition_prior()
@@ -117,22 +121,22 @@ class SemiMarkovHMM:
         for state in self.states:
             state_data = data[labeled_states == state]
             if len(state_data) > 10 and 'returns' in state_data.columns:
-                returns = state_data['returns'].dropna()
+                returns: pd.Series = state_data['returns'].dropna()  # type: ignore[assignment]
                 self.emission_params[state] = {
                     'price_mu':    float(returns.mean()),
-                    'price_sigma': float(max(returns.std(), 0.001)),
+                    'price_sigma': float(max(float(returns.std()), 0.001)),
                     'atr_mu':    float(state_data['atr_14'].mean()) if 'atr_14' in state_data else 100.0,
-                    'atr_sigma': float(max(state_data['atr_14'].std(), 0.001)) if 'atr_14' in state_data else 50.0,
+                    'atr_sigma': float(max(float(state_data['atr_14'].std()), 0.001)) if 'atr_14' in state_data else 50.0,
                 }
             else:
                 self.emission_params[state] = self._default_emission(state)
 
             # Optional HTF context feature
             if 'htf_pos' in data.columns:
-                htf_vals = state_data['htf_pos'].dropna()
+                htf_vals: pd.Series = state_data['htf_pos'].dropna()  # type: ignore[assignment]
                 if len(htf_vals) > 5:
                     self.emission_params[state]['context_mu']    = float(htf_vals.mean())
-                    self.emission_params[state]['context_sigma'] = float(max(htf_vals.std(), 0.001))
+                    self.emission_params[state]['context_sigma'] = float(max(float(htf_vals.std()), 0.001))
                 else:
                     self.emission_params[state]['context_mu']    = 0.0
                     self.emission_params[state]['context_sigma'] = 0.02
@@ -246,9 +250,9 @@ class SemiMarkovHMM:
         has_liquidation  = 'Liquidation' in self.states
 
         # ---- Fully vectorised labeling (no iterrows) ----
-        sma20 = df['sma_20'].values
-        sma50 = df['sma_50'].values
-        close = df['close'].values
+        sma20 = np.asarray(df['sma_20'].values)
+        sma50 = np.asarray(df['sma_50'].values)
+        close = np.asarray(df['close'].values)
         nan_mask = np.isnan(sma20) | np.isnan(sma50)
 
         # Base: Range everywhere (default)
@@ -265,17 +269,17 @@ class SemiMarkovHMM:
         if has_distribution:
             dm = self._compute_distribution_mask(df)
             if dm is not None:
-                labels[dm.fillna(False).values] = 'Distribution'
+                labels[np.asarray(dm.fillna(False).values)] = 'Distribution'
 
         if has_squeeze:
             sm = self._compute_squeeze_mask(df)
             if sm is not None:
-                labels[sm.fillna(False).values] = 'Squeeze'
+                labels[np.asarray(sm.fillna(False).values)] = 'Squeeze'
 
         if has_liquidation:
             lm = self._compute_liquidation_mask(df)
             if lm is not None:
-                labels[lm.fillna(False).values] = 'Liquidation'
+                labels[np.asarray(lm.fillna(False).values)] = 'Liquidation'
 
         # NaN warm-up bars always → Range (applied last to guarantee correctness)
         labels[nan_mask] = 'Range'
@@ -344,7 +348,10 @@ class SemiMarkovHMM:
 
     def emission_probability(self, observation: Dict, state: str) -> float:
         """Log-probability of observation given state."""
-        params = self.emission_params[state]
+        ep = self.emission_params
+        if ep is None:
+            return 0.0
+        params = ep[state]
         log_prob = 0.0
 
         if 'price' in observation and not np.isnan(observation['price']):
@@ -361,7 +368,7 @@ class SemiMarkovHMM:
                 scale=params['atr_sigma']
             )
 
-        return log_prob
+        return float(log_prob)
 
     def _compute_log_B(self, observations: List[Dict]) -> np.ndarray:
         """
@@ -369,12 +376,13 @@ class SemiMarkovHMM:
         Fully vectorised over both T and n_states — no Python loops.
         """
         T = len(observations)
+        ep: Dict = self.emission_params or {}
 
         # Param arrays (n_states,)
-        price_mu    = np.array([self.emission_params[s]['price_mu']    for s in self.states])
-        price_sigma = np.array([self.emission_params[s]['price_sigma'] for s in self.states])
-        atr_mu      = np.array([self.emission_params[s]['atr_mu']      for s in self.states])
-        atr_sigma   = np.array([self.emission_params[s]['atr_sigma']   for s in self.states])
+        price_mu    = np.array([ep[s]['price_mu']    for s in self.states])
+        price_sigma = np.array([ep[s]['price_sigma'] for s in self.states])
+        atr_mu      = np.array([ep[s]['atr_mu']      for s in self.states])
+        atr_sigma   = np.array([ep[s]['atr_sigma']   for s in self.states])
 
         # Observation arrays (T,)
         prices = np.array([obs.get('price', np.nan) for obs in observations])
@@ -401,10 +409,10 @@ class SemiMarkovHMM:
 
         # Optional HTF context feature
         contexts = np.array([obs.get('context', np.nan) for obs in observations])
-        has_context = all('context_mu' in self.emission_params.get(s, {}) for s in self.states)
+        has_context = all('context_mu' in ep.get(s, {}) for s in self.states)
         if has_context:
-            context_mu    = np.array([self.emission_params[s].get('context_mu',    0.0)  for s in self.states])
-            context_sigma = np.array([self.emission_params[s].get('context_sigma', 0.02) for s in self.states])
+            context_mu    = np.array([ep.get(s, {}).get('context_mu',    0.0)  for s in self.states])
+            context_sigma = np.array([ep.get(s, {}).get('context_sigma', 0.02) for s in self.states])
             valid_c = ~np.isnan(contexts)
             if valid_c.any():
                 log_B[valid_c] += stats.norm.logpdf(
@@ -443,19 +451,22 @@ class SemiMarkovHMM:
         fb_fp = hash(tuple(
             (o.get('price', 0.0), o.get('atr', 0.0), o.get('context', 0.0)) for o in tail
         ))
-        if fb_fp == self._fb_fingerprint and self._fb_cache is not None:
+        cached = self._fb_cache
+        if fb_fp == self._fb_fingerprint and cached is not None:
             # Cache hit — shape may differ if T changed; validate
-            if self._fb_cache.shape[0] == T:
-                return self._fb_cache
+            if cached.shape[0] == T:
+                return cached
         self._fb_fingerprint = fb_fp
 
         # Pre-compute emission matrix and log-transition matrix once
         log_B = self._compute_log_B(observations)                  # (T, n)
-        log_A = np.log(self.transition_matrix + 1e-10)             # (n, n)  A[sp, s]
+        A = self.transition_matrix if self.transition_matrix is not None else np.ones((self.n_states, self.n_states)) / self.n_states
+        log_A = np.log(A + 1e-10)                                  # (n, n)  A[sp, s]
 
         # Forward pass — vectorised over states
+        ip = self.initial_probs if self.initial_probs is not None else np.ones(self.n_states) / self.n_states
         log_alpha = np.full((T, self.n_states), -np.inf)
-        log_alpha[0] = np.log(self.initial_probs + 1e-10) + log_B[0]
+        log_alpha[0] = np.log(ip + 1e-10) + log_B[0]
 
         for t in range(1, T):
             # log_alpha[t, s] = logsumexp_sp( log_alpha[t-1, sp] + log_A[sp, s] ) + log_B[t, s]
@@ -485,16 +496,19 @@ class SemiMarkovHMM:
         log_delta = np.full((T, self.n_states), -np.inf)
         psi = np.zeros((T, self.n_states), dtype=int)
 
+        ip = self.initial_probs if self.initial_probs is not None else np.ones(self.n_states) / self.n_states
+        A = self.transition_matrix if self.transition_matrix is not None else np.ones((self.n_states, self.n_states)) / self.n_states
+
         for s in range(self.n_states):
             log_delta[0, s] = (
-                np.log(self.initial_probs[s] + 1e-10)
+                np.log(ip[s] + 1e-10)
                 + self.emission_probability(observations[0], self.states[s])
             )
 
         for t in range(1, T):
             for s in range(self.n_states):
                 lp = [
-                    log_delta[t-1, sp] + np.log(self.transition_matrix[sp, s] + 1e-10)
+                    log_delta[t-1, sp] + np.log(A[sp, s] + 1e-10)
                     for sp in range(self.n_states)
                 ]
                 psi[t, s] = int(np.argmax(lp))
@@ -538,7 +552,8 @@ class SemiMarkovHMM:
         Fully vectorised — no Python loops.
         """
         T = log_alpha.shape[0]
-        log_A = np.log(self.transition_matrix + 1e-10)
+        A = self.transition_matrix if self.transition_matrix is not None else np.ones((self.n_states, self.n_states)) / self.n_states
+        log_A = np.log(A + 1e-10)
 
         # (T-1, n, 1) + (1, n, n) + (T-1, 1, n) + (T-1, 1, n)  → (T-1, n, n)
         log_xi = (
@@ -635,6 +650,7 @@ class SemiMarkovHMM:
         self.transition_matrix = A_new / A_new.sum(axis=1, keepdims=True)
 
         # ---- Emission params (Huber-robust IRLS, per state) ----
+        ep: Dict = self.emission_params or {}
         for i, state in enumerate(self.states):
             w = gamma[:, i]                                     # (T,)
 
@@ -644,8 +660,8 @@ class SemiMarkovHMM:
             if w_p.sum() > EPS:
                 mu_p, sig_p = self._huber_weighted_stats(w_p, p)
             else:
-                mu_p  = self.emission_params[state]['price_mu']
-                sig_p = self.emission_params[state]['price_sigma']
+                mu_p  = ep.get(state, {}).get('price_mu', 0.0)
+                sig_p = ep.get(state, {}).get('price_sigma', 0.01)
 
             # ATR — Huber IRLS
             va = ~np.isnan(atrs)
@@ -653,9 +669,11 @@ class SemiMarkovHMM:
             if w_a.sum() > EPS:
                 mu_a, sig_a = self._huber_weighted_stats(w_a, a)
             else:
-                mu_a  = self.emission_params[state]['atr_mu']
-                sig_a = self.emission_params[state]['atr_sigma']
+                mu_a  = ep.get(state, {}).get('atr_mu', 100.0)
+                sig_a = ep.get(state, {}).get('atr_sigma', 50.0)
 
+            if self.emission_params is None:
+                self.emission_params = {}
             self.emission_params[state] = {
                 'price_mu':    float(mu_p),
                 'price_sigma': float(max(sig_p, 1e-4)),
@@ -687,7 +705,8 @@ class SemiMarkovHMM:
         prices = np.array([o.get('price', np.nan) for o in observations])
         atrs   = np.array([o.get('atr',   np.nan) for o in observations])
 
-        log_A  = np.log(self.transition_matrix + 1e-10)
+        A_mat = self.transition_matrix if self.transition_matrix is not None else np.ones((self.n_states, self.n_states)) / self.n_states
+        log_A  = np.log(A_mat + 1e-10)
         ll_history: List[float] = []
         prev_ll = -np.inf
 
@@ -696,8 +715,9 @@ class SemiMarkovHMM:
             log_B = self._compute_log_B(observations)
 
             # Forward
+            ip_fit = self.initial_probs if self.initial_probs is not None else np.ones(self.n_states) / self.n_states
             log_alpha = np.full((T, self.n_states), -np.inf)
-            log_alpha[0] = np.log(self.initial_probs + 1e-10) + log_B[0]
+            log_alpha[0] = np.log(ip_fit + 1e-10) + log_B[0]
             for t in range(1, T):
                 log_alpha[t] = _logsumexp(
                     log_alpha[t - 1, :, np.newaxis] + log_A, axis=0
@@ -727,7 +747,8 @@ class SemiMarkovHMM:
             self._m_step(gamma, xi, prices, atrs)
 
             # Refresh log_A with updated matrix
-            log_A = np.log(self.transition_matrix + 1e-10)
+            A_mat = self.transition_matrix if self.transition_matrix is not None else np.ones((self.n_states, self.n_states)) / self.n_states
+            log_A = np.log(A_mat + 1e-10)
 
             # Convergence check
             if abs(ll - prev_ll) < tol:
@@ -739,9 +760,11 @@ class SemiMarkovHMM:
         self._fb_fingerprint   = None
         self._fb_cache         = None
 
-        # Partial lock: save learned A and π so they survive heuristic re-init
-        self._locked_transition = self.transition_matrix.copy()
-        self._locked_initial    = self.initial_probs.copy()
+        # Partial lock: save learned A and pi so they survive heuristic re-init
+        _tm = self.transition_matrix
+        _ip = self.initial_probs
+        self._locked_transition = _tm.copy() if _tm is not None else None
+        self._locked_initial    = _ip.copy() if _ip is not None else None
         self._locked_structure  = True   # default: adaptive emissions, frozen structure
 
         # Full lock (opt-in via lock_all()): keep everything frozen
@@ -1007,11 +1030,11 @@ if __name__ == "__main__":
         'low':        close - np.abs(np.random.randn(n) * 100),
         'volume':     np.abs(np.random.randn(n) * 500) + 100,
         'returns':    np.concatenate([[0], np.diff(close) / close[:-1]]),
-        'atr_14':     pd.Series(tr).rolling(14).mean().values,
-        'atr_50':     pd.Series(tr).rolling(50).mean().values,
-        'sma_20':     pd.Series(close).rolling(20).mean().values,
-        'sma_50':     pd.Series(close).rolling(50).mean().values,
-        'volume_ma20': pd.Series(np.abs(np.random.randn(n) * 500) + 100).rolling(20).mean().values,
+        'atr_14':     np.asarray(pd.Series(tr).rolling(14).mean().values),
+        'atr_50':     np.asarray(pd.Series(tr).rolling(50).mean().values),
+        'sma_20':     np.asarray(pd.Series(close).rolling(20).mean().values),
+        'sma_50':     np.asarray(pd.Series(close).rolling(50).mean().values),
+        'volume_ma20': np.asarray(pd.Series(np.abs(np.random.randn(n) * 500) + 100).rolling(20).mean().values),
     }, index=dates)
 
     for state_set, label in [
@@ -1026,7 +1049,8 @@ if __name__ == "__main__":
                for i in range(50)]
         probs = hsmm.forward_backward(obs)
         dom, p = hsmm.get_dominant_state(probs[-1])
-        print(f"\n{label}: dominant={dom} ({p:.2%})  A shape={hsmm.transition_matrix.shape}")
-        print(f"  Liquidation row: {hsmm.transition_matrix[-1] if 'Liquidation' in state_set else 'N/A'}")
+        A_mat = hsmm.transition_matrix
+        print(f"\n{label}: dominant={dom} ({p:.2%})  A shape={A_mat.shape if A_mat is not None else 'N/A'}")
+        print(f"  Liquidation row: {A_mat[-1] if A_mat is not None and 'Liquidation' in state_set else 'N/A'}")
 
     print("\n✅ P4 HSMM Working")

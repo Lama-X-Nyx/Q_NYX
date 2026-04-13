@@ -185,7 +185,8 @@ class ModelMonitor:
             recent_col   = recent[col].dropna()
             if len(baseline_col) < 10 or len(recent_col) < 10:
                 continue
-            _, pvalue = ks_2samp(baseline_col, recent_col)
+            ks_result = ks_2samp(baseline_col, recent_col)
+            pvalue: float = ks_result.pvalue  # type: ignore[assignment]
             if pvalue < 0.01:
                 drifted.append(col)
 
@@ -240,7 +241,7 @@ class ModelMonitor:
         actuals = df['outcome'].values
 
         # Can only compute AUC if both classes present
-        if len(np.unique(actuals)) < 2:
+        if len(np.unique(np.asarray(actuals))) < 2:
             return True, None
 
         window = min(self.RECENT_WINDOW, len(df))

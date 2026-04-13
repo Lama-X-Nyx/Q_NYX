@@ -82,38 +82,42 @@ class TestSMCPatternDetection:
     def test_order_block_detection(self, sample_data):
         """Test Order Block detection"""
         smc = SMCDetector()
-        
-        bullish_ob = smc.detect_order_block(sample_data, bullish=True)
-        bearish_ob = smc.detect_order_block(sample_data, bullish=False)
-        
+        patterns = smc.detect_all(sample_data)
+
+        bullish_ob = patterns['bullish_ob']
+        bearish_ob = patterns['bearish_ob']
+
         assert isinstance(bullish_ob, bool)
         assert isinstance(bearish_ob, bool)
-    
+
     def test_fvg_detection(self, sample_data):
         """Test Fair Value Gap detection"""
         smc = SMCDetector()
-        
-        bullish_fvg = smc.detect_fvg(sample_data, bullish=True)
-        bearish_fvg = smc.detect_fvg(sample_data, bullish=False)
-        
+        patterns = smc.detect_all(sample_data)
+
+        bullish_fvg = patterns['bullish_fvg']
+        bearish_fvg = patterns['bearish_fvg']
+
         assert isinstance(bullish_fvg, bool)
         assert isinstance(bearish_fvg, bool)
-    
+
     def test_liquidity_sweep_detection(self, sample_data):
         """Test liquidity sweep detection"""
         smc = SMCDetector()
-        
-        sweep = smc.detect_liquidity_sweep(sample_data)
-        
+        patterns = smc.detect_all(sample_data)
+
+        sweep = patterns['liquidity_sweep']
+
         assert isinstance(sweep, bool)
-    
+
     def test_bos_detection(self, sample_data):
         """Test Break of Structure detection"""
         smc = SMCDetector()
-        
-        bos_bull = smc.detect_bos(sample_data, bullish=True)
-        bos_bear = smc.detect_bos(sample_data, bullish=False)
-        
+        patterns = smc.detect_all(sample_data)
+
+        bos_bull = patterns['bos_bullish']
+        bos_bear = patterns['bos_bearish']
+
         assert isinstance(bos_bull, bool)
         assert isinstance(bos_bear, bool)
 

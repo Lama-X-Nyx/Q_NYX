@@ -12,7 +12,7 @@ import hashlib
 import json
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Optional
 import pandas as pd
 
 
@@ -54,7 +54,7 @@ def analyze_csv(filepath: Path) -> Dict:
     return metadata
 
 
-def create_manifest(data_dir: str, pairs: List[str] = None) -> Dict:
+def create_manifest(data_dir: str, pairs: Optional[List[str]] = None) -> Dict:
     """
     Create manifest for validation datasets
     
@@ -66,11 +66,13 @@ def create_manifest(data_dir: str, pairs: List[str] = None) -> Dict:
         Manifest dictionary
     """
     
+    pairs = pairs or []
+
     data_path = Path(data_dir)
-    
+
     if not data_path.exists():
         raise FileNotFoundError(f"Data directory not found: {data_dir}")
-    
+
     manifest = {
         'created_at': datetime.now().isoformat(),
         'data_directory': str(data_path),

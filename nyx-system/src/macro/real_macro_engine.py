@@ -81,14 +81,14 @@ class RealMacroEngine:
         
         return events
     
-    def get_macro_signal(self, asset: str, current_date: str) -> Dict:
+    def get_macro_signal(self, asset: str, current_date: "str | pd.Timestamp") -> Dict:
         """
         Get macro signal for asset at specific date
-        
+
         Args:
             asset: Asset symbol (BTC, ETH, etc.)
-            current_date: Date string 'YYYY-MM-DD'
-        
+            current_date: Date string 'YYYY-MM-DD' or Timestamp
+
         Returns:
             {
                 'signal': 'BULLISH' or 'BEARISH' or 'NEUTRAL',
@@ -97,12 +97,12 @@ class RealMacroEngine:
                 'cumulative_impact': float
             }
         """
-        
-        current_date = pd.to_datetime(current_date)
-        
+
+        current_ts = pd.to_datetime(current_date)
+
         # Get active events (within decay window)
-        active_events = self._get_active_events(asset, current_date)
-        
+        active_events = self._get_active_events(asset, current_ts)
+
         if not active_events:
             return {
                 'signal': 'NEUTRAL',
@@ -110,12 +110,12 @@ class RealMacroEngine:
                 'active_events': [],
                 'cumulative_impact': 0.0
             }
-        
+
         # Calculate cumulative impact
         cumulative_impact = self._calculate_cumulative_impact(
-            active_events, 
-            asset, 
-            current_date
+            active_events,
+            asset,
+            current_ts
         )
         
         # Determine signal
@@ -234,23 +234,23 @@ class RealMacroEngine:
         # Normalize to [-1, 1]
         return np.tanh(total_impact)
     
-    def get_event_details(self, current_date: str) -> List[Dict]:
+    def get_event_details(self, current_date: "str | pd.Timestamp") -> List[Dict]:
         """
         Get detailed view of recent events
-        
+
         Args:
-            current_date: Date string
-        
+            current_date: Date string or Timestamp
+
         Returns:
             List of recent events with details
         """
-        current_date = pd.to_datetime(current_date)
+        current_ts = pd.to_datetime(current_date)
         
         recent_events = []
         
         for event in self.events:
-            if event['date'] <= current_date:
-                days_ago = (current_date - event['date']).days
+            if event['date'] <= current_ts:
+                days_ago = (current_ts - event['date']).days
                 
                 if days_ago <= 180:  # Last 6 months
                     recent_events.append({
@@ -275,8 +275,8 @@ class RealMacroEngine:
         impact: str,
         strength: float = 1.0,
         decay_days: int = 60,
-        assets_affected: List[str] = None,
-        asset_sensitivity: Dict = None
+        assets_affected: Optional[List[str]] = None,
+        asset_sensitivity: Optional[Dict] = None
     ):
         """
         Add a new macro event

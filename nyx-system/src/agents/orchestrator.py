@@ -5,6 +5,7 @@ Coordinates the 4 fractal agents and makes final decision.
 """
 
 from typing import Dict, List, Any, Optional
+import numpy as np
 import pandas as pd
 from src.agents.contracts import AgentResult, OrchestratorDecision
 from src.agents.context_agent import ContextAgent
@@ -57,7 +58,7 @@ class Orchestrator:
         else:
             self.macro_engine = None
     
-    def decide(self, mtf_data: Dict[str, pd.DataFrame], current_price: float = None) -> OrchestratorDecision:
+    def decide(self, mtf_data: Dict[str, pd.DataFrame], current_price: Optional[float] = None) -> OrchestratorDecision:
         """
         Make final trading decision using active agents
         
@@ -75,8 +76,9 @@ class Orchestrator:
         # Get current price if not provided
         if current_price is None:
             lowest_tf = min(mtf_data.keys(), key=lambda x: self._tf_to_minutes(x))
-            current_price = mtf_data[lowest_tf].iloc[-1]['close']
-        
+            current_price = float(mtf_data[lowest_tf].iloc[-1]['close'])
+        current_price = current_price or 0.0
+
         # Get fractal config
         fractal_config = self.config.get('fractal', {})
         use_entry_agent = fractal_config.get('use_entry_agent', False)
@@ -107,7 +109,7 @@ class Orchestrator:
         regime_result = self.regime_agent.analyze(
             mtf_data.get(regime_tf, pd.DataFrame()),
             context_state=context_result.state,
-            df_htf=mtf_data.get(structure_tf)
+            df_htf=mtf_data.get(structure_tf, pd.DataFrame())
         )
 
         # Step 3: Call Setup Agent (with context)
@@ -115,7 +117,7 @@ class Orchestrator:
         setup_result = self.setup_agent.analyze(
             mtf_data.get(setup_tf, pd.DataFrame()),
             context_state=context_result.state,
-            df_htf=mtf_data.get(regime_tf)
+            df_htf=mtf_data.get(regime_tf, pd.DataFrame())
         )
         
         # Aggregate results (3 agents only)
@@ -192,12 +194,15 @@ class Orchestrator:
                 )
 
         # Step 7b: Risk check (P2: pass emission_params for Monte Carlo hitting probs)
+        _tm = self.regime_agent.hsmm.transition_matrix
+        if _tm is None:
+            _tm = np.eye(len(self.regime_agent.hsmm.states))
         risk_conditions = self.risk_manager.check_risk_conditions(
             entry_price=current_price,
             fractal_states=self._extract_fractal_states(regime_result),
             smc_patterns=setup_result.metadata.get('patterns', {}),
             intent_daily=context_result.state,
-            transition_matrix=self.regime_agent.hsmm.transition_matrix,
+            transition_matrix=_tm,
             emission_params=self.regime_agent.hsmm.emission_params,
             hsmm_states_list=self.regime_agent.hsmm.states,
         )
@@ -259,13 +264,13 @@ class Orchestrator:
         context_result = components.get('context')
         regime_result = components.get('regime')
         setup_result = components.get('setup')
-        
+
         # Step 1: Check readiness FIRST
         all_ready = all([result.ready for result in components.values()])
-        
+
         if not all_ready:
             not_ready_agents = [name for name, result in components.items() if not result.ready]
-            
+
             return OrchestratorDecision(
                 action='WAIT',
                 score=0.0,
@@ -273,12 +278,12 @@ class Orchestrator:
                 blocked_by=['readiness'],
                 components=components
             )
-        
+
         # Step 2: All agents READY - check logic (all must pass)
         all_passed = all([result.passed for result in components.values()])
-        
+
         blocked_by = [name for name, result in components.items() if not result.passed]
-        
+
         if not all_passed:
             return OrchestratorDecision(
                 action='WAIT',
@@ -287,14 +292,32 @@ class Orchestrator:
                 blocked_by=blocked_by,
                 components=components
             )
-        
+
+        # Guard: all three core agents must be present
+        if regime_result is None or setup_result is None or context_result is None:
+            return OrchestratorDecision(
+                action='WAIT',
+                score=0.0,
+                reason='Missing required agent result (context, regime, or setup)',
+                blocked_by=['missing_agent'],
+                components=components
+            )
+
+        # Narrow types for Pyright after None guard
+        regime_result_: AgentResult = regime_result
+        setup_result_: AgentResult = setup_result
+        context_result_: AgentResult = context_result
+
         # Step 3: Risk check (P2: pass emission_params for Monte Carlo hitting probs)
+        _tm2 = self.regime_agent.hsmm.transition_matrix
+        if _tm2 is None:
+            _tm2 = np.eye(len(self.regime_agent.hsmm.states))
         risk_conditions = self.risk_manager.check_risk_conditions(
             entry_price=current_price,
-            fractal_states=self._extract_fractal_states(regime_result),
-            smc_patterns=setup_result.metadata.get('patterns', {}),
-            intent_daily=context_result.state,
-            transition_matrix=self.regime_agent.hsmm.transition_matrix,
+            fractal_states=self._extract_fractal_states(regime_result_),
+            smc_patterns=setup_result_.metadata.get('patterns', {}),
+            intent_daily=context_result_.state,
+            transition_matrix=_tm2,
             emission_params=self.regime_agent.hsmm.emission_params,
             hsmm_states_list=self.regime_agent.hsmm.states,
         )
@@ -313,19 +336,19 @@ class Orchestrator:
             )
 
         # Step 4: All passed - determine action
-        if context_result.state == 'bullish':
+        if context_result_.state == 'bullish':
             action = 'BUY'
-        elif context_result.state == 'bearish':
+        elif context_result_.state == 'bearish':
             action = 'SELL'
         else:
             action = 'WAIT'
-        
+
         aggregate_score = self._calculate_aggregate_score(components)
-        
+
         return OrchestratorDecision(
             action=action,
             score=aggregate_score,
-            reason=f'All agents approved: Context={context_result.state}, Regime={regime_result.state}, Setup={setup_result.state}',
+            reason=f'All agents approved: Context={context_result_.state}, Regime={regime_result_.state}, Setup={setup_result_.state}',
             blocked_by=[],
             components=components,
             risk_analysis=risk_conditions
@@ -377,9 +400,8 @@ class Orchestrator:
         lowest_tf = min(mtf_data.keys(), key=lambda x: self._tf_to_minutes(x))
         df = mtf_data[lowest_tf]
         if not df.empty and hasattr(df.index, 'max'):
-            ts = df.index.max()
-            if hasattr(ts, 'strftime'):
-                return ts.strftime('%Y-%m-%d')
+            ts = pd.Timestamp(str(df.index.max()))
+            return ts.strftime('%Y-%m-%d')
         import datetime
         return datetime.date.today().isoformat()
 

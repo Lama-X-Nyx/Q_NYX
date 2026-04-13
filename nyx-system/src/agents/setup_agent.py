@@ -61,7 +61,7 @@ class SetupAgent:
         mtf_conditions = config.get('strategy', {}).get('mtf_conditions', {})
         self.alignment_min = mtf_conditions.get('alignment_15m_min', 0.28)
 
-    def _prepare_data(self, df: pd.DataFrame, df_htf: pd.DataFrame = None) -> pd.DataFrame:
+    def _prepare_data(self, df: pd.DataFrame, df_htf: "pd.DataFrame | None" = None) -> pd.DataFrame:
         """
         Prepare 15M data for HSMM (add returns, ATR, sma_20, sma_50).
 
@@ -81,9 +81,9 @@ class SetupAgent:
             df_prepared['returns'] = df_prepared['close'].pct_change()
 
         if 'atr_14' not in df_prepared.columns:
-            high = df_prepared['high'].values
-            low = df_prepared['low'].values
-            close = df_prepared['close'].values
+            high = np.asarray(df_prepared['high'].values)
+            low = np.asarray(df_prepared['low'].values)
+            close = np.asarray(df_prepared['close'].values)
             tr = np.maximum(
                 high - low,
                 np.maximum(
@@ -92,7 +92,8 @@ class SetupAgent:
                 )
             )
             tr[0] = high[0] - low[0]
-            df_prepared['atr_14'] = pd.Series(tr).rolling(14).mean().values
+            atr_series: pd.Series = pd.Series(tr).rolling(14).mean()
+            df_prepared['atr_14'] = atr_series.values
 
         if 'sma_20' not in df_prepared.columns:
             df_prepared['sma_20'] = df_prepared['close'].rolling(window=20).mean()
@@ -111,7 +112,8 @@ class SetupAgent:
         # Add HTF context feature: (close - htf_sma20) / htf_sma20
         # Uses pd.merge_asof for O(n log n) alignment without look-ahead.
         if df_htf is not None and not df_htf.empty and 'htf_pos' not in df_prepared.columns:
-            htf_sma20 = df_htf['close'].rolling(20).mean().rename('_htf_sma20')
+            _htf_close: pd.Series = df_htf['close']
+            htf_sma20: pd.Series = _htf_close.rolling(20).mean().rename('_htf_sma20')
             htf_ref = htf_sma20.reset_index()
             htf_ref.columns = ['_ts', '_htf_sma20']
             htf_ref = htf_ref.dropna(subset=['_htf_sma20']).sort_values('_ts')
@@ -133,7 +135,7 @@ class SetupAgent:
         return df_prepared
 
     def pretrain(self, df: pd.DataFrame, n_iter: int = 30, tol: float = 1e-4,
-                 df_htf: pd.DataFrame = None) -> list:
+                 df_htf: "pd.DataFrame | None" = None) -> list:
         """
         Train the alignment HSMM via Baum-Welch EM on historical 15M data.
 
@@ -154,7 +156,7 @@ class SetupAgent:
         return self.hsmm.initialize_parameters_with_em(df_prepared, n_iter=n_iter, tol=tol)
 
     def _compute_hsmm_alignment(self, df: pd.DataFrame, context_state: str,
-                                 df_htf: pd.DataFrame = None) -> Dict:
+                                 df_htf: "pd.DataFrame | None" = None) -> Dict:
         """
         Run HSMM Forward-Backward on 15M data and return alignment probability.
 
@@ -257,8 +259,8 @@ class SetupAgent:
         except Exception:
             return fallback
 
-    def analyze(self, df: pd.DataFrame, context_state: str = None,
-                df_htf: pd.DataFrame = None) -> AgentResult:
+    def analyze(self, df: pd.DataFrame, context_state: str = "",
+                df_htf: "pd.DataFrame | None" = None) -> AgentResult:
         """
         Analyze SMC patterns and alignment
 
@@ -270,6 +272,7 @@ class SetupAgent:
         Returns:
             AgentResult with setup decision
         """
+        context_state = context_state or ""
 
         # Get minimum bars from config
         readiness_config = self.config.get('fractal_readiness', {})
@@ -325,6 +328,7 @@ class SetupAgent:
         smc_bear_score = float(patterns.get('smc_score_bearish', 0.0))
 
         # No context provided - neutral
+        hsmm_result = None
         if not context_state:
             if has_bullish or has_bearish:
                 state = 'pattern_found'
@@ -435,7 +439,7 @@ class SetupAgent:
             'bars': len(df),
             'min_bars': min_bars
         }
-        if context_state in ('bullish', 'bearish'):
+        if context_state in ('bullish', 'bearish') and hsmm_result is not None:
             meta.update({
                 'hsmm_p_trend_plus':   hsmm_result['p_trend_plus'],
                 'hsmm_p_trend_minus':  hsmm_result['p_trend_minus'],

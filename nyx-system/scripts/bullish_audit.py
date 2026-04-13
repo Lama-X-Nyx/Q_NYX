@@ -25,7 +25,7 @@ DEFAULT_DATES = [
 ]
 
 
-def run_bullish_audit(pair: str, config: dict, output_dir: Path, dates: list = None):
+def run_bullish_audit(pair: str, config: dict, output_dir: Path, dates: "list | None" = None):
     """
     Audit Context and Regime attribution on BTC bullish periods
     

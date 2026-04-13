@@ -16,7 +16,7 @@ from src.data.mtf_loader import load_fractal_context
 from src.core.fractal_cached_runner import FractalCachedRunner
 
 
-def run_fractal_cache_check(pair: str, config: dict, output_dir: Path, sample_date: str = None, steps: int = 20):
+def run_fractal_cache_check(pair: str, config: dict, output_dir: Path, sample_date: str = "", steps: int = 20):
     """
     Check fractal cache behavior over multiple sequential steps
     

@@ -11,7 +11,7 @@ V1 Safe:
 """
 
 import logging
-from typing import Dict
+from typing import Dict, Optional
 import pandas as pd
 from datetime import datetime
 
@@ -69,7 +69,7 @@ class FractalCachedRunner:
     def decide(
         self, 
         mtf_data: Dict[str, pd.DataFrame], 
-        current_price: float = None
+        current_price: Optional[float] = None
     ) -> OrchestratorDecision:
         """
         Make trading decision with intelligent caching

@@ -39,6 +39,7 @@ sys.path.insert(0, '.')
 import yaml
 import json
 import numpy as np
+import pandas as pd
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Any
@@ -118,8 +119,8 @@ def analyze_setup_period(
     
     for i in range(warmup, warmup + n_signals):
         try:
-            current_time = mtf_data[lowest_tf].index[i]
-            
+            current_time = pd.Timestamp(mtf_data[lowest_tf].index[i])
+
             # Align data at this timestamp
             aligned_data = loader.align_at_timestamp(mtf_data, current_time, lowest_tf)
             
@@ -201,8 +202,8 @@ def analyze_setup_period(
                         'timestamp': str(current_time),
                         'state': setup_state,
                         'alignment_score': float(setup_score),
-                        'context_state': decision.components.get('context').state if decision.components.get('context') else 'unknown',
-                        'regime_state': decision.components.get('regime').state if decision.components.get('regime') else 'unknown'
+                        'context_state': decision.components['context'].state if 'context' in decision.components else 'unknown',
+                        'regime_state': decision.components['regime'].state if 'regime' in decision.components else 'unknown'
                     })
         
         except Exception as e:
@@ -291,7 +292,7 @@ def run_setup_deep_dive(
     pair: str,
     config: Dict,
     output_dir: str,
-    dates: List[datetime] = None
+    dates: "List[datetime] | None" = None
 ) -> Dict:
     """
     Run Setup Deep Dive analysis
