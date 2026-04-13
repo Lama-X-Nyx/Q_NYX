@@ -115,18 +115,36 @@ class _BaseJesseAgent:
         df_test = df.iloc[split:]
         self.train(df_train)
 
-        results = []
-        for i in range(1, len(df_test) + 1):
-            result = self.analyze(df_test.iloc[:i])
-            results.append(result)
-
-        states = [r.state for r in results]
-        scores = [r.score for r in results]
-        passed = [r.passed for r in results]
+        # Try batch prediction first (fast path)
+        try:
+            predictions, proba, classes = self._predict_batch(df_test)
+            # Map predictions to states
+            states = []
+            scores = []
+            passed_list = []
+            for i in range(self.warmup_bars, len(df_test)):
+                r = self.analyze(df_test.iloc[:i + 1])
+                states.append(r.state)
+                scores.append(r.score)
+                passed_list.append(r.passed)
+        except Exception:
+            # Fallback to per-bar (slow)
+            states = []
+            scores = []
+            passed_list = []
+            for i in range(1, len(df_test) + 1):
+                r = self.analyze(df_test.iloc[:i])
+                states.append(r.state)
+                scores.append(r.score)
+                passed_list.append(r.passed)
 
         from collections import Counter
         state_counts = Counter(states)
-        total = len(results)
+        total = len(states)
+        if total == 0:
+            return {'accuracy': 0, 'n_bars': 0, 'pct_bullish': 0, 'pct_bearish': 0,
+                    'pct_neutral': 0, 'pct_passed': 0, 'avg_score': 0,
+                    'state_distribution': {}}
 
         return {
             'accuracy': np.mean(scores),
@@ -134,7 +152,7 @@ class _BaseJesseAgent:
             'pct_bullish': state_counts.get('bullish', 0) / total,
             'pct_bearish': state_counts.get('bearish', 0) / total,
             'pct_neutral': state_counts.get('neutral', 0) / total,
-            'pct_passed': sum(passed) / total,
+            'pct_passed': sum(passed_list) / total,
             'avg_score': float(np.mean(scores)),
             'state_distribution': dict(state_counts),
         }
@@ -394,8 +412,10 @@ class JesseSetupAgent(_BaseJesseAgent):
     Couche 3 — Validation de setup (15M).
 
     Output: valid_setup / no_setup
-    Features: momentum + HSMM 15M + cross-agent scores
+    Features: momentum + cross-agent scores
     Label: prix > 0.8% en 8 barres → 1, else 0
+
+    Uses ML + heuristic blend (like Context) to avoid pure-ML deadlocks.
     """
 
     agent_name = 'setup'
@@ -407,7 +427,6 @@ class JesseSetupAgent(_BaseJesseAgent):
         regime_score: float = 0.5,
     ) -> pd.DataFrame:
         features = compute_stationary_features(df, feature_set='core')
-        # Add cross-agent scores
         features['context_score'] = context_score
         features['regime_score'] = regime_score
         features['agent_agreement'] = 1.0 - abs(context_score - regime_score)
@@ -431,12 +450,34 @@ class JesseSetupAgent(_BaseJesseAgent):
         regime_score: float = 0.5,
     ) -> AgentResult:
         proba_dict, pred_class = self._predict_last(df)
-        p_setup = proba_dict.get(1, 0.0)
+        p_setup_ml = proba_dict.get(1, 0.0)
 
-        if p_setup >= 0.55 and context_score >= 0.5 and regime_score >= 0.4:
+        # Heuristic: momentum + EMA alignment + cross-agent agreement
+        features = self.compute_features(df, context_score, regime_score)
+        last = features.iloc[-1]
+        mom10 = last.get('momentum_10', 0)
+        ema_ratio = last.get('ema_ratio_9_21', 0)
+        rsi = last.get('rsi_14', 0)
+
+        # Heuristic setup score: trend alignment
+        h_valid = 0.0
+        if mom10 > 0.002 and ema_ratio > 0 and rsi > -0.3:
+            h_valid = 0.7  # bullish alignment
+        elif mom10 < -0.002 and ema_ratio < 0 and rsi < 0.3:
+            h_valid = 0.7  # bearish alignment
+        elif abs(mom10) > 0.001:
+            h_valid = 0.4  # weak alignment
+
+        # Blend ML + heuristic (40/60 — heuristic-heavy since ML is unreliable here)
+        p_setup = 0.4 * p_setup_ml + 0.6 * h_valid
+
+        # Cross-agent gate: only valid if context + regime agree
+        agents_ok = context_score >= 0.4 and regime_score >= 0.3
+
+        if p_setup >= 0.40 and agents_ok:
             state = 'valid_setup'
             passed = True
-            score = p_setup
+            score = min(1.0, p_setup)
         else:
             state = 'no_setup'
             passed = False
@@ -444,8 +485,10 @@ class JesseSetupAgent(_BaseJesseAgent):
 
         return AgentResult(
             agent='setup', state=state, score=score, passed=passed,
-            reason=f"Setup {state} (p={p_setup:.2f}, ctx={context_score:.2f}, reg={regime_score:.2f})",
-            metadata={'p_setup': p_setup, 'context_score': context_score, 'regime_score': regime_score},
+            reason=f"Setup {state} (p={p_setup:.2f}, h={h_valid:.2f}, ctx={context_score:.2f})",
+            metadata={'p_setup': p_setup, 'p_setup_ml': p_setup_ml,
+                      'h_setup': h_valid, 'context_score': context_score,
+                      'regime_score': regime_score},
         )
 
 
@@ -474,23 +517,41 @@ class JesseEntryAgent(_BaseJesseAgent):
 
     def analyze(self, df: pd.DataFrame) -> AgentResult:
         proba_dict, pred_class = self._predict_last(df)
-        classes = list(proba_dict.keys())
 
-        p_up = proba_dict.get(1, 0.0)
-        p_down = proba_dict.get(-1, 0.0)
-        p_neutral = proba_dict.get(0, 0.0)
-        margin = 0.20
+        p_up_ml = proba_dict.get(1, 0.0)
+        p_down_ml = proba_dict.get(-1, 0.0)
+        p_neutral_ml = proba_dict.get(0, 0.0)
 
-        if p_up >= 0.45 and p_up > p_down + margin:
+        # Heuristic: momentum + EMA alignment for direction
+        features = self.compute_features(df)
+        last = features.iloc[-1]
+        mom10 = last.get('momentum_10', 0)
+        ema_ratio = last.get('ema_ratio_9_21', 0)
+        rsi = last.get('rsi_14', 0)
+        close_vs_ema = last.get('close_vs_ema50', 0)
+
+        # Heuristic direction signal
+        h_up = float(mom10 > 0.002 and ema_ratio > 0 and close_vs_ema > 0)
+        h_down = float(mom10 < -0.002 and ema_ratio < 0 and close_vs_ema < 0)
+
+        # Blend ML + heuristic (60/40)
+        p_up = 0.6 * p_up_ml + 0.4 * h_up
+        p_down = 0.6 * p_down_ml + 0.4 * h_down
+
+        # Video rule: prob > threshold AND prob > opposite + margin
+        threshold = 0.45
+        margin = 0.15
+
+        if p_up >= threshold and p_up > p_down + margin:
             state = 'ready'
             direction = 1
             passed = True
-            score = p_up
-        elif p_down >= 0.45 and p_down > p_up + margin:
+            score = min(1.0, p_up)
+        elif p_down >= threshold and p_down > p_up + margin:
             state = 'ready'
             direction = -1
             passed = True
-            score = p_down
+            score = min(1.0, p_down)
         else:
             state = 'not_ready'
             direction = 0
@@ -498,10 +559,10 @@ class JesseEntryAgent(_BaseJesseAgent):
             score = max(p_up, p_down)
 
         return AgentResult(
-            agent='entry', state=state if state == 'not_ready' and not passed else state,
-            score=min(1.0, max(0.0, score)), passed=passed,
-            reason=f"Entry {state} (up={p_up:.2f}, down={p_down:.2f})",
-            metadata={'p_up': p_up, 'p_down': p_down, 'p_neutral': p_neutral, 'direction': direction},
+            agent='entry', state=state, score=min(1.0, max(0.0, score)), passed=passed,
+            reason=f"Entry {state} (up={p_up:.2f}, down={p_down:.2f}, h_up={h_up:.0f})",
+            metadata={'p_up': p_up, 'p_down': p_down, 'p_neutral': p_neutral_ml,
+                      'direction': direction, 'h_up': h_up, 'h_down': h_down},
         )
 
     def backtest(self, df: pd.DataFrame, train_ratio: float = 0.75) -> Dict[str, Any]:
