@@ -154,7 +154,7 @@ class JesseContextAgent(_BaseJesseAgent):
     """
 
     agent_name = 'context'
-    warmup_bars = 60  # EMA50 + RSI14 convergence on daily
+    warmup_bars = 30  # Use momentum_60 max, but 30 bars sufficient for 5/20
 
     def compute_features(self, df: pd.DataFrame) -> pd.DataFrame:
         close = df['close'].values.astype(float)
@@ -166,8 +166,8 @@ class JesseContextAgent(_BaseJesseAgent):
         features = pd.DataFrame(index=df.index)
 
         # Momentum ratios: (close - close[N]) / close[N]
-        # Use 5/20/60 for daily (200 needs too much warmup)
-        for lookback in [5, 20, 60]:
+        # Use 5/10/20 for daily (60+ needs too much warmup for short datasets)
+        for lookback in [5, 10, 20]:
             shifted = np.roll(close, lookback)
             shifted[:lookback] = np.nan
             with np.errstate(divide='ignore', invalid='ignore'):
