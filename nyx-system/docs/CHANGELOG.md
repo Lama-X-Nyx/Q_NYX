@@ -1,6 +1,6 @@
 # Changelog
 
-## [2.5.0] — 2026-04-13
+## [0.2.5] — 2026-04-13
 
 ### Ajouté
 - **Jesse ML Pipeline** : 15 modules Python, architecture 5 agents Jesse
@@ -18,7 +18,7 @@
 
 ### Modifié
 - **COMPLETE_ARCHITECTURE_SUMMARY.md** : section Jesse + 200 tests + prochaines étapes
-- **README.md** : refonte complète pour v2.5.0
+- **README.md** : refonte complète pour v0.2.5
 - **src/ml/__init__.py** : imports protégés (try/except pour lightgbm/river)
 - **Pyright** : 428 erreurs corrigées sur 48 fichiers
 

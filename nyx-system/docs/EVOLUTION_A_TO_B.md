@@ -149,7 +149,7 @@ Les features clés : buy_pressure, vol_surprise, volume_spike, amihud_z.
 
 ---
 
-## Point B — NYX v2.5.0 (Avril 2026)
+## Point B — NYX v0.2.5 (Avril 2026)
 
 ### Ce qu'on a maintenant
 

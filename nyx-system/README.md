@@ -1,4 +1,4 @@
-# NYX Trading System v2.5.0
+# NYX Trading System v0.2.5
 
 Système de trading algorithmique institutionnel — BTC/USDT perpetual futures.
 Décisions sur barres 15M avec contexte MTF aligné (1D / 4H / 1H / 15M).
@@ -9,7 +9,7 @@ Décisions sur barres 15M avec contexte MTF aligné (1D / 4H / 1H / 15M).
 
 ## Ce qui a changé depuis v0.8
 
-| Aspect | v0.8 | v2.5.0 |
+| Aspect | v0.8 | v0.2.5 |
 |--------|------|--------|
 | Architecture | 5 agents LightGBM (non entraînés) | 5 agents Jesse ML + soft gate + ML filter |
 | Edge | Aucun (pass-through heuristique) | Trend + Volume >3x, validé 14/14 quarters |
@@ -68,7 +68,7 @@ python scripts/backtest_mtf.py --start 2023-01-01 --end 2023-04-01 --precompute
 
 ## Architecture
 
-### Pipeline de décision (v2.5.0)
+### Pipeline de décision (v0.2.5)
 
 ```
                     EDGE (trend + volume > 3x + heures 8-18)

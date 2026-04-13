@@ -1,4 +1,4 @@
-# NYX Trading System v2.5.0 — Architecture Complète
+# NYX Trading System v0.2.5 — Architecture Complète
 
 > Mise à jour : 13 Avril 2026 — 200 tests TDD GREEN, edge validé walk-forward
 
