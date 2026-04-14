@@ -132,6 +132,48 @@ errors are silenced at the config level; real bug detectors stay ON:
 
 ---
 
+## Rule 7 — Always read session context FIRST
+
+Before writing any code in a new session, the operator (human or AI)
+MUST, in order:
+
+1. Read `docs/BRANCH_STORY.md` — the current state of the branch
+2. Read `docs/OPERATING_RULES.md` — the permanent rules (this file)
+3. Run `git log --oneline origin/main..HEAD` — see what is already built
+4. If a plan file is loaded (plan mode), read it entirely
+5. Read any "current work" or "session summary" in the prompt
+
+Only then propose a direction.
+
+**Never build in parallel to existing work without acknowledging it.**
+
+### Why
+
+An earlier session on this branch created `src/paper_live/*`,
+`src/assets/*`, hub-and-spoke, and reality-check layers — all tested
+in isolation — without realising that `NYXPipeline` (the actual core
+engine, also built on this branch) already existed and was producing
+every A/B/C / walk-forward number. The result was two parallel
+universes with no integration bridge. The lesson is codified here so
+it cannot silently happen again.
+
+### Enforcement
+
+- `tests/test_operating_rules.py` asserts every rule header is present
+  and ordered. Removing Rule 7 breaks CI.
+- `docs/BRANCH_STORY.md` is updated at the end of every significant
+  change so future sessions see the real state.
+
+### How to add a new rule without breaking this
+
+1. Append the new rule as `## Rule N — …` at the bottom, before the
+   "Permanent guardrail tests" section.
+2. Add a `test_rule_N_*` test in `tests/test_operating_rules.py` that
+   asserts presence of the header + canonical marker phrase.
+3. Run `pytest tests/test_operating_rules.py`. Must be GREEN.
+
+---
+
 ## Permanent guardrail tests
 
 These must stay GREEN on every CI run. Breaking any of them blocks
