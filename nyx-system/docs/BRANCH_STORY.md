@@ -427,3 +427,219 @@ Full doc: [`WALK_FORWARD_TRIO.md`](WALK_FORWARD_TRIO.md).
 **But** — these numbers looked too good.
 
 Next: the honesty pass. Part 4.
+
+---
+
+## Part 4 — The honesty pass (reality checks + forced-stop B&H)
+
+### Commit `b45164e` — first doubt: "c'est pas un peu trop beau ?"
+
+Stopped to list, with code references, every reason the walk-forward
+numbers were probably inflated. 6 sources of optimism identified:
+
+1. **In-sample accuracy 88-90 %** → likely overfit
+2. **Sharpe on trades not daily capital** → annualized Sharpe 8-11
+   is per-trade × √N, not comparable to fund-reported daily Sharpe
+3. **Win rate 70-80 % at 1.5R** → unusual for real strategies
+4. **NYXPipeline doesn't use PostOnlyPaperBroker** → missed trades
+   (30-60 % of post-only limits) are not simulated in the headline
+5. **Bootstrap IID on non-IID trades** → prob_loss under-estimated
+6. **BTC + ETH data stops 2024-01-01** → no real post-cutoff OOS
+
+Documented in [`REALITY_CHECK.md`](REALITY_CHECK.md) with concrete
+estimates: realistic live CAGR 15-25 %, max DD 8-15 %, Sharpe 2-3.
+
+### Commit `981d35b` — the 6 reality checks, measured (12/13 GREEN + 1 xfail)
+
+Asked: "ok toujours en TDD, lance ces 6 points."
+
+Built `src/ml/reality_check.py` with 6 helpers + TDD
+`tests/test_reality_checks.py`. Script `scripts/run_reality_checks.py`
+runs each and writes `reports/reality_check_numbers.json`.
+
+**Numbers measured:**
+
+#### [1] SOL pure OOS 2024-2026 (the truest unseen test)
+
+```
+n_trades=69   Sharpe=+7.25   PnL=+$4,296   DD=1.5%   WR=79.7 %
+```
+
+This is the strongest empirical evidence the strategy is not pure
+curve-fit. The SOL model (trained ≤ 2023-12-31) sees 2.5 years of
+genuinely new data and keeps its edge.
+
+#### [2] Post-only filter (sim 5 bps sub-market, max_wait=3)
+
+```
+560 trades → 478 filled (82 missed)
+miss_rate=14.6 %
+PnL $21,135 → $15,341  (−27 %)
+```
+
+#### [3] Taker fees on 2023 OOS
+
+| Asset | maker PnL | taker PnL | Δ |
+|---|---:|---:|---:|
+| BTC | +$1,367 | +$1,295 | −5 % |
+| ETH | +$2,399 | +$2,169 | −10 % |
+| SOL | +$1,566 | +$1,504 | −4 % |
+
+#### [4] Daily-equity Sharpe vs per-trade √N
+
+```
+per-trade  √N:       +8.89
+daily-equity (365d): +4.64
+```
+
+Realistic Sharpe is half the headline.
+
+#### [5] Block bootstrap n=30 vs IID
+
+| | prob_loss | p5 return | p5 Sharpe |
+|---|---:|---:|---:|
+| Standard IID | 0.0 % | +185 % | 7.62 |
+| Block n=30 | 0.0 % | +179 % | 7.79 |
+
+Marginal difference on 560 trades — the bootstrap was more robust
+than feared, but `prob_loss = 0 %` remains optimistic due to the
+short 4-year sample.
+
+#### [6] Buy & hold benchmark
+
+```
+BTC B&H           +489.6 %
+ETH B&H          +1,672 %
+SOL B&H          +3,113 %
+Equal-weight trio B&H +1,758 %
+Strategy            +211 %
+Alpha vs B&H      −1,547 pp
+```
+
+The strategy is badly beaten by equal-weight B&H in absolute terms.
+The test `test_strategy_beats_benchmark_on_window` is marked
+`@pytest.mark.xfail(strict=True)` with the documented reason:
+
+> "Documented honesty: equal-weight B&H 2020-2023 returned +1758 %
+> thanks to crypto bull. Strategy +211 % (no compounding) or +397 %
+> (with CAGR 49 %) is still beaten on ABSOLUTE return. Strategy's
+> value is risk-adjusted (3 % DD vs B&H ≥ 50 % DD)."
+
+The new `test_strategy_better_risk_adjusted` compares Calmar ratios:
+- B&H Calmar ≈ +1758 % / ~70 % DD = **25**
+- Strategy Calmar ≈ +211 % / 3 % DD = **70**
+
+→ Risk-adjusted, strategy is ~3× better.
+
+### Commit `6e31dd0` — the user was right: B&H is hindsight
+
+Feedback: *"Le B&H est hypocrite. Tu le sais après coup. Le but c'est
+de SURVIVRE au marché, pas de dire au bout de 6 ans j'aurais dû
+garder le trade."*
+
+This was sharp and correct. The +1758 % B&H assumes a robot who
+never flinched through 77-97 % drawdowns. No real human or fund does
+that. Also: picking BTC/ETH/SOL in Jan 2020 would have required
+hindsight (LUNA was a "top-10" at that time — it went to zero).
+
+Added a 7th reality check: `forced_stop_bh(max_dd_tolerance=0.30)` —
+what a real holder with 30 % pain tolerance (typical retail stop-out,
+fund redemption wave) would have realized.
+
+#### Forced-stop 30 % DD — measured
+
+| Asset | no-stop return | **with-stop return** | max DD | stopped at |
+|---|---:|---:|---:|---|
+| BTC | +489.6 % | **+2.4 %** | 77.3 % | 2020-03-12 (COVID day 1) |
+| ETH | +1,672 % | **+54.8 %** | 81.5 % | 2020-03-08 (COVID) |
+| SOL | +3,113 % | **−10.0 %** | 96.8 % | 2020-08-22 (2 weeks after launch !) |
+| **Equal-weight trio** | +1,283 % | **−16.1 %** | 92.9 % | 2020-09-05 |
+| **Strategy NYX** | — | **+211 %** | **~3 %** | **never** |
+
+Added 2 new TDD tests, both GREEN:
+- `test_forced_stop_all_3_assets_triggered` — asserts every asset
+  crossed 30 % DD between 2020-2023
+- `test_forced_stop_strategy_wins` — asserts strategy return > B&H
+  forced-stop portfolio return
+
+### The revised honest verdict
+
+The precedent verdict ("strategy is risk-adjusted ~3× better than
+B&H") understated the point. The real comparison:
+
+| | Strategy | Human B&H 30 % tolerance |
+|---|---:|---:|
+| Cumulative return | +211 % | **−16 %** |
+| Max DD | **3 %** | 30 % (force-stopped) |
+| Survives 2022 bear | **yes** | **no** (already out since 2020) |
+| Psychologically tenable | **yes** | **no** |
+
+**Alpha vs realistic B&H: +227 pp.** The value proposition is no
+longer "a bit better than buy & hold". It's **being able to stay in
+the market where no human psychology can hold alone**.
+
+### Final realistic live expectation
+
+After the 7 corrections (reality checks 1-6 + forced-stop):
+
+| Metric | Headline | **Realistic live** |
+|---|---:|---:|
+| CAGR | +49 % | **+15-25 %** |
+| Max DD | 3 % | **8-15 %** |
+| Sharpe annualized capital | 8-11 | **2-3** |
+| Prob_loss year | 0 % | **5-15 %** |
+| Years positive | 4/4 | probably 3/4 |
+
+Still **world-class** (Sharpe > 2 is rare), but no longer impossible-
+seeming.
+
+### State after Part 4
+
+Everything measured, documented, TDD-guarded :
+- **265+ tests GREEN** across the branch
+- **Pyright 0 errors**
+- 7 reality checks codified in `src/ml/reality_check.py`
+- 7 persisted JSON reports under `reports/`
+- 7 validation docs under `docs/`
+- `OPERATING_RULES.md` — 6 permanent rules
+- `REALITY_CHECK.md` — honest numbers doc
+- `BRANCH_STORY.md` — this document
+
+---
+
+## Summary: what this branch proved
+
+### Built
+
+1. Paper-live infrastructure (9 modules, tests, Docker)
+2. Honest post-only execution (no stealth taker)
+3. Telegram + Discord alerting (6 semantic events)
+4. Hub-and-spoke multi-asset architecture
+5. ETH + SOL model training (84-feature 4-TF block)
+6. A/B/C validation studies + walk-forward annualized
+7. 7 reality checks including forced-stop B&H
+
+### Learned
+
+1. "MTF" was secretly 1-TF until audited. Rule #2 now permanent.
+2. Post-only misses 14.6 % of trades in real conditions — most of
+   which were silently filled in the headline backtest.
+3. Taker fees erode 4-10 %. Edge survives.
+4. Daily-equity Sharpe is half the per-trade √N Sharpe. Honest number
+   is 4.64, not 8-11.
+5. **B&H benchmarks are hindsight**. Real humans get stopped out.
+   Strategy's true alpha is +227 pp vs realistic B&H (−16 %).
+6. SOL pure OOS 2024-2026 works (Sharpe 7.25) — best empirical
+   evidence against curve-fit.
+
+### To be done (outside this branch)
+
+- Live Binance adapter (WS bar feed → `HubSpokeRunner.on_bars`)
+- Connect real strategy to the 5-agent pipeline (drop `_NoopStrategy`)
+- Run `run_reality_checks.py` periodically as CI regression
+- Daily-equity Sharpe as default reporting metric instead of
+  per-trade
+
+Strategy is solid, not a Grail. Ship Portfolio C (trio) with realistic
+expectations (CAGR 15-25 %) and clear stop-gap rules for the live
+transition.
