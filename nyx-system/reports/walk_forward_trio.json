@@ -1,0 +1,201 @@
+{
+  "years": [
+    2020,
+    2021,
+    2022,
+    2023
+  ],
+  "initial_capital": 10000.0,
+  "per_year": {
+    "2020": {
+      "composition": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "per_asset": {
+        "BTCUSDT": {
+          "n_candidates": 426,
+          "n_trades": 39,
+          "total_pnl_dollars": 150.03813850866936,
+          "sharpe": 0.397699354487566,
+          "max_drawdown_pct": 0.022467259065297767,
+          "win_rate": 0.5128205128205128
+        },
+        "ETHUSDT": {
+          "n_candidates": 419,
+          "n_trades": 0,
+          "total_pnl_dollars": 0.0,
+          "sharpe": 0.0,
+          "max_drawdown_pct": 0,
+          "win_rate": 0
+        }
+      },
+      "combined": {
+        "n_trades": 39,
+        "total_pnl_dollars": 150.0381385086656,
+        "return_pct": 0.015003813850866573,
+        "sharpe": 1.010934116054038,
+        "max_drawdown_pct": 0.022467259065297947,
+        "win_rate": 0.5128205128205128
+      }
+    },
+    "2021": {
+      "composition": [
+        "BTCUSDT",
+        "ETHUSDT",
+        "SOLUSDT"
+      ],
+      "per_asset": {
+        "BTCUSDT": {
+          "n_candidates": 262,
+          "n_trades": 45,
+          "total_pnl_dollars": 2172.8847467626983,
+          "sharpe": 4.6831141025118646,
+          "max_drawdown_pct": 0.011063304006438927,
+          "win_rate": 0.7333333333333333
+        },
+        "ETHUSDT": {
+          "n_candidates": 250,
+          "n_trades": 52,
+          "total_pnl_dollars": 3158.49638129049,
+          "sharpe": 5.84294855343987,
+          "max_drawdown_pct": 0.01542041750831375,
+          "win_rate": 0.8076923076923077
+        },
+        "SOLUSDT": {
+          "n_candidates": 238,
+          "n_trades": 28,
+          "total_pnl_dollars": 878.2049306770405,
+          "sharpe": 1.8474221418804109,
+          "max_drawdown_pct": 0.034452615399484014,
+          "win_rate": 0.5357142857142857
+        }
+      },
+      "combined": {
+        "n_trades": 125,
+        "total_pnl_dollars": 6209.586058730218,
+        "return_pct": 0.6209586058730215,
+        "sharpe": 10.185397567413498,
+        "max_drawdown_pct": 0.016382001961573283,
+        "win_rate": 0.72
+      }
+    },
+    "2022": {
+      "composition": [
+        "BTCUSDT",
+        "ETHUSDT",
+        "SOLUSDT"
+      ],
+      "per_asset": {
+        "BTCUSDT": {
+          "n_candidates": 417,
+          "n_trades": 78,
+          "total_pnl_dollars": 1837.4239546406152,
+          "sharpe": 3.0826139456235535,
+          "max_drawdown_pct": 0.02831127252364649,
+          "win_rate": 0.6794871794871795
+        },
+        "ETHUSDT": {
+          "n_candidates": 356,
+          "n_trades": 72,
+          "total_pnl_dollars": 3330.0952286721167,
+          "sharpe": 4.975442659998066,
+          "max_drawdown_pct": 0.01734657491695785,
+          "win_rate": 0.7361111111111112
+        },
+        "SOLUSDT": {
+          "n_candidates": 305,
+          "n_trades": 46,
+          "total_pnl_dollars": 2690.4598544399378,
+          "sharpe": 5.093317750721168,
+          "max_drawdown_pct": 0.013372280097981457,
+          "win_rate": 0.7608695652173914
+        }
+      },
+      "combined": {
+        "n_trades": 196,
+        "total_pnl_dollars": 7857.979037752669,
+        "return_pct": 0.7857979037752669,
+        "sharpe": 8.41207625507187,
+        "max_drawdown_pct": 0.03151687104184513,
+        "win_rate": 0.7193877551020408
+      }
+    },
+    "2023": {
+      "composition": [
+        "BTCUSDT",
+        "ETHUSDT",
+        "SOLUSDT"
+      ],
+      "per_asset": {
+        "BTCUSDT": {
+          "n_candidates": 571,
+          "n_trades": 54,
+          "total_pnl_dollars": 2171.1763006467627,
+          "sharpe": 9.964990754048605,
+          "max_drawdown_pct": 0.0037492886985758525,
+          "win_rate": 0.9074074074074074
+        },
+        "ETHUSDT": {
+          "n_candidates": 530,
+          "n_trades": 98,
+          "total_pnl_dollars": 2991.865989862137,
+          "sharpe": 6.087744781385812,
+          "max_drawdown_pct": 0.015015208034567195,
+          "win_rate": 0.7448979591836735
+        },
+        "SOLUSDT": {
+          "n_candidates": 493,
+          "n_trades": 48,
+          "total_pnl_dollars": 1753.9536798123809,
+          "sharpe": 4.207338324725274,
+          "max_drawdown_pct": 0.010229412619710656,
+          "win_rate": 0.7916666666666666
+        }
+      },
+      "combined": {
+        "n_trades": 200,
+        "total_pnl_dollars": 6916.995970321279,
+        "return_pct": 0.691699597032128,
+        "sharpe": 11.370336756549209,
+        "max_drawdown_pct": 0.013156457412694965,
+        "win_rate": 0.8
+      }
+    }
+  },
+  "annualized": {
+    "years_counted": 4,
+    "final_equity": 49704.436355078455,
+    "cagr": 0.49313401193645867,
+    "mean_yearly_return": 0.5283649801328207,
+    "mean_yearly_sharpe": 7.744686173772154,
+    "max_yearly_drawdown": 0.03151687104184513,
+    "years_with_positive_return": 4
+  },
+  "pooled_monte_carlo": {
+    "n_sims": 2000,
+    "n_trades": 560,
+    "pct_profitable": 1.0,
+    "median_return": 2.1134599205312834,
+    "mean_return": 2.113459920531283,
+    "std_return": 1.393018025450689e-15,
+    "ci_5": 2.113459920531281,
+    "ci_95": 2.113459920531285,
+    "dd_median": 0.020473358292287837,
+    "dd_95th": 0.03330225180746465,
+    "dd_max": 0.06656692552074157
+  },
+  "pooled_bootstrap": {
+    "median_return": 2.114336995437461,
+    "median_sharpe": 8.898306544333078,
+    "p5_return": 1.8353831696334073,
+    "p5_sharpe": 7.549149449247991,
+    "dd_p95": 0.038548506126542786,
+    "prob_loss": 0.0,
+    "prob_dd_10": 0.0,
+    "prob_dd_20": 0.0,
+    "losing_streak_p95": 8,
+    "method": "worst-case across standard/block/regime bootstrap"
+  },
+  "n_total_trades": 560
+}
