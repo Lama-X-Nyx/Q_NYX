@@ -1,0 +1,30 @@
+services:
+  nyx-paper-live:
+    build:
+      context: ..
+      dockerfile: nyx-system/Dockerfile
+    image: nyx-paper-live:latest
+    container_name: nyx-paper-live
+    restart: unless-stopped
+    environment:
+      - TZ=UTC
+      - NYX_PAIR=${NYX_PAIR:-BTCUSDT}
+      - NYX_MODEL_VERSION=${NYX_MODEL_VERSION:-v0.3.2}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - BINANCE_API_KEY=${BINANCE_API_KEY:-}
+      - BINANCE_API_SECRET=${BINANCE_API_SECRET:-}
+    volumes:
+      - ./storage:/app/nyx-system/storage
+      - ./logs:/app/nyx-system/logs
+    healthcheck:
+      test: ["CMD", "python", "-c", "from src.paper_live.heartbeat import Heartbeat; import sys; sys.exit(0 if Heartbeat('/app/nyx-system/storage/heartbeat.json').is_alive(300) else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
