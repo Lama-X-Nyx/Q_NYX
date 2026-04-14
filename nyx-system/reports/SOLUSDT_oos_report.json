@@ -1,0 +1,20 @@
+{
+  "symbol": "SOLUSDT",
+  "training": {
+    "symbol": "SOLUSDT",
+    "train_end": "2022-12-31",
+    "n_train_candidates": 727,
+    "n_features": 67,
+    "in_sample_accuracy": 0.9009628610729024,
+    "positive_class_rate": 0.4016506189821183
+  },
+  "oos_2023": {
+    "n_candidates": 493,
+    "n_trades": 43,
+    "sharpe": 3.6579818339120544,
+    "total_pnl_dollars": 1566.0359913629582,
+    "max_drawdown_pct": 0.010229412619710632,
+    "execution_reject_rate": 0,
+    "bear_dial_activation_rate": 0.4300202839756592
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "symbol": "SOLUSDT",
+  "train_end": "2022-12-31",
+  "n_train_candidates": 727,
+  "n_features": 67,
+  "in_sample_accuracy": 0.9009628610729024,
+  "positive_class_rate": 0.4016506189821183
+}
