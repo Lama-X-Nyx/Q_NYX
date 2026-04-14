@@ -1,0 +1,98 @@
+{
+  "years": [
+    2022,
+    2023
+  ],
+  "per_year": {
+    "2022": {
+      "precomputed_per_asset": {
+        "BTCUSDT": 78,
+        "ETHUSDT": 72,
+        "SOLUSDT": 46
+      },
+      "approved_trades": [
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-01-02T16:45:00",
+          "conviction": 0.8575920100583315,
+          "edge_net": 45.15482107688455
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.010737770526570056,
+          "cluster_group": "alts",
+          "timestamp": "2022-01-05T17:45:00",
+          "conviction": 0.883549450697155,
+          "edge_net": 65.67168071159749
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-01-05T18:00:00",
+          "conviction": 0.7939733590559079,
+          "edge_net": 62.874206125663065
+        }
+      ],
+      "n_approved": 3,
+      "approved_per_asset": {
+        "BTCUSDT": 1,
+        "ETHUSDT": 1,
+        "SOLUSDT": 1
+      }
+    },
+    "2023": {
+      "precomputed_per_asset": {
+        "BTCUSDT": 54,
+        "ETHUSDT": 98,
+        "SOLUSDT": 48
+      },
+      "approved_trades": [
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.0144,
+          "cluster_group": "alts",
+          "timestamp": "2023-01-02T07:15:00",
+          "conviction": 0.6666918972536229,
+          "edge_net": 72.05871005693383
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.00877678374376072,
+          "cluster_group": "alts",
+          "timestamp": "2023-01-08T15:00:00",
+          "conviction": 0.8423623934847909,
+          "edge_net": 9.993350411813257
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2023-01-13T15:00:00",
+          "conviction": 0.770222786569611,
+          "edge_net": 59.36313060177542
+        }
+      ],
+      "n_approved": 3,
+      "approved_per_asset": {
+        "BTCUSDT": 1,
+        "ETHUSDT": 1,
+        "SOLUSDT": 1
+      }
+    }
+  },
+  "aggregate": {
+    "total_precomputed_trades": 396,
+    "total_approved_trades": 6,
+    "allocator_reduction_pct": 0.9848484848484849
+  },
+  "note": "Trades precomputed by NYXPipeline.run() direct, then filtered through HubSpokeRunner + PortfolioAllocator. approved = the subset that would actually trade under max_total_risk=0.04, max_asset_risk=0.015, max_cluster_risk={alts: 0.02}, max_open_positions=2."
+}

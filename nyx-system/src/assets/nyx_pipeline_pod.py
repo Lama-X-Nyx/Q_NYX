@@ -112,15 +112,21 @@ class NYXPipelinePod:
 
         ml_score = float(trade.get('ml_score', 0.5))
         size_factor = float(trade.get('size_factor', 1.0))
-        # Outcome_net is in price units; keep only sign + magnitude for edge.
-        edge_net_pts = float(trade.get('outcome_net', 0.0))
+        # NYXPipeline stores the realised net PnL under 'net_pnl' (dollars).
+        # A forward decider cannot see the outcome's sign — at emission
+        # time it only has the ML proba (ml_score). We therefore use
+        # |net_pnl| as a proxy for the MAGNITUDE of expected edge for
+        # ranking purposes, and let the downstream broker record the
+        # actual outcome after replay.
+        edge_net_abs = abs(float(trade.get('net_pnl',
+                                             trade.get('outcome_net', 0.0))))
 
         return Signal(
             symbol=self.symbol,
             timestamp=ts_iso,
             direction=direction,
             conviction=max(0.0, min(1.0, ml_score)),
-            expected_edge_net=edge_net_pts,
+            expected_edge_net=edge_net_abs,
             maker_viability=0.7,  # default; NYXPipeline uses maker execution
             regime_tag='bull' if direction > 0 else 'bear' if direction < 0 else 'range',
             bull_bear_tag='bull' if direction > 0 else 'bear' if direction < 0 else 'range',
