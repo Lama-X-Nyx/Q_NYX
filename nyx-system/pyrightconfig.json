@@ -1,0 +1,34 @@
+{
+  "include": [
+    "src",
+    "tests",
+    "scripts"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "**/.pytest_cache",
+    "**/node_modules",
+    "dashboard",
+    "storage",
+    "logs",
+    "data",
+    "reports"
+  ],
+  "typeCheckingMode": "basic",
+  "useLibraryCodeForTypes": true,
+  "reportMissingImports": "warning",
+  "reportMissingTypeStubs": "none",
+  "reportArgumentType": "none",
+  "reportAttributeAccessIssue": "none",
+  "reportAssignmentType": "none",
+  "reportCallIssue": "none",
+  "reportIndexIssue": "warning",
+  "reportOperatorIssue": "warning",
+  "reportOptionalSubscript": "error",
+  "reportOptionalMemberAccess": "error",
+  "reportPossiblyUnboundVariable": "error",
+  "reportReturnType": "warning",
+  "reportUnboundVariable": "error",
+  "reportUndefinedVariable": "error",
+  "pythonVersion": "3.11"
+}

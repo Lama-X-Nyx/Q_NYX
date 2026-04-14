@@ -15,10 +15,11 @@ Feature groups:
 """
 import numpy as np
 import pandas as pd
-from typing import Optional
+from typing import Any, Optional
 
+ta: Any = None
 try:
-    import jesse.indicators as ta  # type: ignore[import-untyped]
+    import jesse.indicators as ta  # type: ignore[import-untyped,no-redef]
     _JESSE_AVAILABLE = True
 except ImportError:
     _JESSE_AVAILABLE = False
@@ -207,11 +208,13 @@ def compute_stationary_features(
 
     features = pd.DataFrame(index=df.index)
 
+    # Precompute Jesse candle format once if available
+    candles: Optional[np.ndarray] = _to_jesse_candles(df) if _JESSE_AVAILABLE else None
+
     # ---------------------------------------------------------------
     # TREND features — EMA ratios
     # ---------------------------------------------------------------
     if _JESSE_AVAILABLE:
-        candles = _to_jesse_candles(df)
         ema9 = ta.ema(candles, 9)
         ema21 = ta.ema(candles, 21)
         ema50 = ta.ema(candles, 50)
@@ -283,7 +286,7 @@ def compute_stationary_features(
     if _JESSE_AVAILABLE:
         macd_result = ta.macd(candles, 12, 26, 9)
         # Jesse returns (macd_line, signal, histogram) or similar
-        if isinstance(macd_result, tuple):
+        if isinstance(macd_result, tuple) and len(macd_result) > 0:
             macd_hist = macd_result[2] if len(macd_result) > 2 else macd_result[0]
         else:
             macd_hist = np.zeros(n)

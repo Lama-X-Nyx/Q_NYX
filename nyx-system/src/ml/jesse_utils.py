@@ -9,10 +9,11 @@ Key functions from Jesse used in Q_NYX:
   - anchor_timeframe: Map lower to higher TF
 """
 import numpy as np
-from typing import Optional
+from typing import Any, Optional
 
+jesse_utils: Any = None
 try:
-    from jesse import utils as jesse_utils  # type: ignore[import-untyped]
+    from jesse import utils as jesse_utils  # type: ignore[import-untyped,no-redef]
     _JESSE_AVAILABLE = True
 except ImportError:
     _JESSE_AVAILABLE = False

@@ -176,7 +176,7 @@ class MLTradeFilter:
 
     def predict_proba(self, features: Dict[str, float]) -> float:
         """Return P(profitable) for a candidate."""
-        if not self.is_trained or self._model is None:
+        if not self.is_trained or self._model is None or self._scaler is None:
             return 0.5
         x = np.array([[features.get(f, 0.0) for f in self._feature_names]])
         x = np.nan_to_num(x, nan=0.0, posinf=10.0, neginf=-10.0)

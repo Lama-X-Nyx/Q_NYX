@@ -162,6 +162,8 @@ class TestBearBootstrapImproved:
         from src.ml.bootstrap import standard_bootstrap
 
         # Collect bear trades for both
+        static_trades: list = []
+        adaptive_trades: list = []
         for Pipe, label in [(NYXPipeline, 'static'), (AdaptiveNYXPipeline, 'adaptive')]:
             pipe = Pipe()
             r = pipe.run(mtf_data, mtf_features,

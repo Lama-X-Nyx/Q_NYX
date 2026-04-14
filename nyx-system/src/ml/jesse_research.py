@@ -22,8 +22,9 @@ from sklearn.metrics import (
 )
 from sklearn.ensemble import RandomForestClassifier
 
+jesse_train_model: Any = None
 try:
-    from jesse.research.ml import train_model as jesse_train_model  # type: ignore[import-untyped]
+    from jesse.research.ml import train_model as jesse_train_model  # type: ignore[import-untyped,no-redef]
     _JESSE_AVAILABLE = True
 except ImportError:
     _JESSE_AVAILABLE = False

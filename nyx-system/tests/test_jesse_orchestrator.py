@@ -102,6 +102,7 @@ class TestOrchestratorSizing:
         stp = make_agent_result('setup', 'valid_setup', 0.8, True, p_setup=0.8, context_score=0.9, regime_score=0.85)
         ent = make_agent_result('entry', 'ready', 0.9, True, p_up=0.85, p_down=0.05, p_neutral=0.1, direction=1)
         decision = orch.decide(ctx, reg, stp, ent)
+        assert decision.risk_analysis is not None
         assert decision.risk_analysis['size_factor'] == 1.5
 
     def test_low_score_gets_0_75x(self):
@@ -113,6 +114,7 @@ class TestOrchestratorSizing:
         stp = make_agent_result('setup', 'valid_setup', 0.55, True, p_setup=0.55, context_score=0.55, regime_score=0.5)
         ent = make_agent_result('entry', 'ready', 0.5, True, p_up=0.5, p_down=0.2, p_neutral=0.3, direction=1)
         decision = orch.decide(ctx, reg, stp, ent)
+        assert decision.risk_analysis is not None
         assert decision.risk_analysis['size_factor'] == 0.75
 
     def test_components_preserved(self):
