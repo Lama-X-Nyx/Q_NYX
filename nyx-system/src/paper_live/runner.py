@@ -1,17 +1,22 @@
 """
 PaperLiveRunner — wires every paper-live component into one object.
 
-Flow per bar:
-  1. DataValidator.validate(bar)          — reject corrupt / stale input
-  2. broker.on_bar(pair, bar)              — advance open orders
-  3. strategy.decide(pair, bar)            — produce action + agent results
-  4. DecisionLogger.log(...)               — durable SQLite append
-  5. StateManager.save(...)                — atomic state snapshot
-  6. Heartbeat.tick(...)                   — liveness
-  7. events.<semantic event>               — Telegram + Discord fan-out
+Execution semantics (honest):
+  - Strategy emits `order_intent = {side, qty, limit_price, mark_price}` with
+    every BUY / SELL decision.
+  - Runner places the intent via `PostOnlyPaperBroker.place_post_only()`.
+  - If the intent crosses the spread at placement → REJECTED → missed log.
+  - If it posts but does not fill within `max_wait_bars` → TIMED_OUT → missed log.
+  - Only FILLED orders count as actual trades.
+  - Every REJECTED/TIMED_OUT emits an `order_unfilled` event (Telegram+Discord).
 
-Any unhandled exception in strategy.decide produces an `api_error` event
-and is re-raised so upstream can restart the process.
+Every bar also:
+  - validates the bar (DataValidator)
+  - advances posted orders (broker.on_bar)
+  - runs strategy.decide
+  - persists the decision (PersistentDecisionLogger)
+  - saves state (StateManager)
+  - ticks heartbeat
 """
 from __future__ import annotations
 
@@ -19,13 +24,14 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Protocol, Union
 
-from .broker import MakerFirstBroker
 from .data_validator import DataValidator, DataValidationError
 from .decision_logger import PersistentDecisionLogger
 from .discord_alerter import DiscordAlerter
 from .event_alerter import EventAlerter
 from .heartbeat import Heartbeat
+from .missed_trade_logger import MissedTradeLogger
 from .multi_alerter import MultiAlerter
+from .post_only_broker import OrderState, PostOnlyPaperBroker
 from .state_manager import StateManager
 from .telegram_alerter import TelegramAlerter
 
@@ -38,7 +44,7 @@ class Strategy(Protocol):
 
 
 class PaperLiveRunner:
-    """End-to-end paper-live orchestrator."""
+    """End-to-end paper-live orchestrator with honest post-only execution."""
 
     def __init__(
         self,
@@ -46,6 +52,7 @@ class PaperLiveRunner:
         db_path: Union[str, Path],
         state_path: Union[str, Path],
         heartbeat_path: Union[str, Path],
+        missed_db_path: Optional[Union[str, Path]] = None,
         telegram_token: Optional[str] = None,
         telegram_chat: Optional[str] = None,
         discord_webhook: Optional[str] = None,
@@ -54,14 +61,20 @@ class PaperLiveRunner:
     ):
         self.strategy = strategy
         self.model_version = model_version
+        self.max_wait_bars = max_wait_bars
 
         self.validators: Dict[str, DataValidator] = {}
-        self.broker = MakerFirstBroker(max_wait_bars=max_wait_bars)
+        self.broker = PostOnlyPaperBroker(max_wait_bars=max_wait_bars)
         self.decision_logger = PersistentDecisionLogger(db_path)
         self.state_manager = StateManager(state_path)
         self.heartbeat = Heartbeat(heartbeat_path)
 
-        # Build alerter fan-out (Telegram + Discord, either may be disabled).
+        # Missed-trade log defaults next to the decisions DB.
+        if missed_db_path is None:
+            missed_db_path = Path(db_path).with_name("missed_trades.db")
+        self.missed_logger = MissedTradeLogger(missed_db_path)
+
+        # Alerter fan-out (Telegram + Discord).
         telegram = TelegramAlerter(
             token=telegram_token, chat_id=telegram_chat, cooldown_s=60.0,
         )
@@ -78,8 +91,9 @@ class PaperLiveRunner:
         self.positions: Dict[str, dict] = {}
         self._load_warm_state()
 
-        # Track orders already "alerted as unfilled" so we don't spam.
-        self._alerted_taker_oids: set = set()
+        # Track which oids we have already recorded as missed so we never
+        # double-log or double-alert.
+        self._logged_missed_oids: set = set()
 
         self.bars_processed = 0
 
@@ -89,7 +103,6 @@ class PaperLiveRunner:
             st = self.state_manager.load()
         except Exception as e:
             log.warning("warm restart failed: %s", e)
-            # events not built yet? At this point yes, constructor built it first.
             try:
                 self.events.api_error(f"warm restart failed: {e}")
             except Exception:
@@ -113,24 +126,40 @@ class PaperLiveRunner:
         return self.validators[pair]
 
     # ------------------------------------------------------------------
-    def _alert_unfilled_orders(self, pair: str) -> None:
-        """Emit `order_unfilled` for any order that just became a taker fill
-        (i.e. the limit aged out and the broker crossed the spread)."""
-        for oid, order in self.broker._orders.items():
-            if oid in self._alerted_taker_oids:
-                continue
-            if not order.fills:
-                continue
-            last = order.fills[-1]
-            if last.get('role') == 'taker' and order.bars_waited >= self.broker.max_wait_bars:
-                self.events.order_unfilled(
-                    oid=oid,
-                    pair=pair,
-                    side=order.side,
-                    price=order.limit_price,
-                    waited_bars=order.bars_waited,
-                )
-                self._alerted_taker_oids.add(oid)
+    def _handle_missed(self, order) -> None:
+        """Persist + alert once for any REJECTED / TIMED_OUT order."""
+        if order.oid in self._logged_missed_oids:
+            return
+        if order.state not in (OrderState.REJECTED, OrderState.TIMED_OUT):
+            return
+
+        self.missed_logger.log({
+            'oid': order.oid,
+            'pair': order.pair,
+            'side': order.side,
+            'qty': order.qty,
+            'limit_price': order.limit_price,
+            'mark_price': order.mark_price_at_placement,
+            'placed_at': order.placed_at,
+            'final_state': order.state.value,
+            'reason': order.reject_reason or order.timeout_reason or '',
+            'bars_waited': order.bars_waited,
+            'timed_out_at': order.timed_out_at,
+        })
+
+        self.events.order_unfilled(
+            oid=order.oid,
+            pair=order.pair,
+            side=order.side,
+            price=order.limit_price,
+            waited_bars=order.bars_waited,
+        )
+        self._logged_missed_oids.add(order.oid)
+
+    def _sweep_missed(self) -> None:
+        """Check every REJECTED/TIMED_OUT order and record if new."""
+        for order in self.broker.all_orders():
+            self._handle_missed(order)
 
     # ------------------------------------------------------------------
     def on_bar(self, pair: str, bar: dict) -> None:
@@ -138,9 +167,13 @@ class PaperLiveRunner:
         v = self._validator_for(pair)
         v.validate(bar)
 
-        self.broker.on_bar(pair, bar)
-        self._alert_unfilled_orders(pair)
+        ts = bar['timestamp']
 
+        # 1. Advance posted orders first → may produce FILLED or TIMED_OUT.
+        self.broker.on_bar(pair, bar, bar_ts=ts)
+        self._sweep_missed()
+
+        # 2. Strategy decides.
         try:
             decision = self.strategy.decide(pair, bar)
         except Exception as e:
@@ -148,9 +181,25 @@ class PaperLiveRunner:
             self.events.api_error(f"strategy crash: {e}")
             raise
 
+        # 3. If the decision has an order intent, place it post-only.
+        intent = decision.get('order_intent')
+        if intent and decision.get('action') in ('BUY', 'SELL'):
+            oid = self.broker.place_post_only(
+                pair=pair,
+                side=intent['side'],
+                qty=float(intent['qty']),
+                limit_price=float(intent['limit_price']),
+                mark_price=float(intent['mark_price']),
+                placed_at=ts,
+                max_wait_bars=int(intent.get('max_wait_bars', self.max_wait_bars)),
+            )
+            # Immediate post-only rejection should be observed right away.
+            self._handle_missed(self.broker.get(oid))
+
+        # 4. Log the decision row.
         ar = decision.get('agent_results', {})
         row = {
-            'timestamp': bar['timestamp'],
+            'timestamp': ts,
             'pair': pair,
             'action': decision.get('action', 'WAIT'),
             'orch_score': decision.get('orch_score'),
@@ -174,7 +223,7 @@ class PaperLiveRunner:
         row['trade_size']        = float(decision.get('trade_size', 0.0))
         self.decision_logger.log(row)
 
-        # Semantic trade-decision event (BUY / SELL only).
+        # 5. Trade-decision event for BUY/SELL.
         action = row['action']
         if action in ('BUY', 'SELL'):
             self.events.trade_decision(
@@ -185,8 +234,8 @@ class PaperLiveRunner:
                 size=float(row['trade_size'] or 0.0),
             )
 
-        # State snapshot.
-        self.last_bar_ts[pair] = bar['timestamp']
+        # 6. State snapshot.
+        self.last_bar_ts[pair] = ts
         self.state_manager.save({
             'schema_version': 1,
             'capital': self.capital,
@@ -196,40 +245,41 @@ class PaperLiveRunner:
             'model_version': self.model_version,
         })
 
-        # Heartbeat.
+        # 7. Heartbeat.
         self.bars_processed += 1
         self.heartbeat.tick(context={
             'bars_processed': self.bars_processed,
             'last_pair': pair,
-            'last_ts': bar['timestamp'],
+            'last_ts': ts,
+            'broker_miss_rate': self.broker.miss_rate(),
         })
 
     # ------------------------------------------------------------------
     # Manual event helpers (called from main.py / exchange adapter)
     # ------------------------------------------------------------------
     def notify_restart(self) -> None:
-        """Call once at startup (main.py) so operators see we're back."""
         last = "never"
         if self.last_bar_ts:
             last = next(iter(sorted(self.last_bar_ts.values(), reverse=True)))
         self.events.restart(version=self.model_version, last_ts=last)
 
     def notify_service_down(self, reason: str) -> None:
-        """Called by a watchdog when heartbeat goes stale."""
         self.events.service_down(reason)
 
     def notify_reconnect_exchange(self, reason: str) -> None:
-        """Called by the exchange adapter after a successful reconnect."""
         self.events.reconnect_exchange(reason)
 
     def notify_api_error(self, reason: str) -> None:
-        """Called by the exchange adapter on 4xx/5xx responses."""
         self.events.api_error(reason)
 
     # ------------------------------------------------------------------
     def shutdown(self) -> None:
         try:
             self.decision_logger.close()
+        except Exception:
+            pass
+        try:
+            self.missed_logger.close()
         except Exception:
             pass
 

@@ -2,7 +2,7 @@
 TDD Tests — PaperLiveRunner
 
 End-to-end wiring: DataValidator → StateManager → DecisionLogger →
-MakerFirstBroker → Heartbeat → TelegramAlerter.
+PostOnlyPaperBroker → Heartbeat → TelegramAlerter.
 
 Contract:
   - on_bar(pair, bar): validate, advance broker, call strategy, log decision,

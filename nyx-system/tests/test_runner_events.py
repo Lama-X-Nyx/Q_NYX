@@ -182,15 +182,19 @@ class TestReconnectHelper:
 # ===========================================================================
 class TestOrderUnfilledIntegration:
 
-    def test_runner_emits_unfilled_when_order_ages_out(self, tmp_path):
-        """After max_wait+1 bars with an open order, broker converts to taker;
-        runner must emit an order_unfilled event."""
+    def test_runner_emits_unfilled_when_order_times_out(self, tmp_path):
+        """After max_wait bars with no fill, broker TIMES_OUT the order and
+        runner emits an order_unfilled event (post-only, no taker fallback)."""
         fake = _FakeAlerter()
         r = _build_runner(tmp_path, fake)
-        # Place an order well below market that will NEVER fill as maker.
-        oid = r.broker.place_limit_buy(qty=0.01, limit_price=1.0)
+        # Post-only buy at 1.0 while market is at 45_000 → posts, never fills.
+        oid = r.broker.place_post_only(
+            pair='BTCUSDT', side='buy', qty=0.01,
+            limit_price=1.0, mark_price=45000.0,
+            placed_at="2025-01-01T00:00:00+00:00",
+            max_wait_bars=3,
+        )
         for i in range(5):
-            # Bars keep price way above the 1.0 limit.
             r.on_bar('BTCUSDT', _bar(
                 ts=f"2025-01-01T{i:02d}:00:00+00:00",
                 price=45000.0 + i,
@@ -199,6 +203,8 @@ class TestOrderUnfilledIntegration:
 
         unfilled = [t for lvl, t in fake.calls
                     if lvl == 'warn' and 'order_unfilled' in t.lower()]
-        # We sent 5 bars, max_wait defaults to 3 → order converted to taker
-        # on bar #4. Runner must have alerted once.
         assert len(unfilled) >= 1
+        # And the missed-trade log must have recorded it.
+        from src.paper_live.missed_trade_logger import MissedTradeLogger
+        with MissedTradeLogger(tmp_path / "missed_trades.db") as mtl:
+            assert mtl.count_by_state('TIMED_OUT') >= 1
