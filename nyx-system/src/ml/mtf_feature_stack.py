@@ -107,8 +107,66 @@ class MTFFeatureStack:
         }
 
     # ------------------------------------------------------------------
+    def _ctx_1d_features(self) -> Dict[str, float]:
+        """Hand-crafted 1d context (ctx_1d_trend, mom20, bullish).
+
+        Exact replica of `NYXPipeline._build_1d_context` but computed
+        on the current buf_1d tail. Returns empty if not enough bars.
+        """
+        import numpy as np
+        from src.ml.jesse_features import _ema
+        df = self.buf_1d._as_dataframe()
+        if len(df) < 50:
+            return {}
+        close = df['close'].values.astype(float)
+        ema20 = _ema(close, 20)
+        ema50 = _ema(close, 50)
+        if np.isnan(ema20[-1]) or np.isnan(ema50[-1]) or ema50[-1] == 0:
+            return {}
+        trend = (ema20[-1] - ema50[-1]) / abs(ema50[-1])
+        if len(close) >= 21:
+            mom20 = (close[-1] - close[-21]) / max(close[-21], 1e-8)
+        else:
+            mom20 = 0.0
+        return {
+            'ctx_1d_trend':   float(trend),
+            'ctx_1d_mom20':   float(mom20),
+            'ctx_1d_bullish': float(1.0 if trend > 0 else 0.0),
+        }
+
+    def _reg_1h_features(self) -> Dict[str, float]:
+        """Hand-crafted 1h regime (reg_1h_adx, atr_pct, mom12, trending).
+
+        Exact replica of `NYXPipeline._build_1h_context` but computed
+        on the current buf_1h tail. Returns empty if not enough bars.
+        """
+        import numpy as np
+        from src.ml.jesse_features import _adx, _atr
+        df = self.buf_1h._as_dataframe()
+        if len(df) < 30:
+            return {}
+        high = df['high'].values.astype(float)
+        low = df['low'].values.astype(float)
+        close = df['close'].values.astype(float)
+        adx = np.nan_to_num(_adx(high, low, close, 14), nan=0.0) / 100.0
+        atr = np.nan_to_num(_atr(high, low, close, 14), nan=0.0)
+        atr_pct = atr[-1] / close[-1] if close[-1] > 0 else 0.0
+        if len(close) >= 13:
+            mom12 = (close[-1] - close[-13]) / max(close[-13], 1e-8)
+        else:
+            mom12 = 0.0
+        return {
+            'reg_1h_adx':      float(adx[-1]),
+            'reg_1h_atr_pct':  float(atr_pct),
+            'reg_1h_mom12':    float(mom12),
+            'reg_1h_trending': float(1.0 if adx[-1] > 0.25 else 0.0),
+        }
+
+    # ------------------------------------------------------------------
     def latest_features_dict(self) -> Dict[str, float]:
-        """Return flattened dict with prefixed feature names."""
+        """Return flattened dict with prefixed feature names + ctx/reg
+        hand-crafted blocks (Rule #2 — MATCH what the trained model
+        expects)."""
         out: Dict[str, float] = {}
 
         f15 = self.buf_15m.latest_features()
@@ -130,5 +188,8 @@ class MTFFeatureStack:
         if len(f1d):
             for col, val in f1d.items():
                 out[f'd1_{col}'] = float(val)
+
+        out.update(self._ctx_1d_features())
+        out.update(self._reg_1h_features())
 
         return out

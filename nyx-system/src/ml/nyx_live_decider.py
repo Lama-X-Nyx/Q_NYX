@@ -94,12 +94,87 @@ class NYXLiveDecider:
     # ------------------------------------------------------------------
     # Feature vector assembly
     # ------------------------------------------------------------------
-    def _build_feature_vector(self) -> Optional[np.ndarray]:
-        """Return scaled 1 x N feature vector or None if required
-        features missing."""
-        feats = self.stack.latest_features_dict()
+    def _build_rule_and_extra_features(
+        self, direction: int, bar_hour: int
+    ) -> Dict[str, float]:
+        """Build the 15m rule_* / disagreement / extras features.
+
+        Exact replicas of `NYXPipeline._generate_candidates` inline
+        scalars so the GBM sees the same inputs at inference as at
+        training time.
+        """
+        import numpy as np
+        from src.ml.jesse_features import _ema, _atr
+        from src.ml.soft_gate import compute_disagreement
+
+        df = self.stack.buf_15m._as_dataframe()
+        if df.empty or len(df) < 50:
+            return {}
+        close = df['close'].values.astype(float)
+        high = df['high'].values.astype(float)
+        low = df['low'].values.astype(float)
+        volume = df['volume'].values.astype(float)
+        ema9 = _ema(close, 9)
+        ema21 = _ema(close, 21)
+        ema50 = _ema(close, 50)
+        vol_ma = _ema(volume, 20)
+        atr = np.nan_to_num(_atr(high, low, close, 14), nan=0.0)
+
+        i = len(close) - 1
+        if (np.isnan(ema9[i]) or np.isnan(ema21[i]) or np.isnan(ema50[i])
+                or np.isnan(vol_ma[i]) or vol_ma[i] <= 0
+                or close[i] <= 0 or ema50[i] == 0 or ema21[i] == 0):
+            return {}
+
+        ctx_ratio = (ema9[i] - ema50[i]) / max(abs(ema50[i]), 1e-8)
+        rule_context = float(np.clip(ctx_ratio * 20 + 0.5, 0.0, 1.0))
+        rule_regime = float(np.clip(atr[i] / close[i] * 200, 0.0, 1.0))
+        rule_setup = float(np.clip(
+            abs(ema9[i] - ema21[i]) / max(abs(ema21[i]), 1e-8) * 100,
+            0.0, 1.0,
+        ))
+        disagreement = compute_disagreement(direction, {
+            'context': rule_context,
+            'regime':  rule_regime,
+            'setup':   rule_setup,
+        })
+        volume_spike = float(volume[i] / vol_ma[i])
+        atr_pct = float(atr[i] / close[i])
+        trend_strength = float(np.clip(
+            abs(ema9[i] - ema50[i]) / max(abs(ema50[i]), 1e-8) * 50,
+            0.0, 10.0,
+        ))
+
+        return {
+            'rule_context':   rule_context,
+            'rule_regime':    rule_regime,
+            'rule_setup':     rule_setup,
+            'disagreement':   float(disagreement),
+            'volume_spike':   volume_spike,
+            'atr_pct':        atr_pct,
+            'trend_strength': trend_strength,
+            'direction':      float(direction),
+            'hour_norm':      float(bar_hour / 24.0),
+        }
+
+    def _build_feature_vector(
+        self,
+        direction: int = 0,
+        bar_hour: int = 12,
+    ) -> Optional[np.ndarray]:
+        """Return scaled 1 x N feature vector or None if any critical
+        feature is missing.
+
+        Merges (a) MTFFeatureStack (15m + h1_ + h4_ + d1_ + ctx_1d_*
+        + reg_1h_*) with (b) per-bar rule/extra scalars built from the
+        15m buffer. Together they cover the full 84-feature vector
+        the trained model expects.
+        """
+        feats = dict(self.stack.latest_features_dict())
         if not feats:
             return None
+        feats.update(self._build_rule_and_extra_features(direction, bar_hour))
+
         row = np.zeros((1, len(self.feature_names)), dtype=float)
         for i, name in enumerate(self.feature_names):
             v = feats.get(name, 0.0)
@@ -195,8 +270,10 @@ class NYXLiveDecider:
         if self._daily_limit_blocks(day_key):
             return flat
 
-        # ML score
-        x = self._build_feature_vector()
+        # ML score — feature vector carries direction + hour so rule
+        # and extra scalars are built with the same values NYXPipeline
+        # would have used at training time.
+        x = self._build_feature_vector(direction=direction, bar_hour=int(ts.hour))
         if x is None:
             return flat
         proba = self.model.predict_proba(x)
