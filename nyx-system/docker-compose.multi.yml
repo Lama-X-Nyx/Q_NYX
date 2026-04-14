@@ -1,0 +1,84 @@
+# Multi-pair paper-live — 3 parallel processes (ETH / XRP / SOL).
+#
+# Each service owns its storage volume and heartbeat file so a crash in
+# one pair cannot corrupt the other two. The shared `./logs` directory
+# receives rotated JSON logs from all three.
+#
+#   docker compose -f docker-compose.multi.yml up -d
+#   docker compose -f docker-compose.multi.yml logs -f nyx-eth
+#
+# To run BTC plus the alts, start both compose files:
+#   docker compose up -d            # BTC
+#   docker compose -f docker-compose.multi.yml up -d   # ETH + XRP + SOL
+
+x-common: &common
+  image: nyx-paper-live:latest
+  build:
+    context: ..
+    dockerfile: nyx-system/Dockerfile
+  restart: unless-stopped
+  environment: &common-env
+    TZ: UTC
+    NYX_MODEL_VERSION: ${NYX_MODEL_VERSION:-v0.3.2}
+    TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+    TELEGRAM_CHAT_ID:   ${TELEGRAM_CHAT_ID:-}
+    DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
+    BINANCE_API_KEY:    ${BINANCE_API_KEY:-}
+    BINANCE_API_SECRET: ${BINANCE_API_SECRET:-}
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "50m"
+      max-file: "5"
+
+services:
+  nyx-eth:
+    <<: *common
+    container_name: nyx-paper-eth
+    environment:
+      <<: *common-env
+      NYX_PAIR: ETHUSDT
+      NYX_STORAGE: /app/nyx-system/storage
+    volumes:
+      - ./storage/ETHUSDT:/app/nyx-system/storage
+      - ./logs:/app/nyx-system/logs
+    healthcheck:
+      test: ["CMD", "python", "-c", "from src.paper_live.heartbeat import Heartbeat; import sys; sys.exit(0 if Heartbeat('/app/nyx-system/storage/heartbeat.json').is_alive(300) else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  nyx-xrp:
+    <<: *common
+    container_name: nyx-paper-xrp
+    environment:
+      <<: *common-env
+      NYX_PAIR: XRPUSDT
+      NYX_STORAGE: /app/nyx-system/storage
+    volumes:
+      - ./storage/XRPUSDT:/app/nyx-system/storage
+      - ./logs:/app/nyx-system/logs
+    healthcheck:
+      test: ["CMD", "python", "-c", "from src.paper_live.heartbeat import Heartbeat; import sys; sys.exit(0 if Heartbeat('/app/nyx-system/storage/heartbeat.json').is_alive(300) else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  nyx-sol:
+    <<: *common
+    container_name: nyx-paper-sol
+    environment:
+      <<: *common-env
+      NYX_PAIR: SOLUSDT
+      NYX_STORAGE: /app/nyx-system/storage
+    volumes:
+      - ./storage/SOLUSDT:/app/nyx-system/storage
+      - ./logs:/app/nyx-system/logs
+    healthcheck:
+      test: ["CMD", "python", "-c", "from src.paper_live.heartbeat import Heartbeat; import sys; sys.exit(0 if Heartbeat('/app/nyx-system/storage/heartbeat.json').is_alive(300) else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
