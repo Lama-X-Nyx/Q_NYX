@@ -59,6 +59,8 @@ def train_and_save(
         df_15m.loc[:train_end],
         mtf_features['15m'].loc[:train_end],
         ctx_1d, ctx_1h,
+        feat_1h=mtf_features.get('1h', pd.DataFrame()),
+        feat_1d=mtf_features.get('1d', pd.DataFrame()),
     )
 
     if len(train_cands) < 30:

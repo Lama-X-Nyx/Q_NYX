@@ -92,13 +92,15 @@ class NYXPipeline:
         ctx_1h = self._build_1h_context(mtf_data.get('1h', pd.DataFrame()),
                                          mtf_features.get('1h', pd.DataFrame()))
 
-        # --- Step 2: Generate candidates with MTF features ---
+        # --- Step 2: Generate candidates with full MTF feature block ---
+        feat_1h = mtf_features.get('1h', pd.DataFrame())
+        feat_1d = mtf_features.get('1d', pd.DataFrame())
         train_cands = self._generate_candidates(
             df_15m.loc[:train_end], mtf_features['15m'].loc[:train_end],
-            ctx_1d, ctx_1h)
+            ctx_1d, ctx_1h, feat_1h=feat_1h, feat_1d=feat_1d)
         test_cands = self._generate_candidates(
             df_15m.loc[test_start:te], mtf_features['15m'].loc[test_start:te],
-            ctx_1d, ctx_1h)
+            ctx_1d, ctx_1h, feat_1h=feat_1h, feat_1d=feat_1d)
 
         if len(train_cands) < 30 or len(test_cands) == 0:
             return self._empty_result()
@@ -351,8 +353,10 @@ class NYXPipeline:
         feat_15m: pd.DataFrame,
         ctx_1d: Dict[str, pd.Series],
         ctx_1h: Dict[str, pd.Series],
+        feat_1h: Optional[pd.DataFrame] = None,
+        feat_1d: Optional[pd.DataFrame] = None,
     ) -> List[Dict]:
-        """Generate edge candidates with full MTF features."""
+        """Generate edge candidates with full MTF features (15m + h1_* + d1_*)."""
         close = df_15m['close'].values.astype(float)
         high = df_15m['high'].values.astype(float)
         low = df_15m['low'].values.astype(float)
@@ -363,10 +367,33 @@ class NYXPipeline:
         ema9 = _ema(close, 9); ema21 = _ema(close, 21); ema50 = _ema(close, 50)
         vol_ma = _ema(volume, 20)
 
-        # Align parquet features
+        # Align parquet features (15m)
         feat_cols = [c for c in feat_15m.columns if feat_15m[c].nunique() > 2]
         feat_aligned = feat_15m.reindex(df_15m.index)
         feat_arr = np.nan_to_num(feat_aligned[feat_cols].values, nan=0)
+
+        # Align full stationary feature vectors from 1h / 1d via ffill.
+        # For a 15m bar at time T, we use the last completed 1h (or 1d)
+        # bar's feature row — no look-ahead.
+        h1_cols: List[str] = []
+        h1_arr: np.ndarray = np.empty((n, 0), dtype=float)
+        if feat_1h is not None and not feat_1h.empty:
+            h1_cols = [c for c in feat_1h.columns if feat_1h[c].nunique() > 2]
+            if h1_cols:
+                h1_aligned = feat_1h[h1_cols].reindex(
+                    df_15m.index, method='ffill'
+                ).fillna(0.0)
+                h1_arr = np.nan_to_num(h1_aligned.values, nan=0.0)
+
+        d1_cols: List[str] = []
+        d1_arr: np.ndarray = np.empty((n, 0), dtype=float)
+        if feat_1d is not None and not feat_1d.empty:
+            d1_cols = [c for c in feat_1d.columns if feat_1d[c].nunique() > 2]
+            if d1_cols:
+                d1_aligned = feat_1d[d1_cols].reindex(
+                    df_15m.index, method='ffill'
+                ).fillna(0.0)
+                d1_arr = np.nan_to_num(d1_aligned.values, nan=0.0)
 
         # Align MTF context to 15m index
         ctx_1d_aligned = {}
@@ -426,16 +453,24 @@ class NYXPipeline:
             fee = entry_price * self.fee_rate + abs(exit_p) * self.fee_rate
             outcome_net = outcome - fee
 
-            # Build feature dict: parquet 15m + MTF context + rule scores
+            # Build feature dict: parquet 15m + full h1_ + full d1_ + context + rules
             features = {}
             for k, col in enumerate(feat_cols):
                 features[col] = float(feat_arr[i, k]) if i < len(feat_arr) else 0.0
 
-            # MTF context features (1D)
+            # Full 1h stationary features (h1_* prefix)
+            for k, col in enumerate(h1_cols):
+                features[f'h1_{col}'] = float(h1_arr[i, k]) if i < len(h1_arr) else 0.0
+
+            # Full 1d stationary features (d1_* prefix)
+            for k, col in enumerate(d1_cols):
+                features[f'd1_{col}'] = float(d1_arr[i, k]) if i < len(d1_arr) else 0.0
+
+            # MTF context features (1D hand-crafted)
             for name, arr in ctx_1d_aligned.items():
                 features[name] = float(arr[i]) if i < len(arr) else 0.0
 
-            # MTF context features (1H)
+            # MTF context features (1H hand-crafted)
             for name, arr in ctx_1h_aligned.items():
                 features[name] = float(arr[i]) if i < len(arr) else 0.0
 

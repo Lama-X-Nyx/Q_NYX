@@ -4,16 +4,16 @@
     "symbol": "ETHUSDT",
     "train_end": "2022-12-31",
     "n_train_candidates": 1061,
-    "n_features": 33,
-    "in_sample_accuracy": 0.8350612629594723,
+    "n_features": 67,
+    "in_sample_accuracy": 0.8755890669180019,
     "positive_class_rate": 0.46748350612629597
   },
   "oos_2023": {
     "n_candidates": 530,
-    "n_trades": 74,
-    "sharpe": 4.378543258397208,
-    "total_pnl_dollars": 1814.595976891851,
-    "max_drawdown_pct": 0.015786447124086687,
+    "n_trades": 96,
+    "sharpe": 5.063589853729877,
+    "total_pnl_dollars": 2398.731928545554,
+    "max_drawdown_pct": 0.013907535157482939,
     "execution_reject_rate": 0,
     "bear_dial_activation_rate": 0.469811320754717
   }
