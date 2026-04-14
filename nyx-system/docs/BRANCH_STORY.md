@@ -10,6 +10,110 @@
 
 ---
 
+## Part 0 — The heart: `NYXPipeline` + 5 Jesse agents (~40 commits)
+
+**NYXPipeline is the core engine built in phase 0 of this branch.**
+The first ~40 commits of this branch — BEFORE any of the paper-live,
+hub-and-spoke, or reality-check work started — built the actual trading
+brain. Every A/B/C, walk-forward, and reality-check number published in
+this branch comes from `NYXPipeline.run()` direct. Anything else is a
+LAYER on top that may or may not be wired in.
+
+### Two systems, one branch
+
+Two ML architectures were built in phase 0, **both on this branch**:
+
+#### 1. The 5-agent modular architecture (`src/ml/jesse_agents.py`)
+
+683 lines, 45 tests GREEN. Four RF-based agents + a rule-based orchestrator:
+
+| Agent | Timeframe | Output state space |
+|---|---|---|
+| `JesseContextAgent` | 1D | {bullish, bearish, neutral} |
+| `JesseRegimeAgent` | 1H | {trend_plus, range, trend_minus, squeeze, distribution, liquidation} |
+| `JesseSetupAgent` | 15M | {valid_setup, no_setup} |
+| `JesseEntryAgent` | 15M | {ready, not_ready} |
+| `JesseOrchestrator` | meta | {BUY, SELL, WAIT} + size_factor |
+
+Contracts in `src/agents/contracts.py` (`AgentResult`, `OrchestratorDecision`).
+Tests in `tests/test_jesse_agent_{context,regime,setup,entry}.py` +
+`tests/test_jesse_orchestrator.py`.
+
+**Status**: alternative modular architecture, **not currently wired**
+into production. See `docs/JESSE_AGENTS_STATUS.md`.
+
+#### 2. The unified `NYXPipeline` monolith (`src/ml/nyx_pipeline.py`)
+
+536 lines. Versions v0.3 → v0.3.1 → v0.3.2, each a separate commit on
+this branch:
+
+- `3a01bb8` — v0.3 — 12/12 GREEN, 4/4 years +, Sharpe 2.86
+- `3fe36b0` — v0.3.1 — conditional dial merged, 7/7 GREEN
+- `ecbf1c9` — v0.3.2 — OOS final, all features integrated
+- `c03619f` — full 1h + 1d stationary features (MTF fix)
+- `60a161d` — 4h timeframe added (Rule #2 permanent)
+
+What it does, end-to-end:
+1. **MTF candidates** — 15m bars with trend alignment + volume > 3×
+2. **Feature block** — 84 features per candidate (24 15m + 17 h1_ + 17 h4_ + 17 d1_ + rule + extra)
+3. **ML filter** — single `GradientBoostingClassifier` trained on net-outcome labels
+4. **Threshold** — 0.60 with conditional bear dial
+5. **Soft gate** — rule scores → disagreement → size factor
+6. **Execution sim** — maker-only fees + slippage + cooldown + daily limit
+
+`NYXPipeline` produces every A/B/C, walk-forward, and reality-check
+number in this branch. It is **the** engine.
+
+### How the two relate
+
+Both systems implement the same trading philosophy (context → regime →
+setup → entry → orchestrate) but via **distinct, non-shared code
+paths**:
+
+- `NYXPipeline` does NOT import `jesse_agents`. They share only
+  utility modules (`jesse_features.py` for EMA/ATR/RSI/ADX, and
+  `soft_gate.py` for rule validators).
+- `rule_context` / `rule_regime` / `rule_setup` scalars in NYXPipeline
+  are conceptually similar to the Jesse agent outputs but are computed
+  from hard EMA/ATR ratios, not from RF predictions.
+
+### What was NOT done in phase 0
+
+- The 5 Jesse agents were never chained in production. They pass
+  their own tests but are never invoked by `NYXPipeline` or any
+  scripts in `scripts/*.py`.
+- `NYXPipeline` was never made real-time. `NYXPipeline.run(mtf_data,
+  mtf_features, train_end, test_start, test_end)` is **batch-only**:
+  it takes the complete historical data, trains the GBM, scans the
+  test window, returns a list of trades. It cannot be used as-is for
+  live paper-trading on a WebSocket feed.
+
+These two omissions are the root cause of the "integration gap" that
+subsequent sessions (described in Parts 1-4 below) discovered and
+only partially addressed. Closing them is the current work
+(`NYXPipelinePod` replay + `NYXLiveDecider` real-time multi-TF).
+
+### What the numbers in this branch really represent
+
+Every published metric (CAGR +49 %, A/B/C p5 returns, reality checks,
+etc.) is produced by calling `NYXPipeline.run()` **directly on each
+asset** and union-ing the resulting trades across assets. They are
+reproducible via `scripts/validate_abc.py`, `scripts/walk_forward_trio.py`,
+`scripts/run_reality_checks.py`. They are correct *for what they
+measure*, but they do NOT yet reflect:
+
+- the miss-rate of `PostOnlyPaperBroker` (built in Part 1, not wired)
+- the per-asset / cluster caps of `PortfolioAllocator` (built in Part 2,
+  not wired)
+- the latency / queue position of a real exchange adapter (not built)
+
+Part 1-4 below describe the layers built AROUND `NYXPipeline`.
+**Paper-live and hub-and-spoke layers are not yet wired to NYXPipeline**.
+The honest current work (post this doc) is wiring them (`NYXPipelinePod`
+replay + `NYXLiveDecider` real-time multi-TF).
+
+---
+
 ## Part 1 — Foundations (pyright + paper-live + hub-and-spoke)
 
 ### Starting point
