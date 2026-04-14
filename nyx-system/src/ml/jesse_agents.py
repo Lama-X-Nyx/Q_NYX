@@ -1,6 +1,13 @@
 """
 Jesse 5-Agent Architecture — TDD Sequential Build
 
+STATUS: alternative modular architecture, NOT currently wired into
+production. `NYXPipeline` (src/ml/nyx_pipeline.py) is the active engine
+producing every A/B/C, walk-forward and reality-check number. The 5
+agents here are an alternative modular design kept for reference and
+future integration. See docs/JESSE_AGENTS_STATUS.md for the full
+comparison, overlap, and how-to-swap notes.
+
 Each agent:
   1. compute_features(df) → stationary features DataFrame
   2. train(df) → fit RF on labels
