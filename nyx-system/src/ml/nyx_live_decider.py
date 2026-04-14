@@ -180,6 +180,8 @@ class NYXLiveDecider:
             bull_bear_tag='range',
             size_suggestion=0.0,
             cluster_group=self.cluster_group,
+            # FLAT signal: 'don't trade'. No position to hold.
+            expected_hold_bars=0,
         )
 
         # Hard gate
@@ -219,4 +221,8 @@ class NYXLiveDecider:
             bull_bear_tag='bull' if direction > 0 else 'bear',
             size_suggestion=1.0,
             cluster_group=self.cluster_group,
+            # Expected hold = NYXPipeline.max_bars. HubSpokeRunner
+            # will release the position after this many bars so the
+            # same symbol can take the next signal.
+            expected_hold_bars=50,
         )

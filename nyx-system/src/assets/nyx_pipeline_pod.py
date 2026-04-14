@@ -104,6 +104,8 @@ class NYXPipelinePod:
                 bull_bear_tag='range',
                 size_suggestion=0.0,
                 cluster_group=self.cluster_group,
+                # FLAT signal = 'don't trade'. No position to hold.
+                expected_hold_bars=0,
             )
 
         direction = int(trade.get('direction', 0))
@@ -132,4 +134,8 @@ class NYXPipelinePod:
             bull_bear_tag='bull' if direction > 0 else 'bear' if direction < 0 else 'range',
             size_suggestion=max(0.0, size_factor),
             cluster_group=self.cluster_group,
+            # NYXPipeline default max_bars is 50 → use it as the
+            # expected hold time. HubSpokeRunner releases the
+            # position after this many bars.
+            expected_hold_bars=50,
         )
