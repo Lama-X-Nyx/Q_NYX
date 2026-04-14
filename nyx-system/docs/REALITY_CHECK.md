@@ -209,3 +209,144 @@ Pour l'instant, **les chiffres walk-forward trio sont du backtest
 porn jusqu'à preuve du contraire**. L'architecture est solide, les
 tests TDD sont propres, mais les niveaux de performance restent à
 valider OOS-réel.
+
+---
+
+## Update 2026-04 — chiffres mesurés sur les 6 corrections
+
+Les 6 corrections annoncées ont été implémentées et mesurées :
+- code : `src/ml/reality_check.py` (6 helpers)
+- tests : `tests/test_reality_checks.py` — **12/13 GREEN + 1 xfail
+  documenté**
+- driver : `scripts/run_reality_checks.py` → `reports/reality_check_numbers.json`
+
+### [1] SOL pure OOS 2024 → 2026 (2.5 ans de data inédite)
+
+| Métrique | Valeur |
+|---|---:|
+| n_candidates | 648 |
+| **n_trades** | **69** |
+| **Sharpe (per-trade √N)** | **+7.25** |
+| **PnL ($10k base)** | **+$4,296** |
+| Max drawdown | 1.5 % |
+| Win rate | 79.7 % |
+| Bear dial activation | 44 % |
+
+**Verdict** : l'edge SOL **tient** sur 2.5 ans jamais vus. Meilleure
+preuve empirique à ce jour que la stratégie n'est pas juste du
+curve-fit sur 2020-2023.
+
+### [2] Post-only filter (miss rate réaliste)
+
+| Métrique | Valeur |
+|---|---:|
+| Trades avant | 560 |
+| **Miss rate** | **14.6 %** (82 trades manqués) |
+| PnL brut | +$21,135 |
+| **PnL après filter** | **+$15,341** |
+| Perte par miss | −27.4 % du PnL |
+
+**Verdict** : ~15 % des trades n'auraient PAS fillé comme maker en
+réalité. L'edge perd **27 %** de PnL une fois les missed trades
+retirés. Toujours largement positif, mais marge plus étroite.
+
+### [3] Taker fees (pas maker) sur 2023 OOS par asset
+
+| Asset | PnL maker | **PnL taker** | Sharpe taker |
+|---|---:|---:|---:|
+| BTC | +$1,367 | **+$1,295** (−5 %) | 6.32 |
+| ETH | +$2,399 | **+$2,169** (−10 %) | 4.94 |
+| SOL | +$1,566 | **+$1,504** (−4 %) | 3.88 |
+
+**Verdict** : l'edge survit aux taker fees. Perte **4-10 %** par asset.
+
+### [4] Sharpe daily-equity vs per-trade
+
+| Métrique | Valeur |
+|---|---:|
+| **Sharpe per-trade (√N)** | **+8.89** |
+| **Sharpe daily-equity (annualized 365d)** | **+4.64** |
+| Mean daily return | 0.079 % |
+| Std daily return | 0.323 % |
+| N days | 1,456 |
+
+**Verdict** : Sharpe réel = **4.64**, la **moitié** du headline.
+Toujours excellent, mais "Sharpe 8-11" était une convention per-trade.
+
+### [5] Block bootstrap n=30 vs standard IID
+
+| Méthode | prob_loss | p5_return | p5_Sharpe |
+|---|---:|---:|---:|
+| Standard IID | 0.0 % | +184.2 % | +7.62 |
+| **Block n=30** | **0.0 %** | **+178.1 %** | **+7.79** |
+
+**Verdict** : Sur 560 trades, différence marginale (−6 pp). Le
+bootstrap est plus robuste que craint. Mais `prob_loss = 0 %` reste
+probablement optimiste vu l'échantillon court.
+
+### [6] Buy & hold benchmark — **la révélation**
+
+| Pool | Return cumulé 2020-2023 |
+|---|---:|
+| BTC B&H seul | +489.6 % |
+| ETH B&H seul | +1 672.2 % |
+| SOL B&H seul | **+3 113.4 %** |
+| **Equal-weight trio B&H** | **+1 758.4 %** |
+| Strategy trio (no compound) | +211.3 % |
+| Strategy trio (CAGR 49 % compound) | +397 % |
+| **Alpha vs B&H (absolu)** | **−1 547 pp** |
+
+**Verdict** : la stratégie est **largement battue** par un simple B&H
+en absolu. Equal-weight trio = +1758 % grâce au bull 2020-2021 + run
+SOL.
+
+MAIS en **risk-adjusted (Calmar = return / max_DD)** :
+- B&H Calmar ≈ +1758 % / ~70 % ≈ 25
+- Strategy Calmar ≈ +211 % / 3 % ≈ **70**
+
+→ **Risk-adjusted, la stratégie est ~3× meilleure.** Mais pour qui
+a juste tenu BTC/ETH/SOL depuis 2020, nos gains "+49 % CAGR" sont
+moins glorieux.
+
+Test `test_strategy_beats_benchmark_on_window` → **xfail documenté**
+(c'est la vérité honnête : strategy ≤ B&H en absolu).
+Test `test_strategy_better_risk_adjusted` → **PASS** (Calmar strat >
+Calmar B&H).
+
+---
+
+## Tableau récapitulatif des 6 checks
+
+| # | Correction | Avant | Après (mesuré) | Δ |
+|---|---|---:|---:|---:|
+| 1 | SOL OOS 2024-2026 | ? | Sharpe 7.25, +$4.3k | NEW OOS proof |
+| 2 | Post-only miss-rate | 0 % | 14.6 % | edge × 0.73 |
+| 3 | Taker fees | maker only | 5-10 % loss | edge × 0.92 |
+| 4 | Sharpe annualisation | 8.89 per-trade | 4.64 daily | ÷ 1.9 |
+| 5 | Bootstrap block n=30 | p5 +186 % | p5 +178 % | marginal |
+| 6 | Buy & hold benchmark | n/a | alpha −1547 pp | big caveat |
+
+---
+
+## Verdict final honnête
+
+**L'edge est réel** :
+- SOL pure OOS 2024-2026 : Sharpe 7.25 → le modèle généralise
+- Taker fees : edge perd 5-10 %, survit
+- Post-only miss 14.6 % : edge perd 27 % mais reste positif
+- Bootstrap : p5 return ≈ +178 %, prob_loss faible
+
+**Mais la valeur proposée est RISK-ADJUSTED, pas absolue** :
+- En absolu, B&H 2020-2023 a fait x18 vs notre x3-4
+- Notre valeur = x3-4 avec un DD de 3 % au lieu de 70 %
+- Sharpe réel (daily-equity) = 4.64, toujours world-class mais pas 8-11
+
+**Pour un déploiement live, espérance réaliste** :
+- CAGR : **+15-25 %** (pas +49 %)
+- Max DD année : **8-15 %** (pas 3 %)
+- Sharpe annualisé capital : **2-3** (pas 8-11)
+- Prob_loss année : **5-15 %** (pas 0 %)
+
+**C'est une stratégie solide, pas un Graal.** Le backtest est
+cohérent en interne, les corrections réelles donnent une image
+honnête : edge robuste mais modeste une fois les biais retirés.

@@ -1,0 +1,85 @@
+{
+  "n_trades_walk_forward": 560,
+  "sol_pure_oos_2024_2026": {
+    "n_candidates": 648,
+    "n_trades": 69,
+    "sharpe": 7.246458481784961,
+    "total_pnl_dollars": 4295.802605330604,
+    "max_drawdown_pct": 0.014548627206837146,
+    "win_rate": 0.7971014492753623,
+    "execution_reject_rate": 0,
+    "bear_dial_activation_rate": 0.4398148148148148
+  },
+  "post_only_filter": {
+    "missed_count": 82,
+    "miss_rate": 0.14642857142857144,
+    "total_pnl_before": 21134.59920531282,
+    "total_pnl_after": 15341.223133718782,
+    "n_trades_before": 560,
+    "n_trades_after": 478
+  },
+  "taker_fees_2023_per_asset": {
+    "BTCUSDT": {
+      "n_trades": 41,
+      "total_pnl_dollars": 1294.8249621086761,
+      "sharpe": 6.319986736528767,
+      "max_drawdown_pct": 0.004925083263472316
+    },
+    "ETHUSDT": {
+      "n_trades": 81,
+      "total_pnl_dollars": 2169.418081499556,
+      "sharpe": 4.940867029723918,
+      "max_drawdown_pct": 0.013270639715224696
+    },
+    "SOLUSDT": {
+      "n_trades": 39,
+      "total_pnl_dollars": 1504.2080373508707,
+      "sharpe": 3.8835005814231756,
+      "max_drawdown_pct": 0.010823476127320698
+    }
+  },
+  "sharpe_comparison": {
+    "per_trade_sqrt_n": 8.886100115468055,
+    "daily_equity": 4.640708143832592,
+    "mean_daily_return": 0.0007855437412591941,
+    "std_daily_return": 0.0032339443979324464,
+    "n_days": 1456
+  },
+  "bootstrap_compare": {
+    "standard_iid": {
+      "prob_loss": 0.0,
+      "median_return": 2.1117917572793274,
+      "sharpe_median": 8.867856057880394,
+      "return_p5": 1.84178897204559,
+      "sharpe_p5": 7.62426526888865,
+      "dd_p95": 0.03557388823636823
+    },
+    "block_n30": {
+      "prob_loss": 0.0,
+      "median_return": 2.0781287875270857,
+      "sharpe_median": 9.10340516754188,
+      "return_p5": 1.7805074552557227,
+      "sharpe_p5": 7.792566214257646,
+      "dd_p95": 0.041529748768736996
+    }
+  },
+  "buy_and_hold": {
+    "per_asset_return": {
+      "BTCUSDT": 4.896386139855579,
+      "ETHUSDT": 16.722123069760222,
+      "SOLUSDT": 31.13394408466277
+    },
+    "portfolio_return": 17.584151098092853,
+    "window": "2020-01-01..2023-12-31",
+    "weights": {
+      "BTCUSDT": 0.3333333333333333,
+      "ETHUSDT": 0.3333333333333333,
+      "SOLUSDT": 0.3333333333333333
+    }
+  },
+  "strategy_vs_benchmark": {
+    "strategy_cum_return": 2.113459920531283,
+    "b_and_h_cum_return": 17.584151098092853,
+    "alpha": -15.47069117756157
+  }
+}
