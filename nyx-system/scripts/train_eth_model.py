@@ -42,15 +42,15 @@ def _load(tf: str) -> pd.DataFrame:
 
 def main() -> int:
     print("=== ETH training ===")
-    mtf = {tf: _load(tf) for tf in ('15m', '1h', '1d')}
+    mtf = {tf: _load(tf) for tf in ('15m', '1h', '4h', '1d')}
     for tf, d in mtf.items():
         print(f"  {tf}: {len(d):,} rows  [{d.index.min()} → {d.index.max()}]")
 
-    # Compute + cache features
+    # Compute + cache features — FOUR TIMEFRAMES (hard rule).
     from src.ml.jesse_features import compute_stationary_features
     FEAT_DIR.mkdir(parents=True, exist_ok=True)
     feats = {}
-    for tf in ('15m', '1h', '1d'):
+    for tf in ('15m', '1h', '4h', '1d'):
         cache = FEAT_DIR / f'ETHUSDT_features_{tf}.parquet'
         if cache.exists():
             feats[tf] = pd.read_parquet(cache)

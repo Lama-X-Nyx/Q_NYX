@@ -1,6 +1,12 @@
 """
 train_asset_model — train and persist a per-asset model artefact.
 
+**PERMANENT RULE**: training MUST be multi-timeframe (4 TFs:
+15m + 1h + 4h + 1d) regardless of the asset. Enforced by the
+guardrail assertion below — we refuse to save a model with fewer
+than MIN_FEATURES features, which is a strong indicator that a
+higher timeframe is missing from the feature block.
+
 Output layout:
 
     models/<SYMBOL>/
@@ -8,10 +14,6 @@ Output layout:
       scaler.pkl           — StandardScaler used for features
       feature_names.json   — ordered list the scaler expects
       training_metadata.json — symbol, train range, n samples, accuracy
-
-The artefact is the hub-and-spoke architecture's concrete output for
-Phase 1 (ETH), Phase 2 (SOL), Phase 3 (XRP). A SignalPod loads the
-matching artefact based on its `Asset.model_profile`.
 """
 from __future__ import annotations
 
@@ -25,6 +27,19 @@ import pandas as pd
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.metrics import accuracy_score
 from sklearn.preprocessing import StandardScaler
+
+
+# PERMANENT RULE GUARDRAIL:
+# Every asset's training block must include 15m + h1_ + h4_ + d1_ stationary
+# features. A full 4-TF block produces ≥ 65 unique feature keys (24 15m,
+# ~17 × 3 higher-TF, plus rule / context scalars). Dropping below this
+# threshold means a timeframe was silently missed.
+MIN_FEATURES = 65
+_REQUIRED_PREFIXES = ('h1_', 'h4_', 'd1_')
+
+
+class MTFCoverageError(ValueError):
+    """Raised when the training feature block is not full multi-timeframe."""
 
 
 def train_and_save(
@@ -60,6 +75,7 @@ def train_and_save(
         mtf_features['15m'].loc[:train_end],
         ctx_1d, ctx_1h,
         feat_1h=mtf_features.get('1h', pd.DataFrame()),
+        feat_4h=mtf_features.get('4h', pd.DataFrame()),
         feat_1d=mtf_features.get('1d', pd.DataFrame()),
     )
 
@@ -69,6 +85,19 @@ def train_and_save(
         )
 
     feature_names = sorted(train_cands[0]['features'].keys())
+
+    # PERMANENT RULE GUARDRAIL — every prefix must be present + count.
+    for prefix in _REQUIRED_PREFIXES:
+        if not any(name.startswith(prefix) for name in feature_names):
+            raise MTFCoverageError(
+                f"{symbol}: training features are missing the {prefix}* block "
+                f"— MTF rule violated (need 15m + h1_ + h4_ + d1_)."
+            )
+    if len(feature_names) < MIN_FEATURES:
+        raise MTFCoverageError(
+            f"{symbol}: only {len(feature_names)} features; expected "
+            f"≥ {MIN_FEATURES} (full 4-TF block)."
+        )
     X = np.array([[c['features'].get(f, 0) for f in feature_names]
                   for c in train_cands])
     y = np.array([1 if c['outcome_net'] > 0 else 0 for c in train_cands])

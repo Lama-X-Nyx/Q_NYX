@@ -100,16 +100,18 @@ def main() -> int:
 
     print("=== A/B/C validation ===")
 
-    btc_mtf = {tf: _load_btc(tf) for tf in ('15m', '1h', '1d')}
-    eth_mtf = {tf: _load_eth(tf) for tf in ('15m', '1h', '1d')}
-    sol_mtf = {tf: _load_sol(tf) for tf in ('15m', '1h', '1d')}
+    # PERMANENT RULE: every asset passed through NYXPipeline must carry
+    # the 4 timeframes (15m + 1h + 4h + 1d).
+    btc_mtf = {tf: _load_btc(tf) for tf in ('15m', '1h', '4h', '1d')}
+    eth_mtf = {tf: _load_eth(tf) for tf in ('15m', '1h', '4h', '1d')}
+    sol_mtf = {tf: _load_sol(tf) for tf in ('15m', '1h', '4h', '1d')}
 
     btc_feats = {tf: pd.read_parquet(FEAT_DIR / f'BTCUSDT_features_{tf}.parquet')
-                 for tf in ('15m', '1h', '1d')}
+                 for tf in ('15m', '1h', '4h', '1d')}
     eth_feats = {tf: pd.read_parquet(FEAT_DIR / f'ETHUSDT_features_{tf}.parquet')
-                 for tf in ('15m', '1h', '1d')}
+                 for tf in ('15m', '1h', '4h', '1d')}
     sol_feats = {tf: pd.read_parquet(FEAT_DIR / f'SOLUSDT_features_{tf}.parquet')
-                 for tf in ('15m', '1h', '1d')}
+                 for tf in ('15m', '1h', '4h', '1d')}
 
     # --- harvest trades per year & per asset ---
     print("→ OOS walk-forward per asset × year")

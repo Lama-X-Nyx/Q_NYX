@@ -39,14 +39,14 @@ def _load_eth_ohlcv(tf: str) -> pd.DataFrame:
 
 @pytest.fixture(scope='session')
 def eth_mtf_data():
-    return {tf: _load_eth_ohlcv(tf) for tf in ('15m', '1h', '1d')}
+    return {tf: _load_eth_ohlcv(tf) for tf in ('15m', '1h', '4h', '1d')}
 
 
 @pytest.fixture(scope='session')
 def eth_mtf_features():
     return {
         tf: pd.read_parquet(FEAT_DIR / f'ETHUSDT_features_{tf}.parquet')
-        for tf in ('15m', '1h', '1d')
+        for tf in ('15m', '1h', '4h', '1d')
     }
 
 
@@ -60,7 +60,7 @@ def btc_mtf_data():
         tf: pd.read_csv(BTC_MTF_DIR / f'BTCUSDT_{tf}.csv').assign(
             datetime=lambda d: pd.to_datetime(d['datetime'])
         ).set_index('datetime')
-        for tf in ('15m', '1h', '1d')
+        for tf in ('15m', '1h', '4h', '1d')
     }
 
 
@@ -68,7 +68,7 @@ def btc_mtf_data():
 def btc_mtf_features():
     return {
         tf: pd.read_parquet(FEAT_DIR / f'BTCUSDT_features_{tf}.parquet')
-        for tf in ('15m', '1h', '1d')
+        for tf in ('15m', '1h', '4h', '1d')
     }
 
 
@@ -89,14 +89,14 @@ def _load_sol_ohlcv(tf: str) -> pd.DataFrame:
 
 @pytest.fixture(scope='session')
 def sol_mtf_data():
-    return {tf: _load_sol_ohlcv(tf) for tf in ('15m', '1h', '1d')}
+    return {tf: _load_sol_ohlcv(tf) for tf in ('15m', '1h', '4h', '1d')}
 
 
 @pytest.fixture(scope='session')
 def sol_mtf_features():
     return {
         tf: pd.read_parquet(FEAT_DIR / f'SOLUSDT_features_{tf}.parquet')
-        for tf in ('15m', '1h', '1d')
+        for tf in ('15m', '1h', '4h', '1d')
     }
 
 

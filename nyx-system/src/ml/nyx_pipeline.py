@@ -94,13 +94,16 @@ class NYXPipeline:
 
         # --- Step 2: Generate candidates with full MTF feature block ---
         feat_1h = mtf_features.get('1h', pd.DataFrame())
+        feat_4h = mtf_features.get('4h', pd.DataFrame())
         feat_1d = mtf_features.get('1d', pd.DataFrame())
         train_cands = self._generate_candidates(
             df_15m.loc[:train_end], mtf_features['15m'].loc[:train_end],
-            ctx_1d, ctx_1h, feat_1h=feat_1h, feat_1d=feat_1d)
+            ctx_1d, ctx_1h,
+            feat_1h=feat_1h, feat_4h=feat_4h, feat_1d=feat_1d)
         test_cands = self._generate_candidates(
             df_15m.loc[test_start:te], mtf_features['15m'].loc[test_start:te],
-            ctx_1d, ctx_1h, feat_1h=feat_1h, feat_1d=feat_1d)
+            ctx_1d, ctx_1h,
+            feat_1h=feat_1h, feat_4h=feat_4h, feat_1d=feat_1d)
 
         if len(train_cands) < 30 or len(test_cands) == 0:
             return self._empty_result()
@@ -355,8 +358,16 @@ class NYXPipeline:
         ctx_1h: Dict[str, pd.Series],
         feat_1h: Optional[pd.DataFrame] = None,
         feat_1d: Optional[pd.DataFrame] = None,
+        feat_4h: Optional[pd.DataFrame] = None,
     ) -> List[Dict]:
-        """Generate edge candidates with full MTF features (15m + h1_* + d1_*)."""
+        """Generate edge candidates with full MTF features.
+
+        PERMANENT RULE: every candidate must carry the 4 timeframes:
+          no prefix  15m execution features
+          h1_*       1h  stationary features
+          h4_*       4h  stationary features
+          d1_*       1d  stationary features
+        """
         close = df_15m['close'].values.astype(float)
         high = df_15m['high'].values.astype(float)
         low = df_15m['low'].values.astype(float)
@@ -394,6 +405,16 @@ class NYXPipeline:
                     df_15m.index, method='ffill'
                 ).fillna(0.0)
                 d1_arr = np.nan_to_num(d1_aligned.values, nan=0.0)
+
+        h4_cols: List[str] = []
+        h4_arr: np.ndarray = np.empty((n, 0), dtype=float)
+        if feat_4h is not None and not feat_4h.empty:
+            h4_cols = [c for c in feat_4h.columns if feat_4h[c].nunique() > 2]
+            if h4_cols:
+                h4_aligned = feat_4h[h4_cols].reindex(
+                    df_15m.index, method='ffill'
+                ).fillna(0.0)
+                h4_arr = np.nan_to_num(h4_aligned.values, nan=0.0)
 
         # Align MTF context to 15m index
         ctx_1d_aligned = {}
@@ -461,6 +482,10 @@ class NYXPipeline:
             # Full 1h stationary features (h1_* prefix)
             for k, col in enumerate(h1_cols):
                 features[f'h1_{col}'] = float(h1_arr[i, k]) if i < len(h1_arr) else 0.0
+
+            # Full 4h stationary features (h4_* prefix)
+            for k, col in enumerate(h4_cols):
+                features[f'h4_{col}'] = float(h4_arr[i, k]) if i < len(h4_arr) else 0.0
 
             # Full 1d stationary features (d1_* prefix)
             for k, col in enumerate(d1_cols):
