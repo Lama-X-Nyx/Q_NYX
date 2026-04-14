@@ -31,6 +31,12 @@ class Signal:
     bull_bear_tag: str             # 'bull' | 'bear' | 'range'
     size_suggestion: float         # ≥ 0, fraction of per-asset risk_cap
     cluster_group: str             # e.g. 'majors' | 'alts'
+    expected_hold_bars: int = 50   # 15m bars this position is expected
+                                    # to stay open. HubSpokeRunner releases
+                                    # `_open_positions[symbol]` after this
+                                    # many bars so a subsequent signal on
+                                    # the same symbol can be approved.
+                                    # Default 50 = NYXPipeline.max_bars.
 
     def __post_init__(self) -> None:
         if self.direction not in _VALID_DIRECTIONS:
@@ -53,6 +59,19 @@ class Signal:
             raise SignalValidationError(
                 f"{self.symbol}: bull_bear_tag={self.bull_bear_tag!r} "
                 f"must be one of {sorted(_BULL_BEAR_TAGS)}"
+            )
+        # Position-lifecycle validation (bool inherits from int in Python;
+        # explicit bool exclusion ensures integer-only).
+        if not isinstance(self.expected_hold_bars, int) \
+                or isinstance(self.expected_hold_bars, bool):
+            raise SignalValidationError(
+                f"{self.symbol}: expected_hold_bars must be int, got "
+                f"{type(self.expected_hold_bars).__name__}"
+            )
+        if self.expected_hold_bars < 0:
+            raise SignalValidationError(
+                f"{self.symbol}: expected_hold_bars="
+                f"{self.expected_hold_bars} < 0"
             )
 
     # -----------------------------------------------------------------
