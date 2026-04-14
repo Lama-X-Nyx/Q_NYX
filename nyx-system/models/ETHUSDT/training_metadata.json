@@ -1,0 +1,8 @@
+{
+  "symbol": "ETHUSDT",
+  "train_end": "2022-12-31",
+  "n_train_candidates": 1061,
+  "n_features": 33,
+  "in_sample_accuracy": 0.8350612629594723,
+  "positive_class_rate": 0.46748350612629597
+}
