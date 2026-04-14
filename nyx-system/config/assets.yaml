@@ -1,0 +1,49 @@
+# Asset registry for the hub-and-spoke architecture.
+# Single source of truth for per-asset config: fees, precision, slippage,
+# session profile, risk cap, and the model profile used to locate the
+# asset-specific ML filter + thresholds + execution profile.
+#
+# Phase order (per the architectural decision):
+#   1. ETH (majors, closest to BTC — cleanest to port)
+#   2. SOL (alts — momentum/nervous, tests execution)
+#   3. XRP (alts — event-sensitive, tests robustness)
+#
+# Adding a new symbol = new entry here + train a model under that
+# model_profile + done. No code change needed.
+
+assets:
+  ETHUSDT:
+    enabled: true
+    group: majors
+    price_precision: 2
+    qty_precision: 3
+    maker_fee: 0.0002
+    taker_fee: 0.0004
+    slippage_model: medium
+    session_profile: liquid
+    risk_cap: 0.40
+    model_profile: eth_v1
+
+  XRPUSDT:
+    enabled: true
+    group: alts
+    price_precision: 4
+    qty_precision: 1
+    maker_fee: 0.0002
+    taker_fee: 0.0004
+    slippage_model: medium_high
+    session_profile: event_sensitive
+    risk_cap: 0.25
+    model_profile: xrp_v1
+
+  SOLUSDT:
+    enabled: true
+    group: alts
+    price_precision: 2
+    qty_precision: 2
+    maker_fee: 0.0002
+    taker_fee: 0.0004
+    slippage_model: high
+    session_profile: momentum_fast
+    risk_cap: 0.25
+    model_profile: sol_v1
