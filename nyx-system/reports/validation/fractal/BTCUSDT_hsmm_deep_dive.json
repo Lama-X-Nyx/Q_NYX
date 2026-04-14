@@ -17,13 +17,13 @@
         "window_size": 50
       },
       "state_probabilities": {
-        "trend_plus": 0.6283725211906027,
-        "range": 0.32616594514805336,
-        "trend_minus": 0.04546153366134727
+        "trend_plus": 0.9056032145859736,
+        "range": 0.08447355129627744,
+        "trend_minus": 0.002878698320491295
       },
       "selected_state": "trend_plus",
-      "sdc": 6.283725211906027,
-      "stability": 0.75,
+      "sdc": 9.056032145859735,
+      "stability": 0.74,
       "mapping_details": {
         "raw_state": "Trend+",
         "mapped_state": "trend_plus",
@@ -31,7 +31,7 @@
         "agent_final_state": "trend_plus",
         "agent_passed": true
       },
-      "diagnostic": "trend_plus selected with 0.63 probability"
+      "diagnostic": "trend_plus selected with 0.91 probability"
     }
   },
   "cross_period_summary": {
@@ -42,9 +42,9 @@
       "trend_minus": 0
     },
     "probability_means": {
-      "trend_plus": 0.6283725211906027,
-      "range": 0.32616594514805336,
-      "trend_minus": 0.04546153366134727
+      "trend_plus": 0.9056032145859736,
+      "range": 0.08447355129627744,
+      "trend_minus": 0.002878698320491295
     },
     "probability_stds": {
       "trend_plus": 0.0,
@@ -59,7 +59,7 @@
     "verdict": "HSMM feature alignment fix successfully unlocked trend states"
   },
   "metadata": {
-    "generated_at": "2026-04-04T13:00:14.838085",
+    "generated_at": "2026-04-14T13:08:23.316725",
     "total_periods": 1
   }
 }
