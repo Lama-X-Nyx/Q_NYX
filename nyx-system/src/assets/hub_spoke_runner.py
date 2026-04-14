@@ -83,7 +83,13 @@ class HubSpokeRunner:
             self._runners[symbol] = runner
 
         # Track open positions across all assets (for allocator awareness).
+        # Each entry: { 'direction', 'risk', 'opened_bar', 'hold_bars' }.
+        # `opened_bar` is a global bar counter (see `_global_bar_count`).
+        # When `_global_bar_count - opened_bar > hold_bars`, the entry
+        # is dropped in `_release_expired_positions()` so the same
+        # symbol can take a new trade.
         self._open_positions: Dict[str, dict] = {}
+        self._global_bar_count: int = 0
 
     # ------------------------------------------------------------------
     def pairs(self) -> List[str]:
@@ -125,7 +131,29 @@ class HubSpokeRunner:
         return signals
 
     # ------------------------------------------------------------------
+    def _release_expired_positions(self) -> None:
+        """Drop any open position whose age exceeds its hold_bars.
+
+        Called at the START of each on_bars() so the allocator sees an
+        accurate view of currently-held positions.
+        """
+        now = self._global_bar_count
+        expired = []
+        for sym, info in self._open_positions.items():
+            opened = int(info.get('opened_bar', now))
+            hold = int(info.get('hold_bars', 50))
+            if now - opened > hold:
+                expired.append(sym)
+        for sym in expired:
+            self._open_positions.pop(sym, None)
+
+    # ------------------------------------------------------------------
     def on_bars(self, bars: Dict[str, dict]) -> List[ApprovedTrade]:
+        # 0. Age the global clock BEFORE processing this bar, then
+        #    release any position whose hold window has expired.
+        self._global_bar_count += 1
+        self._release_expired_positions()
+
         # 1. Collect signals from every pod (crash-isolated).
         signals = self._collect_signals(bars)
 
@@ -160,10 +188,15 @@ class HubSpokeRunner:
                 price=mark, score=t.source_signal.score(),
                 size=qty,
             )
-            # Remember as open (simplified — real runner would wait for FILLED).
+            # Remember as open, tagged with the bar index at which it
+            # opened and its expected hold time. _release_expired_positions
+            # will drop it from self._open_positions once expired, freeing
+            # the symbol for new signals.
             self._open_positions[t.symbol] = {
-                'direction': t.direction,
-                'risk': t.final_risk,
+                'direction':  t.direction,
+                'risk':       t.final_risk,
+                'opened_bar': self._global_bar_count,
+                'hold_bars':  int(t.source_signal.expected_hold_bars),
             }
 
         return trades
