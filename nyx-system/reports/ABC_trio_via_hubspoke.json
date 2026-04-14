@@ -37,13 +37,1678 @@
           "timestamp": "2022-01-05T18:00:00",
           "conviction": 0.7939733590559079,
           "edge_net": 62.874206125663065
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-01-05T18:00:00",
+          "conviction": 0.8195102809186927,
+          "edge_net": 56.11649209653948
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.0099,
+          "cluster_group": "alts",
+          "timestamp": "2022-01-07T13:30:00",
+          "conviction": 0.7463789780005607,
+          "edge_net": 68.0511202682166
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-01-10T11:00:00",
+          "conviction": 0.6440485956969424,
+          "edge_net": 48.944656168897076
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-01-12T11:30:00",
+          "conviction": 0.8589398234437198,
+          "edge_net": 74.08680941407763
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-01-12T13:30:00",
+          "conviction": 0.6872474238592534,
+          "edge_net": 125.73073449328842
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-01-13T14:15:00",
+          "conviction": 0.6295102952846423,
+          "edge_net": 41.06791968459462
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.012055494302623187,
+          "cluster_group": "majors",
+          "timestamp": "2022-01-14T10:45:00",
+          "conviction": 0.7581003639775221,
+          "edge_net": 63.94213334757159
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-01-20T13:30:00",
+          "conviction": 0.9324290720996941,
+          "edge_net": 55.59565753109282
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-01-20T13:30:00",
+          "conviction": 0.632835839151947,
+          "edge_net": 44.72067928715373
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.011694862283251431,
+          "cluster_group": "majors",
+          "timestamp": "2022-01-21T12:30:00",
+          "conviction": 0.7946636253217486,
+          "edge_net": 78.58634441574509
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.008696697115904827,
+          "cluster_group": "majors",
+          "timestamp": "2022-01-22T09:45:00",
+          "conviction": 0.7464738644906129,
+          "edge_net": 83.90819614266422
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-01-24T08:45:00",
+          "conviction": 0.8743592719913724,
+          "edge_net": 96.07448224264742
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-01-27T14:30:00",
+          "conviction": 0.6170980750013897,
+          "edge_net": 64.30034911831432
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-02-02T14:30:00",
+          "conviction": 0.7018703072707146,
+          "edge_net": 143.4618738075575
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-02-02T14:30:00",
+          "conviction": 0.8779241058861421,
+          "edge_net": 61.28923024861938
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-02-04T13:30:00",
+          "conviction": 0.8654450852815503,
+          "edge_net": 72.50407106145549
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-02-04T15:00:00",
+          "conviction": 0.714842377921947,
+          "edge_net": 98.06837716194748
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.012375,
+          "cluster_group": "alts",
+          "timestamp": "2022-02-06T14:30:00",
+          "conviction": 0.758372297582777,
+          "edge_net": 63.467401121179385
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.012375,
+          "cluster_group": "alts",
+          "timestamp": "2022-02-11T16:00:00",
+          "conviction": 0.8500633406702214,
+          "edge_net": 78.54194672029983
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.0072,
+          "cluster_group": "majors",
+          "timestamp": "2022-02-12T06:30:00",
+          "conviction": 0.6935247712915757,
+          "edge_net": 45.77424368266767
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.0099,
+          "cluster_group": "alts",
+          "timestamp": "2022-02-14T12:30:00",
+          "conviction": 0.722838820297337,
+          "edge_net": 70.24370717548116
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-02-15T08:30:00",
+          "conviction": 0.7334094772831551,
+          "edge_net": 49.51818741924325
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-02-16T13:30:00",
+          "conviction": 0.6093788396297842,
+          "edge_net": 71.58281881639166
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.011442631828067821,
+          "cluster_group": "majors",
+          "timestamp": "2022-02-17T13:15:00",
+          "conviction": 0.8688924507451228,
+          "edge_net": 73.79531900396
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.012375,
+          "cluster_group": "majors",
+          "timestamp": "2022-02-18T11:00:00",
+          "conviction": 0.8158626331688043,
+          "edge_net": 53.18242222287909
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.012375,
+          "cluster_group": "alts",
+          "timestamp": "2022-02-19T08:45:00",
+          "conviction": 0.813468469856541,
+          "edge_net": 64.68447254859913
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.008171824078566935,
+          "cluster_group": "majors",
+          "timestamp": "2022-02-20T06:00:00",
+          "conviction": 0.795509103002855,
+          "edge_net": 67.47783108430401
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.007458564550805324,
+          "cluster_group": "majors",
+          "timestamp": "2022-02-21T11:30:00",
+          "conviction": 0.7451296000805826,
+          "edge_net": 73.79530404866932
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-02-25T12:00:00",
+          "conviction": 0.6461386042059595,
+          "edge_net": 128.5173255300911
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-02-28T14:15:00",
+          "conviction": 0.9219509569472941,
+          "edge_net": 116.92728533446208
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-02-28T14:30:00",
+          "conviction": 0.7662126627072061,
+          "edge_net": 166.705432116795
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.0099,
+          "cluster_group": "alts",
+          "timestamp": "2022-03-04T13:30:00",
+          "conviction": 0.7219337549059598,
+          "edge_net": 89.5960852287269
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.009352862487904725,
+          "cluster_group": "majors",
+          "timestamp": "2022-03-04T14:45:00",
+          "conviction": 0.7336812845191057,
+          "edge_net": 95.1323210821335
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.0116743200360585,
+          "cluster_group": "majors",
+          "timestamp": "2022-03-06T09:15:00",
+          "conviction": 0.8445473533088032,
+          "edge_net": 71.24611221137188
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-03-11T11:15:00",
+          "conviction": 0.7966620643190883,
+          "edge_net": 88.24932119609784
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-03-11T11:15:00",
+          "conviction": 0.6136136408585459,
+          "edge_net": 87.24250730114221
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-03-13T11:30:00",
+          "conviction": 0.7005408475668122,
+          "edge_net": 40.04370400764099
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-03-23T14:30:00",
+          "conviction": 0.676876343294061,
+          "edge_net": 100.19026803029107
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-03-24T14:45:00",
+          "conviction": 0.7828474809524838,
+          "edge_net": 82.17932952700242
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-03-27T15:15:00",
+          "conviction": 0.7284469092245657,
+          "edge_net": 36.51214716265973
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.0144,
+          "cluster_group": "alts",
+          "timestamp": "2022-03-27T20:30:00",
+          "conviction": 0.7146700347821195,
+          "edge_net": 96.43910199050549
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.012,
+          "cluster_group": "majors",
+          "timestamp": "2022-03-27T20:30:00",
+          "conviction": 0.6027779213470349,
+          "edge_net": 63.88358220314526
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-03-30T14:45:00",
+          "conviction": 0.6232804537791612,
+          "edge_net": 186.04148976912808
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-03-31T12:30:00",
+          "conviction": 0.7556229407136338,
+          "edge_net": 34.98944169116247
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.0099,
+          "cluster_group": "majors",
+          "timestamp": "2022-04-06T10:15:00",
+          "conviction": 0.695288742882158,
+          "edge_net": 49.109820593894725
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.008918038584871366,
+          "cluster_group": "alts",
+          "timestamp": "2022-04-06T13:45:00",
+          "conviction": 0.70735188896799,
+          "edge_net": 90.63001528282561
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.01077659719182472,
+          "cluster_group": "alts",
+          "timestamp": "2022-04-11T09:15:00",
+          "conviction": 0.9519187837784603,
+          "edge_net": 99.21611134394337
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.011238167419069977,
+          "cluster_group": "alts",
+          "timestamp": "2022-04-11T09:30:00",
+          "conviction": 0.8998719912312959,
+          "edge_net": 75.08762939830416
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.00981526493295885,
+          "cluster_group": "majors",
+          "timestamp": "2022-04-11T09:45:00",
+          "conviction": 0.7251182773347357,
+          "edge_net": 51.098613467534506
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.009702950300636072,
+          "cluster_group": "alts",
+          "timestamp": "2022-04-14T13:30:00",
+          "conviction": 0.7142899142002708,
+          "edge_net": 68.15127114900777
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-04-14T13:30:00",
+          "conviction": 0.6992791030490915,
+          "edge_net": 63.4844647779471
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-04-19T13:30:00",
+          "conviction": 0.7747821718968907,
+          "edge_net": 62.32186081979654
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-04-20T11:45:00",
+          "conviction": 0.784172708685473,
+          "edge_net": 55.394848107338206
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-04-21T10:15:00",
+          "conviction": 0.7953797570371649,
+          "edge_net": 61.53312882223397
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-04-21T10:15:00",
+          "conviction": 0.7336399901486167,
+          "edge_net": 57.97609021470499
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.012375,
+          "cluster_group": "majors",
+          "timestamp": "2022-04-22T13:30:00",
+          "conviction": 0.8097662313144169,
+          "edge_net": 55.088724343657105
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.0072,
+          "cluster_group": "majors",
+          "timestamp": "2022-04-25T06:45:00",
+          "conviction": 0.7162043116468871,
+          "edge_net": 63.64749598817922
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-04-27T13:30:00",
+          "conviction": 0.6011724532879669,
+          "edge_net": 63.69978296790573
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.0099,
+          "cluster_group": "majors",
+          "timestamp": "2022-04-29T09:00:00",
+          "conviction": 0.7048559715474465,
+          "edge_net": 48.81080099360651
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.012375,
+          "cluster_group": "majors",
+          "timestamp": "2022-04-30T14:00:00",
+          "conviction": 0.7777417328242408,
+          "edge_net": 31.315572352598057
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.0099,
+          "cluster_group": "majors",
+          "timestamp": "2022-05-03T18:00:00",
+          "conviction": 0.7436958036601112,
+          "edge_net": 60.87968555563614
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-05-04T18:00:00",
+          "conviction": 0.978832097288778,
+          "edge_net": 67.68235281744792
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-05-04T18:00:00",
+          "conviction": 0.8419702449668297,
+          "edge_net": 69.49278418041148
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-05-05T13:30:00",
+          "conviction": 0.9287049763424867,
+          "edge_net": 86.71982379862922
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-05-05T13:30:00",
+          "conviction": 0.7914562093004129,
+          "edge_net": 33.47134788047501
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-05-05T13:45:00",
+          "conviction": 0.8572766268473465,
+          "edge_net": 50.08790228207002
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.011685899055781757,
+          "cluster_group": "majors",
+          "timestamp": "2022-05-08T17:00:00",
+          "conviction": 0.8011341968661096,
+          "edge_net": 67.8910896193013
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.008868687959775919,
+          "cluster_group": "alts",
+          "timestamp": "2022-05-08T17:00:00",
+          "conviction": 0.6828860171293969,
+          "edge_net": 70.92764774577006
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.011157096867120669,
+          "cluster_group": "majors",
+          "timestamp": "2022-05-09T10:45:00",
+          "conviction": 0.8027588597558069,
+          "edge_net": 85.03492027141986
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.009900000000000003,
+          "cluster_group": "alts",
+          "timestamp": "2022-05-11T12:30:00",
+          "conviction": 0.7863327950728708,
+          "edge_net": 106.66810340379297
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-05-15T20:00:00",
+          "conviction": 0.8474904106747316,
+          "edge_net": 118.9540152303569
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.011577373165760973,
+          "cluster_group": "alts",
+          "timestamp": "2022-05-18T12:45:00",
+          "conviction": 0.8246127182908399,
+          "edge_net": 98.33086100889354
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-05-22T09:30:00",
+          "conviction": 0.8889085187986754,
+          "edge_net": 54.57559077122878
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.005756649177477144,
+          "cluster_group": "majors",
+          "timestamp": "2022-05-23T19:15:00",
+          "conviction": 0.7000650372099269,
+          "edge_net": 45.07434316423201
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.010193858733410081,
+          "cluster_group": "alts",
+          "timestamp": "2022-05-26T08:15:00",
+          "conviction": 0.8152868164866255,
+          "edge_net": 109.46484496169903
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-05-26T08:15:00",
+          "conviction": 0.922684299412857,
+          "edge_net": 67.30785651875763
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-05-30T20:15:00",
+          "conviction": 0.9085684609032355,
+          "edge_net": 82.2690548473152
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-05-30T20:15:00",
+          "conviction": 0.8126852937864396,
+          "edge_net": 63.79852070023935
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.012375,
+          "cluster_group": "alts",
+          "timestamp": "2022-06-01T14:00:00",
+          "conviction": 0.8241195624283278,
+          "edge_net": 76.30455631401848
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.009381048386511555,
+          "cluster_group": "majors",
+          "timestamp": "2022-06-01T14:30:00",
+          "conviction": 0.6803270565908586,
+          "edge_net": 81.30767019440286
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.011676188075128777,
+          "cluster_group": "alts",
+          "timestamp": "2022-06-01T14:30:00",
+          "conviction": 0.8926104793092908,
+          "edge_net": 59.46433462842185
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-06-02T13:00:00",
+          "conviction": 0.7097107548719894,
+          "edge_net": 99.22923251576378
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.01339640652766625,
+          "cluster_group": "alts",
+          "timestamp": "2022-06-03T08:30:00",
+          "conviction": 0.6392565051389392,
+          "edge_net": 93.61018541841196
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-06-03T10:15:00",
+          "conviction": 0.6928143010950827,
+          "edge_net": 57.91302252635116
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.012375,
+          "cluster_group": "alts",
+          "timestamp": "2022-06-07T10:45:00",
+          "conviction": 0.8222364723815891,
+          "edge_net": 39.04682055693914
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.0099,
+          "cluster_group": "majors",
+          "timestamp": "2022-06-07T11:00:00",
+          "conviction": 0.7134283289120216,
+          "edge_net": 46.428499459255974
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-06-09T08:15:00",
+          "conviction": 0.6304051600924682,
+          "edge_net": 97.40838464589643
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.011251129673584404,
+          "cluster_group": "alts",
+          "timestamp": "2022-06-10T12:30:00",
+          "conviction": 0.9175095393457883,
+          "edge_net": 92.75030374551696
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-06-10T12:30:00",
+          "conviction": 0.902301387579973,
+          "edge_net": 66.78877673274668
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.011327313233804105,
+          "cluster_group": "alts",
+          "timestamp": "2022-06-11T08:30:00",
+          "conviction": 0.8969308064352163,
+          "edge_net": 96.60628295616296
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.008672686766195896,
+          "cluster_group": "alts",
+          "timestamp": "2022-06-11T08:30:00",
+          "conviction": 0.9335614906106517,
+          "edge_net": 32.452161456193835
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.009837670884146109,
+          "cluster_group": "majors",
+          "timestamp": "2022-06-12T14:15:00",
+          "conviction": 0.7118670777774354,
+          "edge_net": 70.08906273497387
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.013748643732776516,
+          "cluster_group": "majors",
+          "timestamp": "2022-06-15T18:00:00",
+          "conviction": 0.6491400891058848,
+          "edge_net": 207.02075938328738
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.014567295919365873,
+          "cluster_group": "alts",
+          "timestamp": "2022-06-18T06:45:00",
+          "conviction": 0.8040091790624165,
+          "edge_net": 185.7453827017874
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.010081672785405215,
+          "cluster_group": "majors",
+          "timestamp": "2022-06-18T06:45:00",
+          "conviction": 0.6126562956387586,
+          "edge_net": 136.55388867353923
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-06-26T11:30:00",
+          "conviction": 0.6581923448667772,
+          "edge_net": 47.02258630741063
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-06-27T13:30:00",
+          "conviction": 0.8016473732020849,
+          "edge_net": 115.0605688729076
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.005000000000000001,
+          "cluster_group": "alts",
+          "timestamp": "2022-06-27T13:30:00",
+          "conviction": 0.7153015543632071,
+          "edge_net": 119.81707240829097
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.008033398907238708,
+          "cluster_group": "alts",
+          "timestamp": "2022-06-30T06:30:00",
+          "conviction": 0.7797192872815041,
+          "edge_net": 90.66416920402939
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.007837973864946135,
+          "cluster_group": "majors",
+          "timestamp": "2022-06-30T06:30:00",
+          "conviction": 0.7648797273517111,
+          "edge_net": 81.52172372308631
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.0144,
+          "cluster_group": "alts",
+          "timestamp": "2022-07-03T19:45:00",
+          "conviction": 0.6669239940595452,
+          "edge_net": 82.27061531570537
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.012,
+          "cluster_group": "majors",
+          "timestamp": "2022-07-03T19:45:00",
+          "conviction": 0.6162084428746746,
+          "edge_net": 62.34174424120377
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-07-06T18:00:00",
+          "conviction": 0.6511881200741728,
+          "edge_net": 92.69176922255394
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-07-07T14:30:00",
+          "conviction": 0.784933276852301,
+          "edge_net": 70.63560038060513
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.012375,
+          "cluster_group": "majors",
+          "timestamp": "2022-07-10T13:30:00",
+          "conviction": 0.8039046722298044,
+          "edge_net": 57.86939016674117
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.012375,
+          "cluster_group": "majors",
+          "timestamp": "2022-07-11T13:45:00",
+          "conviction": 0.7975295869093366,
+          "edge_net": 63.084269594272456
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.0072,
+          "cluster_group": "majors",
+          "timestamp": "2022-07-12T07:00:00",
+          "conviction": 0.7210189847105046,
+          "edge_net": 53.82880614032726
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.0099,
+          "cluster_group": "majors",
+          "timestamp": "2022-07-13T12:15:00",
+          "conviction": 0.6835616327226532,
+          "edge_net": 70.72889262353617
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.0099,
+          "cluster_group": "alts",
+          "timestamp": "2022-07-13T12:15:00",
+          "conviction": 0.6875347202542945,
+          "edge_net": 19.662436905624656
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-07-16T16:00:00",
+          "conviction": 0.6711456739223414,
+          "edge_net": 92.26935588097075
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-07-17T17:15:00",
+          "conviction": 0.657971966325908,
+          "edge_net": 114.01329081203647
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.0061649555046481095,
+          "cluster_group": "majors",
+          "timestamp": "2022-07-22T19:30:00",
+          "conviction": 0.743583527674467,
+          "edge_net": 49.3908687797748
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-07-27T18:00:00",
+          "conviction": 0.6397077949496758,
+          "edge_net": 204.77174180427824
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.005000000000000001,
+          "cluster_group": "alts",
+          "timestamp": "2022-07-27T18:00:00",
+          "conviction": 0.7090891604005243,
+          "edge_net": 179.87068530783424
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-07-28T12:30:00",
+          "conviction": 0.8193962682449859,
+          "edge_net": 165.7174950594523
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.005000000000000001,
+          "cluster_group": "alts",
+          "timestamp": "2022-07-28T12:30:00",
+          "conviction": 0.7849228326830459,
+          "edge_net": 144.49868003942103
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-07-30T13:00:00",
+          "conviction": 0.8467536121856792,
+          "edge_net": 143.62665933965513
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.0099,
+          "cluster_group": "majors",
+          "timestamp": "2022-08-01T10:30:00",
+          "conviction": 0.7224514287242491,
+          "edge_net": 43.585382285257154
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-08-05T11:15:00",
+          "conviction": 0.8803493407687738,
+          "edge_net": 95.98794002637082
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.014283868925257119,
+          "cluster_group": "majors",
+          "timestamp": "2022-08-08T06:00:00",
+          "conviction": 0.7336758444485418,
+          "edge_net": 43.503009439091045
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-08-08T08:45:00",
+          "conviction": 0.7899521218867163,
+          "edge_net": 90.07504792460813
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-08-09T09:30:00",
+          "conviction": 0.8185396198005718,
+          "edge_net": 49.39597007706625
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-08-10T12:30:00",
+          "conviction": 0.8229770372577647,
+          "edge_net": 143.4818849366868
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.005000000000000001,
+          "cluster_group": "alts",
+          "timestamp": "2022-08-10T12:30:00",
+          "conviction": 0.7243726658666756,
+          "edge_net": 142.4127947558211
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.011251624293507269,
+          "cluster_group": "majors",
+          "timestamp": "2022-08-14T07:00:00",
+          "conviction": 0.6270522165301283,
+          "edge_net": 43.499230767585104
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.012,
+          "cluster_group": "alts",
+          "timestamp": "2022-08-14T07:45:00",
+          "conviction": 0.6418055104999845,
+          "edge_net": 60.70401876492834
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.0057599999999999995,
+          "cluster_group": "alts",
+          "timestamp": "2022-08-19T06:30:00",
+          "conviction": 0.7241726089230432,
+          "edge_net": 21.12348581709256
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-08-25T06:15:00",
+          "conviction": 0.7511457451791334,
+          "edge_net": 83.64767059427786
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.011976204714167634,
+          "cluster_group": "alts",
+          "timestamp": "2022-08-26T12:30:00",
+          "conviction": 0.9111801078809272,
+          "edge_net": 24.148419109750417
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-09-02T12:15:00",
+          "conviction": 0.9426226332763833,
+          "edge_net": 92.42770745344471
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.012375,
+          "cluster_group": "alts",
+          "timestamp": "2022-09-06T17:00:00",
+          "conviction": 0.903024014593396,
+          "edge_net": 34.93125998643742
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.0144,
+          "cluster_group": "alts",
+          "timestamp": "2022-09-07T20:15:00",
+          "conviction": 0.6579348401123383,
+          "edge_net": 75.71970332982893
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-09-12T09:30:00",
+          "conviction": 0.7993909493162797,
+          "edge_net": 156.24606907389818
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.012375,
+          "cluster_group": "alts",
+          "timestamp": "2022-09-13T12:30:00",
+          "conviction": 0.8950529492804777,
+          "edge_net": 107.81930579283811
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.0099,
+          "cluster_group": "majors",
+          "timestamp": "2022-09-14T11:45:00",
+          "conviction": 0.7143324467354228,
+          "edge_net": 56.5137106486119
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-09-15T14:30:00",
+          "conviction": 0.7232942603295271,
+          "edge_net": 219.1180217777067
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-09-15T14:30:00",
+          "conviction": 0.6983055736920455,
+          "edge_net": 89.64697877449636
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-09-18T09:45:00",
+          "conviction": 0.607202340660566,
+          "edge_net": 59.10766591839422
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-09-20T13:15:00",
+          "conviction": 0.6426948060919554,
+          "edge_net": 82.84398160511867
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-09-21T17:30:00",
+          "conviction": 0.8640920150687045,
+          "edge_net": 125.69970452014573
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.005000000000000001,
+          "cluster_group": "alts",
+          "timestamp": "2022-09-21T17:30:00",
+          "conviction": 0.8008326282666623,
+          "edge_net": 89.52831290305662
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-09-29T12:30:00",
+          "conviction": 0.6019183180543385,
+          "edge_net": 84.0784537920917
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-09-29T12:30:00",
+          "conviction": 0.6287745972897054,
+          "edge_net": 64.97511770851234
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-10-04T06:30:00",
+          "conviction": 0.774391629993552,
+          "edge_net": 59.12367930783389
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.01166959109757536,
+          "cluster_group": "majors",
+          "timestamp": "2022-10-04T06:30:00",
+          "conviction": 0.6332345467366838,
+          "edge_net": 44.27429690622485
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.012375,
+          "cluster_group": "alts",
+          "timestamp": "2022-10-07T12:15:00",
+          "conviction": 0.8428554390005335,
+          "edge_net": 62.608598160654154
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.008197218544274092,
+          "cluster_group": "alts",
+          "timestamp": "2022-10-13T07:00:00",
+          "conviction": 0.8937674684590624,
+          "edge_net": 12.923857946617012
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.010932619134530124,
+          "cluster_group": "alts",
+          "timestamp": "2022-10-13T10:15:00",
+          "conviction": 0.8099620593576162,
+          "edge_net": 86.05447182770895
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.012806181432191461,
+          "cluster_group": "alts",
+          "timestamp": "2022-10-16T19:30:00",
+          "conviction": 0.7208054062689488,
+          "edge_net": 41.571405607191586
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-10-17T13:30:00",
+          "conviction": 0.6219565121557649,
+          "edge_net": 43.85152778862771
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.01195326166108088,
+          "cluster_group": "alts",
+          "timestamp": "2022-10-21T12:00:00",
+          "conviction": 0.784500711147538,
+          "edge_net": 64.83017880928709
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-10-23T17:45:00",
+          "conviction": 0.9127388336732067,
+          "edge_net": 41.7334388684269
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-10-25T12:45:00",
+          "conviction": 0.9465334434238942,
+          "edge_net": 42.33936291609963
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-10-25T13:45:00",
+          "conviction": 0.687593193086811,
+          "edge_net": 30.50924968490265
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-10-25T16:00:00",
+          "conviction": 0.8757637690196334,
+          "edge_net": 120.0853464976072
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.012,
+          "cluster_group": "majors",
+          "timestamp": "2022-10-27T20:00:00",
+          "conviction": 0.6211609305216776,
+          "edge_net": 55.59210046403128
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.011072629092643569,
+          "cluster_group": "alts",
+          "timestamp": "2022-10-27T20:15:00",
+          "conviction": 0.6406523501527024,
+          "edge_net": 107.3651576157674
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-10-31T09:30:00",
+          "conviction": 0.7812468382760961,
+          "edge_net": 90.42441715584397
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-11-04T12:30:00",
+          "conviction": 0.802065996442303,
+          "edge_net": 139.753035869115
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.005000000000000001,
+          "cluster_group": "alts",
+          "timestamp": "2022-11-04T12:30:00",
+          "conviction": 0.9102794170385138,
+          "edge_net": 119.71916771776604
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-11-04T14:15:00",
+          "conviction": 0.6024078250945807,
+          "edge_net": 67.20970935469651
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-11-05T15:15:00",
+          "conviction": 0.6117293014430186,
+          "edge_net": 175.87125518616142
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.011797123617578826,
+          "cluster_group": "majors",
+          "timestamp": "2022-11-08T14:30:00",
+          "conviction": 0.8024165016696703,
+          "edge_net": 66.5749156522517
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.011408711240683602,
+          "cluster_group": "majors",
+          "timestamp": "2022-11-09T15:30:00",
+          "conviction": 0.8311264709212749,
+          "edge_net": 127.92264457211085
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-11-11T14:00:00",
+          "conviction": 0.7506561650188547,
+          "edge_net": 125.60287159622187
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-11-17T12:00:00",
+          "conviction": 0.8874858572878241,
+          "edge_net": 58.33296980861204
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.012375,
+          "cluster_group": "alts",
+          "timestamp": "2022-11-20T10:30:00",
+          "conviction": 0.827929877250878,
+          "edge_net": 51.25635470853046
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.00971366063050439,
+          "cluster_group": "alts",
+          "timestamp": "2022-11-20T13:45:00",
+          "conviction": 0.7106886323039635,
+          "edge_net": 13.977922712248708
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-11-30T18:30:00",
+          "conviction": 0.7785890799421988,
+          "edge_net": 103.26787932544758
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-12-01T13:30:00",
+          "conviction": 0.6095040334429265,
+          "edge_net": 56.89161396268816
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-12-04T18:00:00",
+          "conviction": 0.6118969762354934,
+          "edge_net": 66.23476305062621
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.009000000000000001,
+          "cluster_group": "alts",
+          "timestamp": "2022-12-07T06:45:00",
+          "conviction": 0.768186147461897,
+          "edge_net": 52.84218534130165
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-12-08T18:30:00",
+          "conviction": 0.971515459989332,
+          "edge_net": 75.6050585866733
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-12-08T18:30:00",
+          "conviction": 0.628768080790263,
+          "edge_net": 44.33594985619654
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-12-12T20:45:00",
+          "conviction": 0.8014225833040749,
+          "edge_net": 46.537121218817354
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-12-13T13:15:00",
+          "conviction": 0.9618663501366979,
+          "edge_net": 98.0876019638435
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.005000000000000001,
+          "cluster_group": "alts",
+          "timestamp": "2022-12-13T13:15:00",
+          "conviction": 0.9366001430974503,
+          "edge_net": 50.36087463132188
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2022-12-14T12:15:00",
+          "conviction": 0.7040745000374476,
+          "edge_net": 27.64347513555578
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2022-12-14T14:30:00",
+          "conviction": 0.8976294565715532,
+          "edge_net": 55.408027912749134
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.012375,
+          "cluster_group": "alts",
+          "timestamp": "2022-12-16T08:45:00",
+          "conviction": 0.8977742111651693,
+          "edge_net": 78.42874981685463
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.007625,
+          "cluster_group": "alts",
+          "timestamp": "2022-12-16T08:45:00",
+          "conviction": 0.7778744851280519,
+          "edge_net": 41.113815495329774
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.0099,
+          "cluster_group": "alts",
+          "timestamp": "2022-12-22T14:30:00",
+          "conviction": 0.7408008233281056,
+          "edge_net": 59.280868092227266
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.009800019585917771,
+          "cluster_group": "alts",
+          "timestamp": "2022-12-22T14:30:00",
+          "conviction": 0.703463183414486,
+          "edge_net": 5.7183174071769445
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.008838100549689419,
+          "cluster_group": "alts",
+          "timestamp": "2022-12-27T14:30:00",
+          "conviction": 0.692921038678242,
+          "edge_net": 7.857203280354784
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.0072000000000000015,
+          "cluster_group": "alts",
+          "timestamp": "2022-12-29T19:15:00",
+          "conviction": 0.7947081169645859,
+          "edge_net": 6.46217526023668
         }
       ],
-      "n_approved": 3,
+      "n_approved": 188,
       "approved_per_asset": {
-        "BTCUSDT": 1,
-        "ETHUSDT": 1,
-        "SOLUSDT": 1
+        "BTCUSDT": 73,
+        "ETHUSDT": 72,
+        "SOLUSDT": 43
       }
     },
     "2023": {
@@ -63,6 +1728,24 @@
           "edge_net": 72.05871005693383
         },
         {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-01-03T13:45:00",
+          "conviction": 0.746571833727245,
+          "edge_net": 37.4466446086123
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-01-08T08:45:00",
+          "conviction": 0.6352933290441868,
+          "edge_net": 25.191827307297466
+        },
+        {
           "symbol": "ETHUSDT",
           "direction": 1,
           "final_risk": 0.00877678374376072,
@@ -72,6 +1755,15 @@
           "edge_net": 9.993350411813257
         },
         {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-01-12T17:30:00",
+          "conviction": 0.6412430636056595,
+          "edge_net": 110.59984938624936
+        },
+        {
           "symbol": "BTCUSDT",
           "direction": 1,
           "final_risk": 0.015,
@@ -79,20 +1771,1703 @@
           "timestamp": "2023-01-13T15:00:00",
           "conviction": 0.770222786569611,
           "edge_net": 59.36313060177542
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.0144,
+          "cluster_group": "alts",
+          "timestamp": "2023-01-16T06:30:00",
+          "conviction": 0.7084844824218669,
+          "edge_net": 85.08762499275585
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-01-20T16:30:00",
+          "conviction": 0.7232602420269726,
+          "edge_net": 56.0495323782403
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-01-20T16:45:00",
+          "conviction": 0.8329660982032501,
+          "edge_net": 77.8179543065089
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.012,
+          "cluster_group": "majors",
+          "timestamp": "2023-01-20T20:00:00",
+          "conviction": 0.6354069502535571,
+          "edge_net": 77.70164672724441
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2023-01-21T09:30:00",
+          "conviction": 0.647479531071683,
+          "edge_net": 52.34193309828651
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.00883322013442478,
+          "cluster_group": "alts",
+          "timestamp": "2023-01-23T14:45:00",
+          "conviction": 0.7072981061125536,
+          "edge_net": 64.34514242650951
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.0099,
+          "cluster_group": "majors",
+          "timestamp": "2023-01-25T14:30:00",
+          "conviction": 0.6899239476792358,
+          "edge_net": 44.684730012902435
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.009000000000000001,
+          "cluster_group": "alts",
+          "timestamp": "2023-01-25T20:00:00",
+          "conviction": 0.8719379233536575,
+          "edge_net": 50.680462607112375
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2023-01-29T10:00:00",
+          "conviction": 0.6410776768155546,
+          "edge_net": 36.863011942698414
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-01-29T16:45:00",
+          "conviction": 0.8076353916919197,
+          "edge_net": 82.3799421885576
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-01-29T18:30:00",
+          "conviction": 0.8070805687201678,
+          "edge_net": 56.1665011735918
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.012375,
+          "cluster_group": "majors",
+          "timestamp": "2023-01-30T09:00:00",
+          "conviction": 0.7688349319557268,
+          "edge_net": 37.56134089278683
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.008434020925595323,
+          "cluster_group": "alts",
+          "timestamp": "2023-02-01T15:45:00",
+          "conviction": 0.7086814788994213,
+          "edge_net": 10.45500891292092
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.009000000000000001,
+          "cluster_group": "alts",
+          "timestamp": "2023-02-01T19:30:00",
+          "conviction": 0.8521712209367287,
+          "edge_net": 87.05898644686019
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-02-04T13:00:00",
+          "conviction": 0.7062455482877807,
+          "edge_net": 41.96958795971619
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.0099,
+          "cluster_group": "alts",
+          "timestamp": "2023-02-05T12:30:00",
+          "conviction": 0.7269283864024652,
+          "edge_net": 8.761247058872573
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.012375,
+          "cluster_group": "alts",
+          "timestamp": "2023-02-07T17:45:00",
+          "conviction": 0.8787124571402448,
+          "edge_net": 57.895168050703916
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.007954219415723964,
+          "cluster_group": "alts",
+          "timestamp": "2023-02-09T19:15:00",
+          "conviction": 0.7517519575257943,
+          "edge_net": 76.60635021074884
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.006802883724996297,
+          "cluster_group": "majors",
+          "timestamp": "2023-02-09T19:15:00",
+          "conviction": 0.6997757439899475,
+          "edge_net": 64.60748654608527
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-02-12T15:15:00",
+          "conviction": 0.6427282351619688,
+          "edge_net": 39.36839495327783
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-02-14T13:15:00",
+          "conviction": 0.7514304168576522,
+          "edge_net": 48.416294546536996
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-02-15T11:30:00",
+          "conviction": 0.793883765012086,
+          "edge_net": 43.057950118899264
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2023-02-15T11:30:00",
+          "conviction": 0.7583011431681879,
+          "edge_net": 31.428896359164288
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-02-16T15:45:00",
+          "conviction": 0.8532445907865649,
+          "edge_net": 92.33474570795767
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-02-19T12:45:00",
+          "conviction": 0.8377233631493767,
+          "edge_net": 54.24555721764434
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2023-02-19T15:15:00",
+          "conviction": 0.6770170981707228,
+          "edge_net": 38.75600189308332
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2023-02-20T09:30:00",
+          "conviction": 0.6424716610967068,
+          "edge_net": 60.60186492462414
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-02-21T08:15:00",
+          "conviction": 0.822438000966521,
+          "edge_net": 39.1580029169564
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-02-21T08:30:00",
+          "conviction": 0.7092401327376959,
+          "edge_net": 84.94631257400673
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.009465683815265009,
+          "cluster_group": "majors",
+          "timestamp": "2023-02-22T15:00:00",
+          "conviction": 0.7379233152612003,
+          "edge_net": 71.28912606871144
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-02-24T13:30:00",
+          "conviction": 0.9031720805200201,
+          "edge_net": 46.958384269319076
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.005000000000000001,
+          "cluster_group": "alts",
+          "timestamp": "2023-02-24T13:30:00",
+          "conviction": 0.7568146747947954,
+          "edge_net": 47.47259056402316
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2023-02-24T15:15:00",
+          "conviction": 0.878977774354229,
+          "edge_net": 60.99895940735744
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-02-26T18:30:00",
+          "conviction": 0.8234980010802612,
+          "edge_net": 43.1190555884901
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-02-27T13:30:00",
+          "conviction": 0.6128161507702581,
+          "edge_net": 36.94467186321993
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-03-06T15:45:00",
+          "conviction": 0.7021850773580749,
+          "edge_net": 32.08522290436956
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.012375,
+          "cluster_group": "majors",
+          "timestamp": "2023-03-09T16:45:00",
+          "conviction": 0.8054654223505345,
+          "edge_net": 52.27169043091484
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.012122321482877688,
+          "cluster_group": "alts",
+          "timestamp": "2023-03-09T18:30:00",
+          "conviction": 0.8531615529543038,
+          "edge_net": 62.04183579985839
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.007877678517122313,
+          "cluster_group": "alts",
+          "timestamp": "2023-03-09T18:30:00",
+          "conviction": 0.8729742820140665,
+          "edge_net": 16.456947748689014
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.012375,
+          "cluster_group": "alts",
+          "timestamp": "2023-03-12T17:15:00",
+          "conviction": 0.7637187178335645,
+          "edge_net": 100.45811777484967
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.007625,
+          "cluster_group": "alts",
+          "timestamp": "2023-03-12T17:15:00",
+          "conviction": 0.6999484916841408,
+          "edge_net": 56.978735850803254
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-03-14T12:30:00",
+          "conviction": 0.9221931176156639,
+          "edge_net": 102.44511628134913
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.005000000000000001,
+          "cluster_group": "alts",
+          "timestamp": "2023-03-14T12:30:00",
+          "conviction": 0.6159717313278091,
+          "edge_net": 89.05579308257165
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-03-20T07:30:00",
+          "conviction": 0.7939970418145536,
+          "edge_net": 118.9972817779466
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-03-21T12:30:00",
+          "conviction": 0.8956597920985209,
+          "edge_net": 76.31460935134042
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2023-03-22T14:45:00",
+          "conviction": 0.6692743400070065,
+          "edge_net": 59.93463378249391
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.009141967419492596,
+          "cluster_group": "alts",
+          "timestamp": "2023-03-22T18:00:00",
+          "conviction": 0.6821140848003725,
+          "edge_net": 93.8486666279579
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.012375,
+          "cluster_group": "alts",
+          "timestamp": "2023-03-23T14:45:00",
+          "conviction": 0.9340343610748126,
+          "edge_net": 80.60366745564134
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-03-23T15:00:00",
+          "conviction": 0.6278764758148841,
+          "edge_net": 57.58974119064872
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.008400038171758651,
+          "cluster_group": "alts",
+          "timestamp": "2023-03-24T11:45:00",
+          "conviction": 0.6963811356622951,
+          "edge_net": 66.20060228684588
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-03-26T08:30:00",
+          "conviction": 0.6283637330296993,
+          "edge_net": 49.10329296936667
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-03-27T14:15:00",
+          "conviction": 0.9405700750328119,
+          "edge_net": 66.99280996463739
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.011573632152792626,
+          "cluster_group": "majors",
+          "timestamp": "2023-03-27T14:15:00",
+          "conviction": 0.7535384561833635,
+          "edge_net": 69.04023812204612
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-03-28T18:45:00",
+          "conviction": 0.8701648201878226,
+          "edge_net": 62.48290415866191
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-03-31T13:30:00",
+          "conviction": 0.7562125311138931,
+          "edge_net": 54.28273860364625
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.0099,
+          "cluster_group": "alts",
+          "timestamp": "2023-04-02T15:00:00",
+          "conviction": 0.7241771101041137,
+          "edge_net": 42.816023240022595
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-04-04T11:00:00",
+          "conviction": 0.911219623294512,
+          "edge_net": 75.12131557999074
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.01212175753673352,
+          "cluster_group": "alts",
+          "timestamp": "2023-04-10T16:45:00",
+          "conviction": 0.8296305949602042,
+          "edge_net": 49.618516110029915
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-04-13T08:30:00",
+          "conviction": 0.9235024103885792,
+          "edge_net": 59.05160423873269
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-04-16T20:30:00",
+          "conviction": 0.7692246970833542,
+          "edge_net": 63.74498815438998
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.010730213249212174,
+          "cluster_group": "alts",
+          "timestamp": "2023-04-19T08:00:00",
+          "conviction": 0.9400568975849842,
+          "edge_net": 78.50453430669862
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.009171341637015816,
+          "cluster_group": "majors",
+          "timestamp": "2023-04-19T08:00:00",
+          "conviction": 0.7373692592284571,
+          "edge_net": 68.34529793561771
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.009250672956721632,
+          "cluster_group": "alts",
+          "timestamp": "2023-04-21T17:15:00",
+          "conviction": 0.7212802719671327,
+          "edge_net": 86.95851311598587
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.0064099365305360255,
+          "cluster_group": "majors",
+          "timestamp": "2023-04-21T19:00:00",
+          "conviction": 0.7047044579045669,
+          "edge_net": 65.37984825860744
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.006232155690318745,
+          "cluster_group": "alts",
+          "timestamp": "2023-04-21T19:00:00",
+          "conviction": 0.6963284726335637,
+          "edge_net": 9.77159126482753
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2023-04-26T08:15:00",
+          "conviction": 0.7149447184136158,
+          "edge_net": 45.287570164183286
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-04-26T08:15:00",
+          "conviction": 0.8136333437607853,
+          "edge_net": 36.14174569503938
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-04-28T16:45:00",
+          "conviction": 0.7406114731269107,
+          "edge_net": 55.004513980986566
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-04-30T15:00:00",
+          "conviction": 0.8022982654442737,
+          "edge_net": 35.4458142647638
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-05-02T14:15:00",
+          "conviction": 0.7544755305994386,
+          "edge_net": 55.371191168697216
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.012375,
+          "cluster_group": "alts",
+          "timestamp": "2023-05-05T12:30:00",
+          "conviction": 0.7754355242569436,
+          "edge_net": 68.87757456921686
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.009452694230146493,
+          "cluster_group": "alts",
+          "timestamp": "2023-05-06T12:30:00",
+          "conviction": 0.7317053452329808,
+          "edge_net": 70.28976612315078
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.010547305769853507,
+          "cluster_group": "alts",
+          "timestamp": "2023-05-06T12:30:00",
+          "conviction": 0.797188651155207,
+          "edge_net": 13.046058223454049
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.0117938352183108,
+          "cluster_group": "alts",
+          "timestamp": "2023-05-08T17:30:00",
+          "conviction": 0.9287752000910823,
+          "edge_net": 16.801111592736746
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-05-10T12:30:00",
+          "conviction": 0.6575827353893493,
+          "edge_net": 45.96483221425953
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2023-05-10T12:30:00",
+          "conviction": 0.6605307959620521,
+          "edge_net": 40.12108067285813
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-05-14T15:00:00",
+          "conviction": 0.8399842169651532,
+          "edge_net": 38.923659441890756
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.012375,
+          "cluster_group": "alts",
+          "timestamp": "2023-05-17T11:15:00",
+          "conviction": 0.7588744639265383,
+          "edge_net": 37.25709112178936
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.0099,
+          "cluster_group": "majors",
+          "timestamp": "2023-05-17T11:15:00",
+          "conviction": 0.6967422421413185,
+          "edge_net": 33.05361854046422
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.012375,
+          "cluster_group": "alts",
+          "timestamp": "2023-05-18T17:30:00",
+          "conviction": 0.7923163145263277,
+          "edge_net": 52.47977830402711
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.013124814925975817,
+          "cluster_group": "alts",
+          "timestamp": "2023-05-19T12:00:00",
+          "conviction": 0.6090037056923094,
+          "edge_net": 28.691004849702576
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-05-26T12:30:00",
+          "conviction": 0.6568091508058423,
+          "edge_net": 32.00135869321696
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.014068643364809952,
+          "cluster_group": "majors",
+          "timestamp": "2023-05-28T17:30:00",
+          "conviction": 0.6248100354176264,
+          "edge_net": 30.793798728535236
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.012375,
+          "cluster_group": "alts",
+          "timestamp": "2023-06-05T15:00:00",
+          "conviction": 0.9728210334725282,
+          "edge_net": 42.062452315024764
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.012375,
+          "cluster_group": "majors",
+          "timestamp": "2023-06-05T15:00:00",
+          "conviction": 0.9594190662530305,
+          "edge_net": 40.15007544275129
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.0057599999999999995,
+          "cluster_group": "alts",
+          "timestamp": "2023-06-09T19:00:00",
+          "conviction": 0.7106213470336616,
+          "edge_net": 8.104692890887696
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.00787187114482512,
+          "cluster_group": "alts",
+          "timestamp": "2023-06-14T20:00:00",
+          "conviction": 0.8005480592393113,
+          "edge_net": 87.15688529630913
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.008944446666071136,
+          "cluster_group": "majors",
+          "timestamp": "2023-06-14T20:00:00",
+          "conviction": 0.9091405268456098,
+          "edge_net": 65.8286787395075
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-06-16T18:00:00",
+          "conviction": 0.675032644851603,
+          "edge_net": 76.1400297385074
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.0099,
+          "cluster_group": "alts",
+          "timestamp": "2023-06-19T18:45:00",
+          "conviction": 0.7404079955733628,
+          "edge_net": 65.55507022621018
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2023-06-20T16:15:00",
+          "conviction": 0.852302430066927,
+          "edge_net": 55.761260213599265
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-06-20T17:45:00",
+          "conviction": 0.9061194862520338,
+          "edge_net": 73.1996067844004
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.005000000000000001,
+          "cluster_group": "alts",
+          "timestamp": "2023-06-20T17:45:00",
+          "conviction": 0.6840838673953408,
+          "edge_net": 49.328253638184655
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2023-06-23T15:15:00",
+          "conviction": 0.7971580952577783,
+          "edge_net": 77.72144604392179
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-06-29T09:15:00",
+          "conviction": 0.808463472622555,
+          "edge_net": 61.00035973093343
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.012804181006154262,
+          "cluster_group": "alts",
+          "timestamp": "2023-07-02T14:30:00",
+          "conviction": 0.6034033227750623,
+          "edge_net": 28.26990317778722
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2023-07-03T15:00:00",
+          "conviction": 0.6606129112209577,
+          "edge_net": 29.102717921687827
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-07-04T15:00:00",
+          "conviction": 0.7724019118071207,
+          "edge_net": 41.99104956457666
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-07-06T08:45:00",
+          "conviction": 0.6320069332258387,
+          "edge_net": 44.74852149488295
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-07-10T18:30:00",
+          "conviction": 0.8533294727940608,
+          "edge_net": 38.39584667695935
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2023-07-10T18:30:00",
+          "conviction": 0.7434564724895529,
+          "edge_net": 32.92419266136053
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-07-13T15:15:00",
+          "conviction": 0.9628117120760474,
+          "edge_net": 87.14182742406982
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.005000000000000001,
+          "cluster_group": "alts",
+          "timestamp": "2023-07-13T15:15:00",
+          "conviction": 0.9618753604440978,
+          "edge_net": 37.713341597454004
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-07-14T17:15:00",
+          "conviction": 0.8437299421628749,
+          "edge_net": 61.10797275095636
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.012375,
+          "cluster_group": "majors",
+          "timestamp": "2023-07-14T17:15:00",
+          "conviction": 0.8396395233495884,
+          "edge_net": 52.922116689519896
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-07-17T09:45:00",
+          "conviction": 0.661066172939126,
+          "edge_net": 29.022287534613856
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.008517606402637896,
+          "cluster_group": "alts",
+          "timestamp": "2023-07-17T17:15:00",
+          "conviction": 0.6875015102290073,
+          "edge_net": 28.355082124328288
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-07-23T17:45:00",
+          "conviction": 0.8499478640059646,
+          "edge_net": 25.85348174661732
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.010994698362529292,
+          "cluster_group": "alts",
+          "timestamp": "2023-07-24T09:45:00",
+          "conviction": 0.7504299058542944,
+          "edge_net": 17.140964425065945
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.008318693868829462,
+          "cluster_group": "alts",
+          "timestamp": "2023-07-26T18:00:00",
+          "conviction": 0.7139878167828857,
+          "edge_net": 34.85575236071488
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.01402028179336964,
+          "cluster_group": "alts",
+          "timestamp": "2023-07-28T14:30:00",
+          "conviction": 0.6110559255646948,
+          "edge_net": 28.76005429456017
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.0072842184325140665,
+          "cluster_group": "majors",
+          "timestamp": "2023-08-08T11:00:00",
+          "conviction": 0.6810070719373603,
+          "edge_net": 15.657419511413718
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-08-08T16:30:00",
+          "conviction": 0.6582614651399518,
+          "edge_net": 32.15422888308859
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-08-14T16:15:00",
+          "conviction": 0.6587793064034788,
+          "edge_net": 36.36192688158334
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.012375,
+          "cluster_group": "alts",
+          "timestamp": "2023-08-17T15:00:00",
+          "conviction": 0.9679886734796382,
+          "edge_net": 48.97003157049286
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.0099,
+          "cluster_group": "majors",
+          "timestamp": "2023-08-17T15:30:00",
+          "conviction": 0.6957777878629485,
+          "edge_net": 64.5477856902527
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-08-19T15:45:00",
+          "conviction": 0.7239875098740345,
+          "edge_net": 33.51025326055719
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-08-22T13:30:00",
+          "conviction": 0.6297520230853771,
+          "edge_net": 26.05780535912272
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-08-23T16:15:00",
+          "conviction": 0.6034172237771833,
+          "edge_net": 69.67564988339194
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-08-25T14:00:00",
+          "conviction": 0.7034025589622855,
+          "edge_net": 36.57030894010743
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.0077193193216710705,
+          "cluster_group": "majors",
+          "timestamp": "2023-08-25T14:00:00",
+          "conviction": 0.6946875919482804,
+          "edge_net": 28.480433583217334
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-08-27T08:30:00",
+          "conviction": 0.617380924840004,
+          "edge_net": 15.45972327865095
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.012375,
+          "cluster_group": "alts",
+          "timestamp": "2023-08-29T14:15:00",
+          "conviction": 0.8972467218330559,
+          "edge_net": 66.76637526535066
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.009018911701512313,
+          "cluster_group": "alts",
+          "timestamp": "2023-08-30T14:15:00",
+          "conviction": 0.6985005937613021,
+          "edge_net": 10.315894155014396
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.007516554207641748,
+          "cluster_group": "alts",
+          "timestamp": "2023-08-31T11:15:00",
+          "conviction": 0.7449086666883188,
+          "edge_net": 20.9360014532901
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.008801320057109938,
+          "cluster_group": "alts",
+          "timestamp": "2023-08-31T15:30:00",
+          "conviction": 0.68944352433873,
+          "edge_net": 10.97127732360663
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-09-05T13:45:00",
+          "conviction": 0.6452504156374231,
+          "edge_net": 39.83104100693389
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2023-09-06T14:00:00",
+          "conviction": 0.6834213661974108,
+          "edge_net": 23.23742933579369
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.012375,
+          "cluster_group": "alts",
+          "timestamp": "2023-09-06T17:00:00",
+          "conviction": 0.7889884962807822,
+          "edge_net": 39.526259741519375
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.012375,
+          "cluster_group": "alts",
+          "timestamp": "2023-09-11T09:15:00",
+          "conviction": 0.7507569050712829,
+          "edge_net": 41.150028834007735
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.012375,
+          "cluster_group": "majors",
+          "timestamp": "2023-09-11T14:00:00",
+          "conviction": 0.7853631075312756,
+          "edge_net": 54.45470266111051
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2023-09-18T09:30:00",
+          "conviction": 0.706378565388505,
+          "edge_net": 32.64676950581686
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-09-18T10:30:00",
+          "conviction": 0.7309399538692107,
+          "edge_net": 44.65895353713951
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2023-09-19T08:45:00",
+          "conviction": 0.8633157035933815,
+          "edge_net": 28.657086437404566
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.0099,
+          "cluster_group": "majors",
+          "timestamp": "2023-09-21T09:30:00",
+          "conviction": 0.7235526978904926,
+          "edge_net": 33.283450546046915
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.012375,
+          "cluster_group": "alts",
+          "timestamp": "2023-09-21T10:15:00",
+          "conviction": 0.835866829767488,
+          "edge_net": 50.01392332267676
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.008891357777977532,
+          "cluster_group": "alts",
+          "timestamp": "2023-09-27T09:15:00",
+          "conviction": 0.9466332186379743,
+          "edge_net": 17.03542801969589
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.008721419661286431,
+          "cluster_group": "majors",
+          "timestamp": "2023-09-27T09:30:00",
+          "conviction": 0.8248911801205282,
+          "edge_net": 11.849149433108712
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2023-09-28T14:30:00",
+          "conviction": 0.6225327344861914,
+          "edge_net": 46.62789542959758
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-09-29T07:30:00",
+          "conviction": 0.826453136828138,
+          "edge_net": 44.93481278462583
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-09-30T12:45:00",
+          "conviction": 0.7768377672983906,
+          "edge_net": 35.463381879727464
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-10-01T09:45:00",
+          "conviction": 0.8489608207772975,
+          "edge_net": 46.588974063721196
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.009000000000000001,
+          "cluster_group": "alts",
+          "timestamp": "2023-10-01T20:00:00",
+          "conviction": 0.8512780901810211,
+          "edge_net": 29.763541262424916
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.012375,
+          "cluster_group": "alts",
+          "timestamp": "2023-10-05T15:00:00",
+          "conviction": 0.8301958202405588,
+          "edge_net": 55.20307200099104
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.008350583870434084,
+          "cluster_group": "majors",
+          "timestamp": "2023-10-06T12:30:00",
+          "conviction": 0.7162418889810722,
+          "edge_net": 35.49828619433325
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.012375,
+          "cluster_group": "alts",
+          "timestamp": "2023-10-09T08:30:00",
+          "conviction": 0.797343897093049,
+          "edge_net": 28.796055223700208
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": -1,
+          "final_risk": 0.007625,
+          "cluster_group": "alts",
+          "timestamp": "2023-10-09T08:30:00",
+          "conviction": 0.7681846880438267,
+          "edge_net": 11.363013390482493
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-10-12T09:30:00",
+          "conviction": 0.7435005539902497,
+          "edge_net": 36.665510993961554
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.01053127817958337,
+          "cluster_group": "alts",
+          "timestamp": "2023-10-13T20:45:00",
+          "conviction": 0.6342551643304593,
+          "edge_net": 45.750689163474284
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-10-15T18:30:00",
+          "conviction": 0.6657495472317604,
+          "edge_net": 27.396518769788763
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-10-20T08:15:00",
+          "conviction": 0.915068328778703,
+          "edge_net": 52.148127433483594
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2023-10-20T08:15:00",
+          "conviction": 0.6576756345301652,
+          "edge_net": 71.59325854344904
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-10-21T06:15:00",
+          "conviction": 0.807625835938246,
+          "edge_net": 56.61506222798005
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-10-21T14:45:00",
+          "conviction": 0.7793862671960398,
+          "edge_net": 35.09390388044418
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.0144,
+          "cluster_group": "alts",
+          "timestamp": "2023-10-26T07:15:00",
+          "conviction": 0.7119579729747028,
+          "edge_net": 86.36310844187555
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-10-30T08:30:00",
+          "conviction": 0.8893095729931184,
+          "edge_net": 66.41837227163036
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.005000000000000001,
+          "cluster_group": "alts",
+          "timestamp": "2023-10-30T08:30:00",
+          "conviction": 0.783825346572839,
+          "edge_net": 36.591069223595454
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-10-31T20:45:00",
+          "conviction": 0.7766400859271289,
+          "edge_net": 104.87527501798162
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-11-07T09:30:00",
+          "conviction": 0.6054211096835657,
+          "edge_net": 42.418485492923956
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-11-09T14:00:00",
+          "conviction": 0.9710176491854889,
+          "edge_net": 60.75347187708951
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-11-11T13:15:00",
+          "conviction": 0.605088044898685,
+          "edge_net": 224.82562800054941
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-11-13T14:30:00",
+          "conviction": 0.8673299967359801,
+          "edge_net": 76.98233036836346
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-11-15T11:15:00",
+          "conviction": 0.8133452811162806,
+          "edge_net": 184.1340091038049
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2023-11-15T18:00:00",
+          "conviction": 0.7233271469825338,
+          "edge_net": 90.45411292466221
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-11-15T18:00:00",
+          "conviction": 0.6384463203213815,
+          "edge_net": 74.06354610991144
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.014453396310659894,
+          "cluster_group": "majors",
+          "timestamp": "2023-11-19T18:45:00",
+          "conviction": 0.6188603817849297,
+          "edge_net": 31.30125151211105
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.012375,
+          "cluster_group": "majors",
+          "timestamp": "2023-11-21T14:00:00",
+          "conviction": 0.8461443037846954,
+          "edge_net": 36.18171451484747
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2023-11-22T14:45:00",
+          "conviction": 0.6064063054115592,
+          "edge_net": 44.820833822005945
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-11-22T18:15:00",
+          "conviction": 0.8186887272838026,
+          "edge_net": 90.39926529026623
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-11-24T09:30:00",
+          "conviction": 0.6870147043088988,
+          "edge_net": 52.08398724582187
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": -1,
+          "final_risk": 0.0099,
+          "cluster_group": "alts",
+          "timestamp": "2023-11-26T14:15:00",
+          "conviction": 0.7336571321767774,
+          "edge_net": 59.773375776684105
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.0099,
+          "cluster_group": "majors",
+          "timestamp": "2023-11-27T10:30:00",
+          "conviction": 0.7485482908902021,
+          "edge_net": 39.58752911706111
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2023-12-01T09:15:00",
+          "conviction": 0.6234945137813825,
+          "edge_net": 43.80137702330998
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-12-02T18:00:00",
+          "conviction": 0.9659503710533152,
+          "edge_net": 43.71013324875098
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.007470473567288631,
+          "cluster_group": "majors",
+          "timestamp": "2023-12-02T18:30:00",
+          "conviction": 0.7405746448510011,
+          "edge_net": 22.193981517378695
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-12-05T17:15:00",
+          "conviction": 0.876910315536895,
+          "edge_net": 85.91577645021987
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-12-07T15:15:00",
+          "conviction": 0.6938901854465307,
+          "edge_net": 87.55520881680599
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-12-07T15:30:00",
+          "conviction": 0.6723054183057345,
+          "edge_net": 119.98535130796544
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-12-13T15:00:00",
+          "conviction": 0.6503840812024667,
+          "edge_net": 68.48672465567552
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2023-12-13T15:00:00",
+          "conviction": 0.6046861079197233,
+          "edge_net": 55.37344947700748
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2023-12-15T13:00:00",
+          "conviction": 0.6441390737287442,
+          "edge_net": 41.892868510470684
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": -1,
+          "final_risk": 0.0099,
+          "cluster_group": "majors",
+          "timestamp": "2023-12-17T14:30:00",
+          "conviction": 0.6916754244082761,
+          "edge_net": 43.986398989814305
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-12-20T13:00:00",
+          "conviction": 0.7934890828089385,
+          "edge_net": 70.41470804713174
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2023-12-20T13:00:00",
+          "conviction": 0.8665849887957541,
+          "edge_net": 53.3314214899555
+        },
+        {
+          "symbol": "SOLUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-12-23T18:30:00",
+          "conviction": 0.7062063864668892,
+          "edge_net": 144.4922125640106
+        },
+        {
+          "symbol": "ETHUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "alts",
+          "timestamp": "2023-12-27T10:15:00",
+          "conviction": 0.8216339347697342,
+          "edge_net": 56.702285453980934
+        },
+        {
+          "symbol": "BTCUSDT",
+          "direction": 1,
+          "final_risk": 0.015,
+          "cluster_group": "majors",
+          "timestamp": "2023-12-27T10:15:00",
+          "conviction": 0.6553094222997589,
+          "edge_net": 38.65977637262534
         }
       ],
-      "n_approved": 3,
+      "n_approved": 193,
       "approved_per_asset": {
-        "BTCUSDT": 1,
-        "ETHUSDT": 1,
-        "SOLUSDT": 1
+        "BTCUSDT": 52,
+        "ETHUSDT": 97,
+        "SOLUSDT": 44
       }
     }
   },
   "aggregate": {
     "total_precomputed_trades": 396,
-    "total_approved_trades": 6,
-    "allocator_reduction_pct": 0.9848484848484849
+    "total_approved_trades": 381,
+    "allocator_reduction_pct": 0.037878787878787845
   },
   "note": "Trades precomputed by NYXPipeline.run() direct, then filtered through HubSpokeRunner + PortfolioAllocator. approved = the subset that would actually trade under max_total_risk=0.04, max_asset_risk=0.015, max_cluster_risk={alts: 0.02}, max_open_positions=2."
 }

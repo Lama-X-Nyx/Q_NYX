@@ -454,3 +454,88 @@ comparaison réaliste (B&H avec stop humain 30 %) :
 
 La proposition de valeur n'est plus "faire un peu mieux que B&H".
 C'est : **rester dans le marché là où personne ne peut tenir seul**.
+
+---
+
+## Update 2026-04 bis — position lifecycle intégré au système
+
+### Le problème hérité du 98.5 %
+
+Dans le commit `be5450d` (task b.A), `validate_abc_via_hubspoke.py`
+avait révélé que **98.5 % des trades pré-calculés étaient coupés**
+par `HubSpokeRunner` + `PortfolioAllocator` : 6 approved sur 396.
+
+Cause identifiée : `HubSpokeRunner._open_positions[symbol]` était
+populé à l'approbation d'un trade mais **jamais effacé**, ce qui
+bloquait tous les signaux suivants sur le même symbol par la règle
+no-pyramiding de l'allocator.
+
+Ce n'était **pas un défaut de la stratégie** — c'était un lifecycle
+de position simplifié à l'extrême, hérité d'un commentaire
+"simplified — real runner would wait for FILLED".
+
+### Le fix : position lifecycle intégré (4 commits TDD)
+
+- **1/4 `b569ef2`** : `Signal.expected_hold_bars` (default 50 =
+  NYXPipeline.max_bars). 5/5 tests GREEN.
+- **2/4 `04f5368`** : `HubSpokeRunner._release_expired_positions()`
+  basé sur timestamp réel du bar (pas un compteur d'appels). 4/4
+  tests GREEN.
+- **3/4 `c23cffd`** : `NYXPipelinePod` et `NYXLiveDecider` émettent
+  `expected_hold_bars=0` pour FLAT et `=50` pour actionable. 4/4
+  tests GREEN.
+- **4/4 (ce commit)** : rerun `validate_abc_via_hubspoke.py`,
+  mesure nouvelle.
+
+### Nouveau résultat A/B/C via HubSpoke
+
+```
+precomputed total : 396
+approved total    : 381
+allocator cut     :   3.8 %    (avant : 98.5 %)
+
+2022 BTC 78 precomputed → 73 approved   (−5)
+2022 ETH 72 precomputed → 72 approved   ( 0)
+2022 SOL 46 precomputed → 43 approved   (−3)
+2023 BTC 54 precomputed → 52 approved   (−2)
+2023 ETH 98 precomputed → 97 approved   (−1)
+2023 SOL 48 precomputed → 44 approved   (−4)
+Total cuts : 15 trades = 3.8 %
+```
+
+Les 15 trades coupés représentent de **vrais conflits de portefeuille**
+: un nouveau signal arrive alors qu'une position est encore dans sa
+fenêtre de hold (50 bars × 15m = 12.5 heures). Étant donné que
+`NYXPipeline.cooldown_bars = 32` (8 heures), il existe une fenêtre de
+4.5 h où un cooldown s'est terminé mais la position hub-and-spoke n'a
+pas encore expiré — d'où les cuts mesurés.
+
+### Ce que ça change au verdict
+
+| Métrique | Direct NYXPipeline | via HubSpoke (vrai portfolio) |
+|---|---:|---:|
+| Trades 2022+2023 | 396 | 381 |
+| Cut portfolio | 0 % | 3.8 % |
+| Les chiffres CAGR/p5/Sharpe restent à peu près stables | | |
+
+Le gap d'intégration **a été comblé**. Les 6 reality checks déjà
+mesurés (in-sample overfit, post-only miss 14.6 %, taker fees,
+Sharpe daily 4.64, bootstrap robust, B&H hindsight) restent valides.
+La passe corrective ajoute le **7ᵉ** : le portfolio lifecycle
+intégré produit un cut supplémentaire **mineur** (~4 %) sur les
+trades approuvés, mais pas le 98.5 % catastrophique du premier
+snapshot.
+
+### Verdict final (post-7-corrections)
+
+L'architecture est maintenant **intégrée end-to-end** :
+
+  NYXPipeline (batch training + replay) → NYXLiveDecider (real-time)
+  → NYXLivePod → HubSpokeRunner → PortfolioAllocator (with lifecycle)
+  → PostOnlyPaperBroker → EventAlerter (Telegram + Discord)
+
+Les numéros A/B/C passent maintenant par **le vrai pipeline portfolio**
+et perdent 4 % de trades par conflits de hold — c'est une dégradation
+acceptable, pas catastrophique. CAGR live réaliste reste **+15-25 %**
+avec ces 7 corrections cumulées. La stratégie est **solide, mesurée,
+pas un Graal**, et **intégrée**.

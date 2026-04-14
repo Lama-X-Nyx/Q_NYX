@@ -27,6 +27,8 @@ import logging
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Protocol, Union
 
+import pandas as pd
+
 from .portfolio_allocator import ApprovedTrade, PortfolioAllocator
 from .signal import Signal
 from ..paper_live.event_alerter import EventAlerter
@@ -83,13 +85,13 @@ class HubSpokeRunner:
             self._runners[symbol] = runner
 
         # Track open positions across all assets (for allocator awareness).
-        # Each entry: { 'direction', 'risk', 'opened_bar', 'hold_bars' }.
-        # `opened_bar` is a global bar counter (see `_global_bar_count`).
-        # When `_global_bar_count - opened_bar > hold_bars`, the entry
-        # is dropped in `_release_expired_positions()` so the same
-        # symbol can take a new trade.
+        # Each entry: { 'direction', 'risk', 'opened_ts', 'hold_bars' }.
+        # `opened_ts` is a pd.Timestamp of the bar at which the position
+        # opened. On each on_bars() we compare the CURRENT bar timestamp
+        # against opened_ts and drop positions that have aged past their
+        # hold_bars × 15m window. This is timestamp-based (not tick-based)
+        # so sparse iteration patterns still age positions correctly.
         self._open_positions: Dict[str, dict] = {}
-        self._global_bar_count: int = 0
 
     # ------------------------------------------------------------------
     def pairs(self) -> List[str]:
@@ -131,28 +133,40 @@ class HubSpokeRunner:
         return signals
 
     # ------------------------------------------------------------------
-    def _release_expired_positions(self) -> None:
-        """Drop any open position whose age exceeds its hold_bars.
+    _BAR_INTERVAL = pd.Timedelta(minutes=15)
+
+    @classmethod
+    def _bars_elapsed(cls, opened_ts, now_ts) -> float:
+        """How many 15m bars (float) between opened_ts and now_ts."""
+        dt = pd.Timestamp(now_ts) - pd.Timestamp(opened_ts)
+        return dt.total_seconds() / cls._BAR_INTERVAL.total_seconds()
+
+    def _release_expired_positions(self, now_ts) -> None:
+        """Drop any open position whose age exceeds hold_bars × 15m.
 
         Called at the START of each on_bars() so the allocator sees an
-        accurate view of currently-held positions.
+        accurate view of currently-held positions. Timestamp-based so
+        sparse iteration (skipping many 15m bars between calls) still
+        ages positions correctly.
         """
-        now = self._global_bar_count
         expired = []
         for sym, info in self._open_positions.items():
-            opened = int(info.get('opened_bar', now))
+            opened = info.get('opened_ts')
+            if opened is None:
+                continue
             hold = int(info.get('hold_bars', 50))
-            if now - opened > hold:
+            if self._bars_elapsed(opened, now_ts) > hold:
                 expired.append(sym)
         for sym in expired:
             self._open_positions.pop(sym, None)
 
     # ------------------------------------------------------------------
     def on_bars(self, bars: Dict[str, dict]) -> List[ApprovedTrade]:
-        # 0. Age the global clock BEFORE processing this bar, then
-        #    release any position whose hold window has expired.
-        self._global_bar_count += 1
-        self._release_expired_positions()
+        # 0. Use the latest bar timestamp as "now" and age positions.
+        if bars:
+            latest_ts = max(pd.Timestamp(b['timestamp'])
+                             for b in bars.values())
+            self._release_expired_positions(latest_ts)
 
         # 1. Collect signals from every pod (crash-isolated).
         signals = self._collect_signals(bars)
@@ -193,10 +207,10 @@ class HubSpokeRunner:
             # will drop it from self._open_positions once expired, freeing
             # the symbol for new signals.
             self._open_positions[t.symbol] = {
-                'direction':  t.direction,
-                'risk':       t.final_risk,
-                'opened_bar': self._global_bar_count,
-                'hold_bars':  int(t.source_signal.expected_hold_bars),
+                'direction': t.direction,
+                'risk':      t.final_risk,
+                'opened_ts': pd.Timestamp(bars[t.symbol]['timestamp']),
+                'hold_bars': int(t.source_signal.expected_hold_bars),
             }
 
         return trades
