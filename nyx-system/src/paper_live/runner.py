@@ -8,21 +8,24 @@ Flow per bar:
   4. DecisionLogger.log(...)               — durable SQLite append
   5. StateManager.save(...)                — atomic state snapshot
   6. Heartbeat.tick(...)                   — liveness
-  7. TelegramAlerter.info(...) for BUY/SELL events (critical-only noise)
+  7. events.<semantic event>               — Telegram + Discord fan-out
 
-Any unhandled exception in strategy.decide is caught, logged as a decision
-with action='ERROR', and re-raised so upstream can restart the process.
+Any unhandled exception in strategy.decide produces an `api_error` event
+and is re-raised so upstream can restart the process.
 """
 from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional, Protocol, Union
+from typing import Any, Dict, List, Optional, Protocol, Union
 
 from .broker import MakerFirstBroker
 from .data_validator import DataValidator, DataValidationError
 from .decision_logger import PersistentDecisionLogger
+from .discord_alerter import DiscordAlerter
+from .event_alerter import EventAlerter
 from .heartbeat import Heartbeat
+from .multi_alerter import MultiAlerter
 from .state_manager import StateManager
 from .telegram_alerter import TelegramAlerter
 
@@ -45,6 +48,7 @@ class PaperLiveRunner:
         heartbeat_path: Union[str, Path],
         telegram_token: Optional[str] = None,
         telegram_chat: Optional[str] = None,
+        discord_webhook: Optional[str] = None,
         model_version: str = 'v0.3.2',
         max_wait_bars: int = 3,
     ):
@@ -56,9 +60,16 @@ class PaperLiveRunner:
         self.decision_logger = PersistentDecisionLogger(db_path)
         self.state_manager = StateManager(state_path)
         self.heartbeat = Heartbeat(heartbeat_path)
-        self.alerter = TelegramAlerter(
-            token=telegram_token, chat_id=telegram_chat, cooldown_s=60.0
+
+        # Build alerter fan-out (Telegram + Discord, either may be disabled).
+        telegram = TelegramAlerter(
+            token=telegram_token, chat_id=telegram_chat, cooldown_s=60.0,
         )
+        discord = DiscordAlerter(
+            webhook_url=discord_webhook, cooldown_s=60.0,
+        )
+        self.alerter = MultiAlerter([telegram, discord])
+        self.events = EventAlerter(self.alerter, cooldown_s=60.0)
 
         # Warm-restart state.
         self.last_bar_ts: Dict[str, str] = {}
@@ -66,6 +77,9 @@ class PaperLiveRunner:
         self.equity: float = 10_000.0
         self.positions: Dict[str, dict] = {}
         self._load_warm_state()
+
+        # Track orders already "alerted as unfilled" so we don't spam.
+        self._alerted_taker_oids: set = set()
 
         self.bars_processed = 0
 
@@ -75,7 +89,11 @@ class PaperLiveRunner:
             st = self.state_manager.load()
         except Exception as e:
             log.warning("warm restart failed: %s", e)
-            self.alerter.error(f"warm restart failed: {e}")
+            # events not built yet? At this point yes, constructor built it first.
+            try:
+                self.events.api_error(f"warm restart failed: {e}")
+            except Exception:
+                pass
             return
         if not st:
             return
@@ -88,7 +106,6 @@ class PaperLiveRunner:
     def _validator_for(self, pair: str) -> DataValidator:
         if pair not in self.validators:
             v = DataValidator()
-            # Prime with last seen ts so stale bars are rejected across restarts.
             last = self.last_bar_ts.get(pair)
             if last is not None:
                 v._last_ts = last
@@ -96,20 +113,39 @@ class PaperLiveRunner:
         return self.validators[pair]
 
     # ------------------------------------------------------------------
+    def _alert_unfilled_orders(self, pair: str) -> None:
+        """Emit `order_unfilled` for any order that just became a taker fill
+        (i.e. the limit aged out and the broker crossed the spread)."""
+        for oid, order in self.broker._orders.items():
+            if oid in self._alerted_taker_oids:
+                continue
+            if not order.fills:
+                continue
+            last = order.fills[-1]
+            if last.get('role') == 'taker' and order.bars_waited >= self.broker.max_wait_bars:
+                self.events.order_unfilled(
+                    oid=oid,
+                    pair=pair,
+                    side=order.side,
+                    price=order.limit_price,
+                    waited_bars=order.bars_waited,
+                )
+                self._alerted_taker_oids.add(oid)
+
+    # ------------------------------------------------------------------
     def on_bar(self, pair: str, bar: dict) -> None:
         """Single end-to-end bar step."""
         v = self._validator_for(pair)
-        v.validate(bar)   # raises DataValidationError on bad input
+        v.validate(bar)
 
-        # Advance broker on open orders (fills recorded internally).
         self.broker.on_bar(pair, bar)
+        self._alert_unfilled_orders(pair)
 
-        # Strategy decision.
         try:
             decision = self.strategy.decide(pair, bar)
         except Exception as e:
             log.exception("strategy.decide raised")
-            self.alerter.error(f"strategy crash: {e}")
+            self.events.api_error(f"strategy crash: {e}")
             raise
 
         ar = decision.get('agent_results', {})
@@ -138,11 +174,15 @@ class PaperLiveRunner:
         row['trade_size']        = float(decision.get('trade_size', 0.0))
         self.decision_logger.log(row)
 
-        # Telegram notify on actionable decisions (BUY / SELL).
+        # Semantic trade-decision event (BUY / SELL only).
         action = row['action']
         if action in ('BUY', 'SELL'):
-            self.alerter.info(
-                f"{action} {pair} @ {row['price']:.2f} score={row['orch_score']}"
+            self.events.trade_decision(
+                pair=pair,
+                action=action,
+                price=float(row['price']),
+                score=float(row['orch_score'] or 0.0),
+                size=float(row['trade_size'] or 0.0),
             )
 
         # State snapshot.
@@ -163,6 +203,28 @@ class PaperLiveRunner:
             'last_pair': pair,
             'last_ts': bar['timestamp'],
         })
+
+    # ------------------------------------------------------------------
+    # Manual event helpers (called from main.py / exchange adapter)
+    # ------------------------------------------------------------------
+    def notify_restart(self) -> None:
+        """Call once at startup (main.py) so operators see we're back."""
+        last = "never"
+        if self.last_bar_ts:
+            last = next(iter(sorted(self.last_bar_ts.values(), reverse=True)))
+        self.events.restart(version=self.model_version, last_ts=last)
+
+    def notify_service_down(self, reason: str) -> None:
+        """Called by a watchdog when heartbeat goes stale."""
+        self.events.service_down(reason)
+
+    def notify_reconnect_exchange(self, reason: str) -> None:
+        """Called by the exchange adapter after a successful reconnect."""
+        self.events.reconnect_exchange(reason)
+
+    def notify_api_error(self, reason: str) -> None:
+        """Called by the exchange adapter on 4xx/5xx responses."""
+        self.events.api_error(reason)
 
     # ------------------------------------------------------------------
     def shutdown(self) -> None:

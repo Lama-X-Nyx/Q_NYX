@@ -70,6 +70,7 @@ def main() -> int:
         heartbeat_path=HEARTBEAT_PATH,
         telegram_token=os.environ.get("TELEGRAM_BOT_TOKEN") or None,
         telegram_chat=os.environ.get("TELEGRAM_CHAT_ID") or None,
+        discord_webhook=os.environ.get("DISCORD_WEBHOOK_URL") or None,
         model_version=os.environ.get("NYX_MODEL_VERSION", "v0.3.2"),
     )
     _install_signal_handlers(runner)
@@ -77,6 +78,8 @@ def main() -> int:
     log.info("paper-live started, pair=%s", os.environ.get("NYX_PAIR", "BTCUSDT"))
     # Initial heartbeat so Docker HEALTHCHECK sees us alive immediately.
     runner.heartbeat.tick(context={'phase': 'startup'})
+    # Emit restart event so operators see we're back.
+    runner.notify_restart()
 
     # Real deployment will plug in a live market-data loop here; for now we
     # simply keep the heartbeat ticking so the container stays healthy while
