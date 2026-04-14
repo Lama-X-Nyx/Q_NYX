@@ -312,3 +312,118 @@ BTC also benefited (the pipeline retrains on the fly for BTC):
 - Full TDD trio validation (OOS + MC + Bootstrap per asset and combined)
 
 Next: stress the trio across the full 2020-2023 walk-forward. Part 3.
+
+---
+
+## Part 3 — A/B/C validation + walk-forward annualized trio
+
+### Commit `2675248` — A/B study: BTC vs BTC+ETH
+
+First side-by-side. Same pipeline, same execution, 2022 + 2023 OOS
+window. Portfolio A (BTC only) vs Portfolio B (BTC ∪ ETH).
+
+Built:
+- `src/assets/combined_portfolio.py` — `combine_trades()` +
+  `aggregate_metrics()` helpers
+- `scripts/validate_ab.py` — runs OOS + MC + BS, writes
+  `reports/AB_BTC_vs_BTC_ETH.json`
+- 6 new TDD suites (30 tests): ETH OOS / MC / Bootstrap + combined
+  BTC+ETH OOS / MC / Bootstrap
+
+Headline numbers:
+
+| Metric | A (BTC) | B (BTC+ETH) | Δ |
+|---|---:|---:|---:|
+| Trades 2022+2023 | 121 | 284 | +135 % |
+| MC median return | +35.2 % | +82.4 % | +47 pp |
+| BS p5 return | +23.8 % | +63.2 % | +41 pp |
+| BS p5 Sharpe | 3.30 | 5.55 | +75 % |
+| BS prob_loss | 0.0 % | 0.0 % | = |
+
+Full doc: [`AB_BTC_vs_BTC_ETH.md`](AB_BTC_vs_BTC_ETH.md).
+
+### Commit `c326730` (bis) — A/B/C adding SOL (12 new tests)
+
+Adding SOL to the pool. Sharpe 2022 SOL at 5.35 (bear year, SOL spot
+did −94 %) — the conditional bear dial + post-only maker-first were
+doing exactly what they were designed to do.
+
+Numbers with 3-TF:
+
+| Portfolio | n_trades | MC median | BS p5 ret | BS p5 Sharpe |
+|---|---:|---:|---:|---:|
+| A BTC       | 121 | +35.2 % | +23.7 % | 3.32 |
+| B BTC+ETH   | 284 | +82.4 % | +63.2 % | 5.55 |
+| **C BTC+ETH+SOL** | **365** | **+122.8 %** | **+98.1 %** | **6.60** |
+
+`scripts/validate_abc.py` writes `reports/ABC_trio_validation.json`.
+All three portfolios and the 3 pair variants (BTC+SOL, ETH+SOL, …)
+are reported for full transparency.
+
+Full doc: [`ABC_BTC_ETH_SOL.md`](ABC_BTC_ETH_SOL.md).
+
+### Then 4-TF re-ran everything (see Part 2)
+
+After the 4-TF rule landed, every portfolio improved significantly:
+
+| Portfolio | 3-TF p5 return | **4-TF p5 return** | Δ |
+|---|---:|---:|---:|
+| A BTC | +23.7 % | **+29.0 %** | +5.3 pp |
+| B BTC+ETH | +63.2 % | **+86.3 %** | +23.1 pp |
+| C BTC+ETH+SOL | +98.1 % | **+126.0 %** | +27.9 pp |
+
+The 4-TF correction produces ~25 pp of p5-return uplift on the trio.
+
+### Commit `e3be465` — walk-forward annualized trio (9/9 GREEN)
+
+Asked: "walk-forward annualisé sur 5 ans en mode trio."
+
+Constraint: BTC + ETH data stops 2024-01-01. SOL has data through
+2026-04. Full trio overlap = 2020-08 → 2024-01 ≈ 3.5 years.
+
+Compromise: **4 full years (2020-2023)** with evolving composition:
+
+| Year | Composition | Reason |
+|---|---|---|
+| 2020 | BTC + ETH | SOL not yet launched (Aug 2020) |
+| 2021 | full trio | all ≥ 5 months of training |
+| 2022 | full trio | bear year |
+| 2023 | full trio | bull year |
+
+Built `scripts/walk_forward_trio.py` + `tests/test_walk_forward_trio.py`
+(9/9 GREEN).
+
+Results per year:
+
+| Year | Trades | PnL | Sharpe | DD | WR |
+|---|---:|---:|---:|---:|---:|
+| 2020 | 39 | +$150 | +1.01 | 2.2 % | 51.3 % |
+| 2021 | 125 | +$6,210 | +10.19 | 1.6 % | 72.0 % |
+| 2022 | 196 | +$7,858 | +8.41 | 3.2 % | 71.9 % |
+| 2023 | 200 | +$6,917 | +11.37 | 1.3 % | 80.0 % |
+
+Annualized aggregate:
+
+```
+Capital initial   $10,000
+Capital final     $49,704  (×4.97)
+CAGR              +49.31 %
+Mean yearly Shpe  +7.74
+Max year DD       3.2 %
+Years positive    4/4
+```
+
+Pooled bootstrap over 560 trades: **prob_loss = 0.0 %, p5 return
++183.5 %**.
+
+Full doc: [`WALK_FORWARD_TRIO.md`](WALK_FORWARD_TRIO.md).
+
+### State after Part 3
+
+- A/B/C decision doc shipped: **C dominates B dominates A**
+- Walk-forward annualized 4 years: CAGR 49 %, 4/4 years positive
+- Pooled bootstrap: prob_loss 0 %, p5 +183 %
+
+**But** — these numbers looked too good.
+
+Next: the honesty pass. Part 4.
