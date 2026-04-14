@@ -528,6 +528,30 @@ Full doc: [`WALK_FORWARD_TRIO.md`](WALK_FORWARD_TRIO.md).
 - Walk-forward annualized 4 years: CAGR 49 %, 4/4 years positive
 - Pooled bootstrap: prob_loss 0 %, p5 +183 %
 
+### Integration-gap disclaimer (must read)
+
+Every number in Part 3 was produced by calling `NYXPipeline.run()`
+**directly on each asset** and then union-ing the per-asset trade
+lists (`scripts/validate_abc.py`, `scripts/walk_forward_trio.py`).
+
+The hub-and-spoke layers built in Part 1-2 — `HubSpokeRunner`,
+`PortfolioAllocator`, `PostOnlyPaperBroker` — were **not yet wired**.
+They exist, they are individually tested, but they have never seen a
+real trade produced by the strategy. Concretely, the Part 3 numbers
+do NOT reflect:
+
+- The post-only miss rate (~14.6 % estimated in the separate reality
+  check, not applied here)
+- Per-asset / per-cluster risk caps from `PortfolioAllocator`
+- Any correlation veto across assets
+- Latency / queue position on a real exchange
+
+The per-asset pipelines each assume a full $10k initial capital (not
+shared), and all trades are assumed filled at the pipeline's internal
+maker-only cost. This is why Part 4 flagged the numbers as "too good"
+before any real integration — a concern closed only by wiring
+`NYXPipelinePod` + `NYXLiveDecider` as detailed in the current plan.
+
 **But** — these numbers looked too good.
 
 Next: the honesty pass. Part 4.
@@ -736,14 +760,53 @@ Everything measured, documented, TDD-guarded :
 6. SOL pure OOS 2024-2026 works (Sharpe 7.25) — best empirical
    evidence against curve-fit.
 
-### To be done (outside this branch)
+### To be done (current work, in this branch)
 
-- Live Binance adapter (WS bar feed → `HubSpokeRunner.on_bars`)
-- Connect real strategy to the 5-agent pipeline (drop `_NoopStrategy`)
-- Run `run_reality_checks.py` periodically as CI regression
-- Daily-equity Sharpe as default reporting metric instead of
-  per-trade
+Two architectural gaps remain wide open after Part 4 :
 
-Strategy is solid, not a Grail. Ship Portfolio C (trio) with realistic
-expectations (CAGR 15-25 %) and clear stop-gap rules for the live
-transition.
+#### Gap 1 — Integration (paper-live layers not wired)
+
+The layers built in Parts 1-2 (`HubSpokeRunner`, `PortfolioAllocator`,
+`PostOnlyPaperBroker`) are individually tested but have never been
+piloted by `NYXPipeline`. The Part 3 numbers come from
+`NYXPipeline.run()` direct with a naive trade-union across assets,
+not through the allocator or the post-only broker.
+
+**Fix — tâche (b.A) in the current plan** : build
+`src/assets/nyx_pipeline_pod.py` (`NYXPipelinePod`) that wraps
+`NYXPipeline.run()` output as a `SignalPod`, then re-run A/B/C
+through `HubSpokeRunner` + `PostOnlyPaperBroker` +
+`PortfolioAllocator`. The new numbers will be lower (miss rate,
+cluster caps) but honest.
+
+#### Gap 2 — Batch vs live (NYXPipeline is not real-time)
+
+`NYXPipeline.run(mtf_data, mtf_features, train_end, test_start,
+test_end)` is batch-only. It takes complete historical data, trains
+the GBM, scans the full test window, returns a list of trades. It
+**cannot** be used as-is on a live WebSocket bar feed — you'd have
+to re-train on every new bar (computationally infeasible) or fake
+the interface.
+
+For real paper-live multi-asset, the pipeline needs to be broken
+into:
+- a **training step** (batch, uses the existing `train_and_save`
+  artefact to persist the GBM)
+- a **live decider** that loads the artefact and decides on ONE
+  incoming bar at a time, **multi-TF** (per Rule #2) — maintaining
+  4 buffers (15m + 1h + 4h + 1d), aggregating 15m → 1h/4h/1d on
+  close boundaries, computing the 84-feature vector per bar.
+
+**Fix — tâche (b.B) in the current plan** : build
+`src/ml/feature_buffer.py`, `src/ml/mtf_feature_stack.py`,
+`src/ml/nyx_live_decider.py`, and `src/assets/nyx_live_pod.py`.
+An equivalence-replay test guarantees `NYXLiveDecider` in replay
+produces the same trades as `NYXPipeline.run()` — no logic regression.
+
+### Honest verdict after Part 4
+
+Strategy is solid, not a Grail. Numbers in Parts 1-4 are internally
+consistent but inflated by the integration gap. Ship Portfolio C
+(trio) **only after** (b.A) + (b.B) are completed and re-validated.
+Realistic expectations (per reality check 1-7): CAGR 15-25 %, max
+DD 8-15 %, Sharpe 2-3 annualized capital, prob_loss/year 5-15 %.
