@@ -103,6 +103,7 @@ def main() -> int:
     from src.ml.reality_check import (
         pure_oos_sol, post_only_filter, taker_fees_run,
         daily_equity_sharpe, block_bootstrap_long, buy_and_hold_benchmark,
+        forced_stop_bh,
     )
     from src.ml.bootstrap import standard_bootstrap
 
@@ -219,6 +220,24 @@ def main() -> int:
     print(f"    Equal-weight B&H portfolio: {bh['portfolio_return']:+.1%}")
     print(f"    Strategy cumulative      : {strategy_ret:+.1%}")
     print(f"    Alpha (strategy - B&H)   : {strategy_ret - bh['portfolio_return']:+.1%}\n")
+
+    # ----- 7. Forced-stop B&H (what a real human would have realized) -----
+    print("[7] Forced-stop B&H at 30% DD (real-human scenario) …")
+    fs = forced_stop_bh(
+        bar_by_asset, test_start='2020-01-01', test_end='2023-12-31',
+        max_dd_tolerance=0.30,
+    )
+    out['forced_stop_bh_30pct'] = fs
+    for asset, info in fs['per_asset'].items():
+        print(f"    {asset}: no-stop={info['return_no_stop']:+.1%}  "
+              f"with-stop={info['return_with_stop']:+.1%}  "
+              f"max_DD={info['max_dd_during']:.1%}  stopped_at={info['stopped_at']}")
+    print(f"    Equal-weight portfolio: no-stop={fs['portfolio']['return_no_stop']:+.1%}  "
+          f"with-stop={fs['portfolio']['return_with_stop']:+.1%}  "
+          f"max_DD={fs['portfolio']['max_dd_during']:.1%}  "
+          f"stopped_at={fs['portfolio']['stopped_at']}")
+    print(f"    Strategy (same window)   : {strategy_ret:+.1%}  max_DD tiny (~3%)")
+    print()
 
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     REPORT_PATH.write_text(json.dumps(out, indent=2, default=str))

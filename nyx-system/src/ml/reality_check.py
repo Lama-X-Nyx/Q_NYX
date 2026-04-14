@@ -256,3 +256,115 @@ def buy_and_hold_benchmark(
         'window':            f'{test_start}..{test_end}',
         'weights':           {a: float(w) for a, w in weights.items()},
     }
+
+
+# ---------------------------------------------------------------------------
+# 7. Forced-stop simulation — what a REAL human would have done
+# ---------------------------------------------------------------------------
+
+def _max_dd(equity: np.ndarray) -> float:
+    peak = np.maximum.accumulate(equity)
+    return float(((peak - equity) / peak).max()) if len(equity) else 0.0
+
+
+def forced_stop_bh(
+    bar_data_by_asset: Dict[str, pd.DataFrame],
+    test_start: str,
+    test_end: str,
+    max_dd_tolerance: float = 0.30,
+    weights: Optional[Dict[str, float]] = None,
+) -> Dict[str, Any]:
+    """Buy & hold with a forced-liquidation gate.
+
+    The paper-B&H benchmark assumes a robot who holds through any
+    drawdown. Real humans (and funds) capitulate when their drawdown
+    exceeds a tolerance (default 30 % — typical retail stop-out).
+
+    For each asset AND for the equal-weight portfolio:
+      - start at $1 at test_start
+      - track running-peak drawdown
+      - if DD ≥ max_dd_tolerance, FORCE LIQUIDATE at that point
+      - else hold until test_end
+
+    Returns per-asset + portfolio results with:
+      return_no_stop   : return if you held through (the hindsight bench)
+      return_with_stop : realized return after forced liquidation
+      stopped_at       : timestamp of forced stop (None if never triggered)
+      max_dd_during    : worst DD experienced
+    """
+    weights = weights or {a: 1.0 / len(bar_data_by_asset)
+                          for a in bar_data_by_asset}
+
+    results_per_asset: Dict[str, Dict[str, Any]] = {}
+
+    # Build aligned close series per asset on the test window.
+    aligned_closes: Dict[str, pd.Series] = {}
+    for asset, df in bar_data_by_asset.items():
+        s = df['close'].loc[test_start:test_end]
+        if s.empty:
+            continue
+        aligned_closes[asset] = s
+
+    # ---- per-asset ----
+    for asset, s in aligned_closes.items():
+        start = float(s.iloc[0])
+        equity = s.values / start
+        mdd = _max_dd(equity)
+
+        # Forced stop: find first index where running DD ≥ tolerance.
+        peak = np.maximum.accumulate(equity)
+        dd = (peak - equity) / peak
+        stopped_idx = np.where(dd >= max_dd_tolerance)[0]
+        if len(stopped_idx) > 0:
+            i = int(stopped_idx[0])
+            stop_price = equity[i]
+            # At forced stop, we realize the loss; return_with_stop captures it.
+            return_with_stop = float(stop_price - 1.0)
+            stopped_at = str(s.index[i])
+        else:
+            return_with_stop = float(equity[-1] - 1.0)
+            stopped_at = None
+
+        results_per_asset[asset] = {
+            'return_no_stop':   float(equity[-1] - 1.0),
+            'return_with_stop': return_with_stop,
+            'max_dd_during':    mdd,
+            'stopped_at':       stopped_at,
+        }
+
+    # ---- portfolio (equal-weight, rebalanced each bar by close alignment) ----
+    if aligned_closes:
+        # Resample all to common index (outer join + ffill).
+        df_concat = pd.concat(aligned_closes, axis=1).ffill().dropna()
+        norm = df_concat.iloc[0]
+        weight_vec = np.array([weights.get(c, 0.0) for c in df_concat.columns])
+        port = (df_concat / norm).values @ weight_vec
+        mdd = _max_dd(port)
+        peak = np.maximum.accumulate(port)
+        dd = (peak - port) / peak
+        stopped_idx = np.where(dd >= max_dd_tolerance)[0]
+        if len(stopped_idx) > 0:
+            i = int(stopped_idx[0])
+            return_with_stop_port = float(port[i] - 1.0)
+            stopped_at_port = str(df_concat.index[i])
+        else:
+            return_with_stop_port = float(port[-1] - 1.0)
+            stopped_at_port = None
+        portfolio = {
+            'return_no_stop':   float(port[-1] - 1.0),
+            'return_with_stop': return_with_stop_port,
+            'max_dd_during':    mdd,
+            'stopped_at':       stopped_at_port,
+        }
+    else:
+        portfolio = {
+            'return_no_stop': 0.0, 'return_with_stop': 0.0,
+            'max_dd_during': 0.0, 'stopped_at': None,
+        }
+
+    return {
+        'tolerance':       max_dd_tolerance,
+        'per_asset':       results_per_asset,
+        'portfolio':       portfolio,
+        'window':          f'{test_start}..{test_end}',
+    }

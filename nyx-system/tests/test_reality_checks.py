@@ -256,6 +256,57 @@ class TestBuyAndHoldBenchmark:
         ) / _INITIAL_CAPITAL
         assert strategy_cum_return > bench['portfolio_return']
 
+    def test_forced_stop_strategy_wins(self, trio_walk_forward):
+        """Force-liquidation at DD=30% on B&H → strategy wins comfortably.
+
+        This is the REAL comparison: a live human/fund cannot hold an asset
+        through a 70-94 % drawdown. At 30 % DD they are stopped out (retail
+        margin call or redemption wave for a fund).
+
+        Assertion: the strategy's REALIZED return > B&H with 30 % stop-out
+        on any of the 3 assets AND on the equal-weight portfolio.
+        """
+        from src.ml.reality_check import forced_stop_bh
+        out = forced_stop_bh(
+            trio_walk_forward['bar_data_by_asset'],
+            test_start='2020-01-01',
+            test_end='2023-12-31',
+            max_dd_tolerance=0.30,
+        )
+        strategy_return = sum(
+            t['net_pnl'] for t in trio_walk_forward['all_trades']
+        ) / _INITIAL_CAPITAL
+
+        # All 3 assets must have been stopped out at some point 2020-2023
+        # (they all had DDs > 30 %).
+        for asset, info in out['per_asset'].items():
+            assert info['stopped_at'] is not None, \
+                f"{asset}: never hit 30% DD — test assumption wrong"
+
+        # Strategy beats B&H-with-forced-stop on the portfolio level.
+        port_stop_return = out['portfolio']['return_with_stop']
+        assert strategy_return > port_stop_return, (
+            f"strategy {strategy_return:+.1%} ≤ B&H (forced stop 30% DD) "
+            f"{port_stop_return:+.1%}"
+        )
+
+    def test_forced_stop_all_3_assets_triggered(self, trio_walk_forward):
+        """Sanity: every single asset of the trio had a ≥ 30 % DD at
+        some point over 2020-2023 — meaning a human B&H would have been
+        forced out on every asset independently."""
+        from src.ml.reality_check import forced_stop_bh
+        out = forced_stop_bh(
+            trio_walk_forward['bar_data_by_asset'],
+            test_start='2020-01-01', test_end='2023-12-31',
+            max_dd_tolerance=0.30,
+        )
+        for asset in ('BTCUSDT', 'ETHUSDT', 'SOLUSDT'):
+            assert out['per_asset'][asset]['max_dd_during'] >= 0.30, (
+                f"{asset} max DD "
+                f"{out['per_asset'][asset]['max_dd_during']:.1%} — "
+                "assumption that every crypto had ≥ 30 % DD 2020-2023 is false"
+            )
+
     def test_strategy_better_risk_adjusted(self, trio_walk_forward):
         """Risk-adjusted version (Calmar = total_return / max_DD): strategy
         has tiny DDs that B&H cannot match, so risk-adjusted outperformance

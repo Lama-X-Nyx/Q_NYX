@@ -48,19 +48,19 @@
   "bootstrap_compare": {
     "standard_iid": {
       "prob_loss": 0.0,
-      "median_return": 2.1117917572793274,
-      "sharpe_median": 8.867856057880394,
-      "return_p5": 1.84178897204559,
-      "sharpe_p5": 7.62426526888865,
-      "dd_p95": 0.03557388823636823
+      "median_return": 2.120739316250627,
+      "sharpe_median": 8.914230315993967,
+      "return_p5": 1.850583288238919,
+      "sharpe_p5": 7.664731584418265,
+      "dd_p95": 0.03270512415725687
     },
     "block_n30": {
       "prob_loss": 0.0,
-      "median_return": 2.0781287875270857,
-      "sharpe_median": 9.10340516754188,
-      "return_p5": 1.7805074552557227,
-      "sharpe_p5": 7.792566214257646,
-      "dd_p95": 0.041529748768736996
+      "median_return": 2.070900753085237,
+      "sharpe_median": 9.101190927376269,
+      "return_p5": 1.7858058333390243,
+      "sharpe_p5": 7.803843998216243,
+      "dd_p95": 0.041567492247673636
     }
   },
   "buy_and_hold": {
@@ -81,5 +81,35 @@
     "strategy_cum_return": 2.113459920531283,
     "b_and_h_cum_return": 17.584151098092853,
     "alpha": -15.47069117756157
+  },
+  "forced_stop_bh_30pct": {
+    "tolerance": 0.3,
+    "per_asset": {
+      "BTCUSDT": {
+        "return_no_stop": 4.896386139855579,
+        "return_with_stop": 0.023513640810115533,
+        "max_dd_during": 0.7727231107978287,
+        "stopped_at": "2020-03-12 08:00:00"
+      },
+      "ETHUSDT": {
+        "return_no_stop": 16.722123069760222,
+        "return_with_stop": 0.5483820904787768,
+        "max_dd_during": 0.8149878511972598,
+        "stopped_at": "2020-03-08 23:45:00"
+      },
+      "SOLUSDT": {
+        "return_no_stop": 31.133944084662765,
+        "return_with_stop": -0.09963670826093829,
+        "max_dd_during": 0.9684430350375126,
+        "stopped_at": "2020-08-22 00:15:00"
+      }
+    },
+    "portfolio": {
+      "return_no_stop": 12.830933340654983,
+      "return_with_stop": -0.1605324414697079,
+      "max_dd_during": 0.9288315376048107,
+      "stopped_at": "2020-09-05 11:15:00"
+    },
+    "window": "2020-01-01..2023-12-31"
   }
 }
