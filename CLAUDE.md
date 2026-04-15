@@ -412,3 +412,40 @@ Do **not** think like this:
 
 **Do not optimize for local cleanliness.  
 Optimize for architectural coherence, TDD discipline, multi-timeframe integrity, and documented iteration-by-iteration progress.**
+
+---
+
+## Canonical architecture pointer (Ticket 01)
+
+The single canonical architecture for this project is declared in
+`nyx-system/docs/ARCHITECTURE_CANONIQUE.md`. Before proposing any
+change that touches multiple modules, read it. It names :
+
+- The **canonical runtime entrypoint** (`NYXPipeline.run` batch /
+  `NYXLiveDecider.on_15m_bar` live).
+- The **canonical runtime path** — Data MTF → 4 Jesse fractal
+  reporters (proxied today by `rule_*` scalars) → Meta-GBM (strategy
+  brain, `GradientBoostingClassifier` threshold 0.60) → Risk manager
+  (`conditional_dial` + `bear_risk_dial`) → Execution
+  (`PostOnlyPaperBroker` + `HubSpokeRunner` + `PortfolioAllocator`) →
+  Logging / feedback.
+- The **canonical offline path** — features → candidates →
+  calibration (`threshold_optimizer`, offline-only) → training
+  (`train_asset_model.train_and_save`) → OOS / walk-forward /
+  reality checks.
+- Which modules are **offline-only** (`edge_strategy`,
+  `threshold_optimizer`, `ml_filter_v2`, `realistic_backtest`) —
+  these are **not runtime strategies** and must not be called by the
+  live path.
+
+`tests/test_architecture_canonical.py` asserts the canonical
+declarations stay present. Breaking that test = breaking the
+architecture contract and must never land.
+
+Companion docs :
+- `nyx-system/docs/STATE_OF_PROJECT.md` — what is validated today
+  (4 hard sections : production / research / ready-but-unvalidated /
+  historical).
+- `nyx-system/docs/OPERATING_RULES.md` — 7 test-enforced technical
+  invariants (TDD, MTF always, honest execution, no data loss, events
+  alerted, pyright clean, read context first).
