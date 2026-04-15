@@ -2,6 +2,32 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 02 — Runner inventory and truth map (2026-04-15)
+
+- **New** : `docs/RUNNER_INVENTORY.md` — per-file inventory of 124
+  units (36 scripts + ~90 modules under `src/`), each tagged with one
+  of 4 status values : canonical runtime / offline calibration /
+  legacy / research-experimental. Includes purpose, engine called,
+  and callers for every entry.
+- **New** : `docs/PROJECT_TRUTH_MAP.md` — high-level 4-layer view
+  so a new contributor can answer "where does this file fit ?" in
+  under 2 minutes. Links back to RUNNER_INVENTORY + ARCHITECTURE_CANONIQUE.
+- **New** : `tests/test_runner_inventory.py` — 22 GREEN documentary
+  tests : doc presence + 4 status tags used + every ticket-minimum
+  path named + canonical tag near `nyx_pipeline` / `nyx_live_decider` +
+  `edge_strategy` / `threshold_optimizer` / `ml_filter_v2` marked
+  offline or legacy + `TestNoMysteryRunner` that walks `scripts/` and
+  fails if any invocable script is missing from the inventory.
+- **Honest finding** : `src/core/nyx_engine.py` (v0.8 legacy) is STILL
+  imported by `src/runner/run_paper.py` + 5 × `src/validation/*.py` +
+  `scripts/run_backtest.py`. Flagged as **legacy layer** in both new
+  docs. Deletion requires a dedicated ticket.
+- **Honest finding** : the Jesse agent stack exists TWICE on disk
+  (`src/ml/jesse_agents.py` mono-file + `src/agents/*.py` per-file).
+  Neither is wired into the canonical runtime.
+- **No code change** : ticket scoped to documentation + inventory
+  tests only.
+
 ### Ticket 01 — Freeze canonical NYX architecture (2026-04-15)
 
 - **New** : `docs/ARCHITECTURE_CANONIQUE.md` declares the single
