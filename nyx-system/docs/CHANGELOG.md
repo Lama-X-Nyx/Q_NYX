@@ -2,6 +2,46 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 03 — Unified contracts and system language (2026-04-15)
+
+- **New** : 4 canonical types in `src/agents/contracts.py` :
+  - `FractalReport` — per-timeframe, per-agent report (generalises
+    `AgentResult` for cross-layer vocabulary). Validates agent ∈
+    CANONICAL_AGENTS, timeframe ∈ CANONICAL_TIMEFRAMES, score ∈ [0,1],
+    passed=False requires non-empty block_reasons.
+  - `MetaDecision` — strategy-brain output per bar. Validates
+    direction ∈ {-1, 0, +1}, probability/threshold/candidate_quality
+    ∈ [0,1], passed=True requires direction!=0, passed=False requires
+    non-empty block_reasons. Carries `fractal_reports: dict[str,
+    FractalReport]` for traceability.
+  - `TradePlan` — risk-sized + stop/TP resolved. Validates direction
+    ∈ {-1, +1} (no FLAT plans), size_fraction ∈ [0,1], long geometry
+    (SL < entry < TP) / short geometry (SL > entry > TP), source
+    direction matches plan direction.
+  - `ExecutionInstruction` — broker-ready payload. Validates side ∈
+    {buy, sell} matches source.direction, order_type ∈ CANONICAL_ORDER_TYPES,
+    quantity > 0, limit_price required for post_only_limit.
+- **New** : canonical constants `CANONICAL_TIMEFRAMES`,
+  `CANONICAL_AGENTS`, `CANONICAL_DIRECTIONS`, `CANONICAL_ORDER_TYPES`,
+  `CANONICAL_SIDES` — single source for valid enum values.
+- **New** : adapters for gradual migration — no breaking change to
+  existing callers :
+  - `AgentResult.to_fractal_report(asset, timeframe, timestamp=None)`
+  - `Signal.to_meta_decision(threshold_used=0.60, timeframe='15m')`
+  - FLAT Signal adapts to `passed=False` MetaDecision with
+    `block_reasons=['signal flat']`.
+- **New** : `tests/test_canonical_contracts.py` — 27 GREEN tests
+  covering construction validity, field validation, rejection of
+  invalid states, adapter equivalence, and single-import-point
+  contract (both legacy AgentResult/OrchestratorDecision AND the 4
+  new canonical types exported from `src.agents.contracts`).
+- **Backward-compatible** : `AgentResult`, `OrchestratorDecision`,
+  `Signal` kept intact. 136 existing tests still GREEN (regression
+  sweep on Jesse agents, signal contracts, orchestrator).
+- **No code change** to runtime / offline pipelines : contracts
+  available for adoption but NYXPipeline / NYXLiveDecider /
+  HubSpokeRunner unchanged.
+
 ### Ticket 02 — Runner inventory and truth map (2026-04-15)
 
 - **New** : `docs/RUNNER_INVENTORY.md` — per-file inventory of 124

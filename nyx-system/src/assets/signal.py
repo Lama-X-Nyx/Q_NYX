@@ -90,3 +90,39 @@ class Signal:
         """
         edge = max(0.0, self.expected_edge_net)
         return edge * self.maker_viability * self.conviction
+
+    def to_meta_decision(
+        self,
+        threshold_used: float = 0.60,
+        timeframe: str = '15m',
+    ):
+        """Adapter — convert pod `Signal` to canonical `MetaDecision`.
+
+        The hub-spoke layer still produces `Signal` (compact contract
+        for allocator ranking). This adapter lets any downstream
+        component speak the unified vocabulary from Ticket 03.
+
+        FLAT (direction=0) signals produce a passed=False decision
+        with block_reasons=['signal flat'].
+        """
+        from src.agents.contracts import MetaDecision
+        passed = self.direction != 0
+        reasons = [] if passed else ['signal flat']
+        return MetaDecision(
+            asset=self.symbol,
+            timestamp=self.timestamp,
+            timeframe=timeframe,
+            direction=int(self.direction),
+            probability=float(self.conviction),
+            threshold_used=float(threshold_used),
+            passed=passed,
+            block_reasons=reasons,
+            expected_edge_net=float(self.expected_edge_net),
+            candidate_quality=float(self.conviction),
+            fractal_reports={},
+            features_snapshot={
+                'maker_viability':    float(self.maker_viability),
+                'size_suggestion':    float(self.size_suggestion),
+                'expected_hold_bars': float(self.expected_hold_bars),
+            },
+        )
