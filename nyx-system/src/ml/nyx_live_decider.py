@@ -31,13 +31,14 @@ from src.ml.mtf_feature_stack import MTFFeatureStack
 from src.ml.train_asset_model import load_artifact
 
 
-# Defaults match NYXPipeline.__init__
+# Defaults match NYXPipeline.__init__ and bear_risk_dial.get_risk_params.
 DEFAULT_VOL_MIN = 3.0
 DEFAULT_ML_THRESHOLD = 0.60
 DEFAULT_COOLDOWN_BARS = 32
 DEFAULT_MAX_DAILY_TRADES = 1
 DEFAULT_HOUR_WINDOW = (6, 20)       # inclusive: hour >= 6 AND hour <= 20
-DEFAULT_BEAR_THRESHOLD = 0.70       # stricter when bear-dial active
+DEFAULT_BEAR_THRESHOLD = 0.68       # get_risk_params('bear')['ml_threshold']
+DEFAULT_BEAR_COOLDOWN_BARS = 64     # get_risk_params('bear')['cooldown_bars']
 DEFAULT_WARMUP_BARS = 60            # NYXPipeline starts scanning at i=60
 
 
@@ -55,8 +56,10 @@ class NYXLiveDecider:
         max_daily_trades: int = DEFAULT_MAX_DAILY_TRADES,
         hour_window: tuple = DEFAULT_HOUR_WINDOW,
         bear_threshold: float = DEFAULT_BEAR_THRESHOLD,
+        bear_cooldown_bars: int = DEFAULT_BEAR_COOLDOWN_BARS,
         warmup_bars: int = DEFAULT_WARMUP_BARS,
         mtf_window_size: int = 300,
+        use_bear_dial: bool = True,
     ):
         # Load persisted artefact.
         art = load_artifact(Path(artifact_dir))
@@ -74,19 +77,26 @@ class NYXLiveDecider:
         self._max_daily_trades = int(max_daily_trades)
         self._hour_window = hour_window
         self._bear_threshold = float(bear_threshold)
+        self._bear_cooldown_bars = int(bear_cooldown_bars)
         self._warmup_bars = int(warmup_bars)
+        self._use_bear_dial = bool(use_bear_dial)
 
         # State
         self.stack = MTFFeatureStack(symbol=symbol, window_size=mtf_window_size)
         self._bars_seen: int = 0
         self._last_trade_bar_idx: int = -10 ** 9
         self._daily_counts: Dict[str, int] = {}
+        # Observability: effective threshold + bear-active flag of the
+        # most recent on_15m_bar() call.
+        self._last_bear_active: bool = False
+        self._last_effective_threshold: float = float(ml_threshold)
 
     # ------------------------------------------------------------------
     # Gate helpers (exposed for unit testing)
     # ------------------------------------------------------------------
-    def _cooldown_blocks_now(self) -> bool:
-        return (self._bars_seen - self._last_trade_bar_idx) < self._cooldown_bars
+    def _cooldown_blocks_now(self, cooldown: Optional[int] = None) -> bool:
+        c = self._cooldown_bars if cooldown is None else int(cooldown)
+        return (self._bars_seen - self._last_trade_bar_idx) < c
 
     def _daily_limit_blocks(self, day_key: str) -> bool:
         return self._daily_counts.get(day_key, 0) >= self._max_daily_trades
@@ -191,6 +201,72 @@ class NYXLiveDecider:
         return scaled
 
     # ------------------------------------------------------------------
+    # Bear-dial conditional helpers
+    # ------------------------------------------------------------------
+    def _compute_bear_dial_signals(self) -> Optional[Dict[str, Any]]:
+        """Per-bar equivalent of `conditional_dial._compute_bar_signals`
+        on the CURRENT buffer tails (15m + 1h).
+
+        Returns a dict with scalar values at the tail:
+          - regime_1h: 'trending_up' / 'trending_down' / 'ranging'
+          - atr_ratio: atr[-1] / ema(atr, 50)[-1] on 15m
+          - trend_quality: EMA alignment × spread × 50, clipped to 1
+
+        Returns None when buffers are too short for any of the metrics.
+        """
+        import numpy as np
+        from src.ml.jesse_features import _adx, _atr, _ema
+
+        df_15 = self.stack.buf_15m._as_dataframe()
+        df_1h = self.stack.buf_1h._as_dataframe()
+        if df_15.empty or len(df_15) < 60 or df_1h.empty or len(df_1h) < 22:
+            return None
+
+        close_15 = df_15['close'].values.astype(float)
+        high_15 = df_15['high'].values.astype(float)
+        low_15 = df_15['low'].values.astype(float)
+
+        # Trend quality — last bar only (tail).
+        ema9 = _ema(close_15, 9)
+        ema21 = _ema(close_15, 21)
+        ema50 = _ema(close_15, 50)
+        tq = 0.0
+        if not (np.isnan(ema9[-1]) or np.isnan(ema50[-1])) and ema50[-1] != 0:
+            spread = abs(ema9[-1] - ema50[-1]) / ema50[-1]
+            aligned = (
+                (ema9[-1] > ema21[-1] > ema50[-1])
+                or (ema9[-1] < ema21[-1] < ema50[-1])
+            )
+            tq = float(min(1.0, spread * 50)) if aligned else float(spread * 10)
+
+        # ATR ratio (stress indicator) — atr[-1] / ema(atr, 50)[-1].
+        atr = np.nan_to_num(_atr(high_15, low_15, close_15, 14), nan=0.0)
+        atr_ma = _ema(atr, 50)
+        atr_ratio = 0.0
+        if not np.isnan(atr_ma[-1]) and atr_ma[-1] > 0:
+            atr_ratio = float(atr[-1] / atr_ma[-1])
+
+        # 1h regime string from last 1h bar (ADX + EMA alignment).
+        close_1h = df_1h['close'].values.astype(float)
+        high_1h = df_1h['high'].values.astype(float)
+        low_1h = df_1h['low'].values.astype(float)
+        adx_1h = np.nan_to_num(_adx(high_1h, low_1h, close_1h, 14), nan=0.0)
+        ema9_1h = _ema(close_1h, 9)
+        ema21_1h = _ema(close_1h, 21)
+        regime_1h = 'ranging'
+        if not (np.isnan(ema9_1h[-1]) or np.isnan(ema21_1h[-1])):
+            if adx_1h[-1] > 25 and ema9_1h[-1] > ema21_1h[-1]:
+                regime_1h = 'trending_up'
+            elif adx_1h[-1] > 25 and ema9_1h[-1] < ema21_1h[-1]:
+                regime_1h = 'trending_down'
+
+        return {
+            'regime_1h':     regime_1h,
+            'atr_ratio':     atr_ratio,
+            'trend_quality': tq,
+        }
+
+    # ------------------------------------------------------------------
     # Hard gate (EMA + volume + hour)
     # ------------------------------------------------------------------
     def _hard_gate(self, bar: Dict[str, Any]) -> int:
@@ -259,15 +335,14 @@ class NYXLiveDecider:
             expected_hold_bars=0,
         )
 
+        # Reset observability flags (updated below once we reach the
+        # bear-dial gate).
+        self._last_bear_active = False
+        self._last_effective_threshold = self._ml_threshold
+
         # Hard gate
         direction = self._hard_gate(bar)
         if direction == 0:
-            return flat
-
-        # Cooldown and daily limits
-        if self._cooldown_blocks_now():
-            return flat
-        if self._daily_limit_blocks(day_key):
             return flat
 
         # ML score — feature vector carries direction + hour so rule
@@ -280,7 +355,42 @@ class NYXLiveDecider:
         classes = list(self.model.classes_)
         p1_idx = classes.index(1) if 1 in classes else 0
         score = float(proba[0, p1_idx])
-        if score < self._ml_threshold:
+
+        # Bear-dial conditional: read regime/atr_ratio/trend_quality/
+        # disagreement from the CURRENT buffer tail. If triggered, use
+        # stricter threshold + longer cooldown. Mirrors NYXPipeline
+        # batch logic so live and batch stay in sync.
+        threshold = self._ml_threshold
+        cooldown = self._cooldown_bars
+        if self._use_bear_dial:
+            sig = self._compute_bear_dial_signals()
+            if sig is not None:
+                from src.ml.conditional_dial import should_activate_bear_dial
+                feats_for_dis = self._build_rule_and_extra_features(
+                    direction=direction, bar_hour=int(ts.hour),
+                )
+                dis = float(feats_for_dis.get('disagreement', 0.1))
+                bear_active = should_activate_bear_dial(
+                    regime_1h=str(sig['regime_1h']),
+                    vol_ratio=float(sig['atr_ratio']),
+                    trend_quality=float(sig['trend_quality']),
+                    disagreement=dis,
+                )
+                self._last_bear_active = bool(bear_active)
+                if bear_active:
+                    threshold = self._bear_threshold
+                    cooldown = self._bear_cooldown_bars
+
+        self._last_effective_threshold = float(threshold)
+
+        # Cooldown (uses effective cooldown — longer when bear-dial
+        # active) and daily limits.
+        if self._cooldown_blocks_now(cooldown):
+            return flat
+        if self._daily_limit_blocks(day_key):
+            return flat
+
+        if score < threshold:
             return flat
 
         # State update — mark trade

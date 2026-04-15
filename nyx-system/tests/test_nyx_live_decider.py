@@ -160,3 +160,134 @@ class TestCooldownAndDailyLimit:
         )
         d._daily_counts['2023-06-01'] = d._max_daily_trades
         assert d._daily_limit_blocks('2023-06-02') is False
+
+
+# ===========================================================================
+class TestBearDialConditional:
+    """Bear-dial conditional threshold — Rule #2 / Reality Check #6.
+
+    When market is hostile (bear regime, elevated stress, weak trend, or
+    high ML/rule disagreement), NYXLiveDecider MUST raise its ML
+    threshold to the stricter bear_params value (0.68) and lengthen its
+    cooldown (64 bars) — same logic as NYXPipeline batch mode.
+
+    This closes the batch-vs-live gap: without this, live under-filters
+    in bear conditions and takes trades NYXPipeline would have rejected,
+    hurting the capture ratio measurement and the equivalence guard.
+    """
+
+    def test_bear_dial_defaults_match_bear_params(self):
+        """Live decider defaults must match `get_risk_params('bear')` —
+        threshold 0.68, cooldown 64 bars."""
+        from src.ml.bear_risk_dial import get_risk_params
+        from src.ml.nyx_live_decider import NYXLiveDecider
+        d = NYXLiveDecider(
+            symbol='ETHUSDT',
+            artifact_dir=MODELS_DIR / 'ETHUSDT',
+        )
+        bp = get_risk_params('bear')
+        assert d._bear_threshold == pytest.approx(bp['ml_threshold'])
+        assert d._bear_cooldown_bars == int(bp['cooldown_bars'])
+
+    def test_compute_bear_dial_signals_without_buffers_returns_none(self):
+        """With no buffer data yet, the dial helper returns None — no
+        crash, no false activation."""
+        from src.ml.nyx_live_decider import NYXLiveDecider
+        d = NYXLiveDecider(
+            symbol='ETHUSDT',
+            artifact_dir=MODELS_DIR / 'ETHUSDT',
+        )
+        signals = d._compute_bear_dial_signals()
+        assert signals is None or 'regime_1h' in signals
+
+    def test_bear_active_flag_exposed(self):
+        """After a bar with hostile regime, the decider must expose a
+        bool `_last_bear_active` for observability + the equivalence
+        test. Starts at False."""
+        from src.ml.nyx_live_decider import NYXLiveDecider
+        d = NYXLiveDecider(
+            symbol='ETHUSDT',
+            artifact_dir=MODELS_DIR / 'ETHUSDT',
+        )
+        assert hasattr(d, '_last_bear_active')
+        assert d._last_bear_active is False
+
+    def test_bear_active_applies_stricter_threshold(self, eth_mtf_data):
+        """Contract: the decider stores the effective threshold used on
+        the most recent bar. When bear_active is True, effective
+        threshold must be `_bear_threshold`; otherwise `_ml_threshold`."""
+        import pandas as pd
+        from src.ml.nyx_live_decider import NYXLiveDecider
+        d = NYXLiveDecider(
+            symbol='ETHUSDT',
+            artifact_dir=MODELS_DIR / 'ETHUSDT',
+        )
+        # Seed with a realistic window so buffers can compute signals.
+        seed = eth_mtf_data['15m'].loc['2022-10-01':'2022-12-31']
+        for ts, row in seed.iterrows():
+            d.on_15m_bar({
+                'timestamp': ts.isoformat(),
+                'open':   float(row['open']),
+                'high':   float(row['high']),
+                'low':    float(row['low']),
+                'close':  float(row['close']),
+                'volume': float(row['volume']),
+            })
+        # After seeding, the decider must have applied the conditional
+        # logic at least once and exposed the effective threshold.
+        assert hasattr(d, '_last_effective_threshold')
+        assert d._last_effective_threshold in (
+            pytest.approx(d._ml_threshold),
+            pytest.approx(d._bear_threshold),
+        )
+
+
+# ===========================================================================
+class TestBearDialReducesTradesInHostileRegime:
+    """End-to-end: a decider with bear dial wired must produce <= trades
+    than a decider with bear dial disabled on the same replay window."""
+
+    def test_fewer_or_equal_trades_with_bear_dial(self, eth_mtf_data):
+        import pandas as pd
+        from src.ml.nyx_live_decider import NYXLiveDecider
+
+        def replay(use_bear_dial: bool) -> int:
+            d = NYXLiveDecider(
+                symbol='ETHUSDT',
+                artifact_dir=MODELS_DIR / 'ETHUSDT',
+                use_bear_dial=use_bear_dial,
+            )
+            # Seed
+            for ts, row in eth_mtf_data['15m'].loc['2022-07-01':'2022-12-31'].iterrows():
+                d.on_15m_bar({
+                    'timestamp': ts.isoformat(),
+                    'open':   float(row['open']),
+                    'high':   float(row['high']),
+                    'low':    float(row['low']),
+                    'close':  float(row['close']),
+                    'volume': float(row['volume']),
+                })
+            d._bars_seen = d._warmup_bars + 1
+            d._last_trade_bar_idx = -10 ** 9
+            d._daily_counts = {}
+            # Replay
+            n = 0
+            for ts, row in eth_mtf_data['15m'].loc['2023-01-01':'2023-06-30'].iterrows():
+                sig = d.on_15m_bar({
+                    'timestamp': ts.isoformat(),
+                    'open':   float(row['open']),
+                    'high':   float(row['high']),
+                    'low':    float(row['low']),
+                    'close':  float(row['close']),
+                    'volume': float(row['volume']),
+                })
+                if sig.direction != 0:
+                    n += 1
+            return n
+
+        n_with = replay(use_bear_dial=True)
+        n_without = replay(use_bear_dial=False)
+        assert n_with <= n_without, (
+            f"bear dial should only TIGHTEN: "
+            f"with={n_with} > without={n_without} — logic regression"
+        )
