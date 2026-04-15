@@ -2,29 +2,27 @@
 OOS Live Replay — run NYXLiveDecider bar-by-bar on the 2023 test window.
 
 Purpose: produce HONEST out-of-sample numbers for the LIVE inference
-engine (NYXLiveDecider + MTFFeatureStack + bear-dial wire), NOT the
-batch NYXPipeline. This is the measurement that matches what a real
-live deployment would produce.
+engine (NYXLiveDecider + MTFFeatureStack + bear-dial wire), using
+**NYXPipeline itself** for the forward TP/SL/TIME exit outcomes
+(no duplication — Rule #7).
 
 Methodology:
   1. For each symbol with a trained model (ETH, SOL):
-     a. Build NYXLiveDecider(symbol, models/<SYMBOL>/)
-     b. Seed with 2022-07-01..2022-12-31 (6 months) so buffers warm
-        (EMA-200 + full 1d block converge)
-     c. Reset state counters (cooldown + daily + bars_seen past warmup)
-  2. Replay 2023-01-01..2023-12-31 bar-by-bar. Every bar calls
-     `decider.on_15m_bar(bar)`. Emitted signals (direction != 0) are
-     recorded with timestamp.
-  3. For each emitted signal, compute forward outcome via the same
-     TP/SL/TIME exit logic NYXPipeline uses (tp_mult=1.5, sl_mult=1.0,
-     max_bars=50, fee_rate=0.0002 maker, slippage_rate=0.0001).
-  4. Aggregate metrics: n_trades, win_rate, total_return_pct, Sharpe
-     (per-trade), max_drawdown_pct, bear-dial activation rate.
+     a. Run `NYXPipeline._generate_candidates(...)` on full MTF data
+        to pre-compute outcomes for every hard-gate-passing bar.
+        Index by `timestamp`.
+     b. Build `NYXLiveDecider(symbol, models/<SYMBOL>/)`
+     c. Seed 2022-07-01..2023-01-01 (6 months) so buffers warm.
+     d. Reset state counters.
+  2. Replay 2023 bar-by-bar. Every `decider.on_15m_bar(bar)`.
+     For each emitted signal (direction != 0), look up the
+     timestamp in NYXPipeline's candidate dict → reuse its
+     pre-computed `outcome_net` (maker fees + slippage already
+     accounted for, same exit logic as batch).
+  3. Aggregate metrics: n_trades, win_rate, total_return_pct,
+     Sharpe (per-trade), max_drawdown_pct, bear-dial activation rate.
 
 Output: `reports/OOS_live_replay_2023.json`.
-
-Rule #7: this complements `validate_abc_via_hubspoke.py` (which
-wraps NYXPipeline) — here we DO the live inference path.
 """
 from __future__ import annotations
 
@@ -40,20 +38,21 @@ import pandas as pd
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from src.ml.jesse_features import _atr
 from src.ml.nyx_live_decider import NYXLiveDecider
+from src.ml.nyx_pipeline import NYXPipeline
 
 
 # -----------------------------------------------------------------------------
 # Data loaders (mirror tests/conftest.py)
 # -----------------------------------------------------------------------------
 DATA_DIR = ROOT / 'data' / 'raw'
+FEAT_DIR = ROOT / 'data' / 'features'
 MODELS_DIR = ROOT / 'models'
 REPORTS_DIR = ROOT / 'reports'
 
 
-def _load_eth_15m() -> pd.DataFrame:
-    df = pd.read_csv(DATA_DIR / 'ETHUSDT_15m.csv')
+def _load_eth(tf: str) -> pd.DataFrame:
+    df = pd.read_csv(DATA_DIR / f'ETHUSDT_{tf}.csv')
     if 'Unnamed: 0' in df.columns:
         df = df.drop(columns='Unnamed: 0')
     df['datetime'] = pd.to_datetime(df['datetime'])
@@ -63,9 +62,17 @@ def _load_eth_15m() -> pd.DataFrame:
     return df
 
 
-def _load_sol_15m() -> pd.DataFrame:
+_SOL_CSV_BY_TF = {
+    '15m': 'SOLUSDT_15minutes',
+    '1h':  'SOLUSDT_1hour',
+    '4h':  'SOLUSDT_4hours',
+    '1d':  'SOLUSDT_1day',
+}
+
+
+def _load_sol(tf: str) -> pd.DataFrame:
     df = pd.read_csv(
-        DATA_DIR / 'SOLUSDT_15minutes.csv',
+        DATA_DIR / f'{_SOL_CSV_BY_TF[tf]}.csv',
         usecols=['timestamp', 'open', 'high', 'low', 'close', 'volume'],
     )
     df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
@@ -75,85 +82,49 @@ def _load_sol_15m() -> pd.DataFrame:
     return df
 
 
-_LOADERS = {
-    'ETHUSDT': _load_eth_15m,
-    'SOLUSDT': _load_sol_15m,
-}
+def _load_mtf(symbol: str) -> Dict[str, pd.DataFrame]:
+    loader = _load_eth if symbol == 'ETHUSDT' else _load_sol
+    return {tf: loader(tf) for tf in ('15m', '1h', '4h', '1d')}
 
 
-# -----------------------------------------------------------------------------
-# Forward outcome — match NYXPipeline exit logic exactly
-# -----------------------------------------------------------------------------
-TP_MULT = 1.5
-SL_MULT = 1.0
-MAX_BARS = 50
-FEE_RATE = 0.0002      # maker
-SLIPPAGE_RATE = 0.0001
-
-
-def _forward_outcome(
-    df_15m: pd.DataFrame, entry_idx: int, direction: int,
-) -> Dict[str, Any]:
-    """Replicates NYXPipeline._generate_candidates exit logic.
-
-    Returns dict with entry_price, exit_price, reason, gross, fee, net.
-    Net PnL is expressed in PRICE units (dollars/coin) — per-unit.
-    """
-    close = df_15m['close'].values.astype(float)
-    high = df_15m['high'].values.astype(float)
-    low = df_15m['low'].values.astype(float)
-    n = len(close)
-
-    atr = np.nan_to_num(
-        _atr(high, low, close, 14), nan=0.0,
-    )
-    if entry_idx >= n - 1 or atr[entry_idx] <= 0:
-        return {'valid': False}
-
-    entry_p = close[entry_idx] * (1 + direction * SLIPPAGE_RATE)
-    tp = entry_p + direction * TP_MULT * atr[entry_idx]
-    sl = entry_p - direction * SL_MULT * atr[entry_idx]
-    end_j = min(entry_idx + MAX_BARS + 1, n)
-    fut_h = high[entry_idx + 1: end_j]
-    fut_l = low[entry_idx + 1: end_j]
-
-    if direction == 1:
-        tp_hits = np.where(fut_h >= tp)[0]
-        sl_hits = np.where(fut_l <= sl)[0]
-    else:
-        tp_hits = np.where(fut_l <= tp)[0]
-        sl_hits = np.where(fut_h >= sl)[0]
-
-    tp_bar = tp_hits[0] if len(tp_hits) > 0 else MAX_BARS + 1
-    sl_bar = sl_hits[0] if len(sl_hits) > 0 else MAX_BARS + 1
-
-    if tp_bar <= sl_bar and tp_bar < MAX_BARS:
-        exit_p = tp * (1 - direction * SLIPPAGE_RATE)
-        gross = direction * (exit_p - entry_p)
-        reason = 'TP'
-    elif sl_bar < tp_bar and sl_bar < MAX_BARS:
-        exit_p = sl * (1 - direction * SLIPPAGE_RATE)
-        gross = direction * (exit_p - entry_p)
-        reason = 'SL'
-    else:
-        exit_p = close[min(entry_idx + MAX_BARS, n - 1)] * (
-            1 - direction * SLIPPAGE_RATE
-        )
-        gross = direction * (exit_p - entry_p)
-        reason = 'TIME'
-
-    fee = entry_p * FEE_RATE + abs(exit_p) * FEE_RATE
-    net = gross - fee
+def _load_features(symbol: str) -> Dict[str, pd.DataFrame]:
     return {
-        'valid':       True,
-        'entry_price': float(entry_p),
-        'exit_price':  float(exit_p),
-        'reason':      reason,
-        'gross':       float(gross),
-        'fee':         float(fee),
-        'net':         float(net),
-        'pct_return':  float(net / entry_p),
+        tf: pd.read_parquet(FEAT_DIR / f'{symbol}_features_{tf}.parquet')
+        for tf in ('15m', '1h', '4h', '1d')
     }
+
+
+# -----------------------------------------------------------------------------
+# Outcome lookup via NYXPipeline._generate_candidates (no duplication).
+# -----------------------------------------------------------------------------
+def build_outcome_index(
+    mtf_data: Dict[str, pd.DataFrame],
+    mtf_features: Dict[str, pd.DataFrame],
+) -> Dict[pd.Timestamp, Dict[str, Any]]:
+    """Call NYXPipeline._generate_candidates to get the per-bar
+    (hard-gate-passing) candidates — each already carries the
+    pre-computed outcome_net via the SAME TP/SL/TIME logic the
+    batch run uses. Index by timestamp for O(1) lookup."""
+    pipe = NYXPipeline()
+    # Build 1d + 1h context columns via the pipeline's own helpers.
+    ctx_1d = pipe._build_1d_context(
+        mtf_data.get('1d', pd.DataFrame()),
+        mtf_features.get('1d', pd.DataFrame()),
+    )
+    ctx_1h = pipe._build_1h_context(
+        mtf_data.get('1h', pd.DataFrame()),
+        mtf_features.get('1h', pd.DataFrame()),
+    )
+    candidates = pipe._generate_candidates(
+        df_15m=mtf_data['15m'],
+        feat_15m=mtf_features['15m'],
+        ctx_1d=ctx_1d,
+        ctx_1h=ctx_1h,
+        feat_1h=mtf_features.get('1h'),
+        feat_1d=mtf_features.get('1d'),
+        feat_4h=mtf_features.get('4h'),
+    )
+    return {pd.Timestamp(c['timestamp']): c for c in candidates}
 
 
 # -----------------------------------------------------------------------------
@@ -165,8 +136,13 @@ def replay_symbol(
     test_start: str = '2023-01-01',
     test_end: str = '2023-12-31',
 ) -> Dict[str, Any]:
-    print(f'[{symbol}] loading 15m OHLCV...', flush=True)
-    df15 = _LOADERS[symbol]()
+    print(f'[{symbol}] loading MTF OHLCV + features...', flush=True)
+    mtf_data = _load_mtf(symbol)
+    mtf_features = _load_features(symbol)
+
+    print(f'[{symbol}] pre-computing batch outcomes via '
+          'NYXPipeline._generate_candidates...', flush=True)
+    outcome_by_ts = build_outcome_index(mtf_data, mtf_features)
 
     artefact_dir = MODELS_DIR / symbol
     if not artefact_dir.is_dir():
@@ -179,6 +155,7 @@ def replay_symbol(
     )
 
     # Seed
+    df15 = mtf_data['15m']
     seed_slice = df15.loc[seed_start:test_start]
     print(
         f'[{symbol}] seeding {len(seed_slice)} bars '
@@ -193,8 +170,6 @@ def replay_symbol(
             'close':  float(row['close']),
             'volume': float(row['volume']),
         })
-
-    # Reset state (counter past warmup, no cooldown/daily bleed)
     decider._bars_seen = decider._warmup_bars + 1
     decider._last_trade_bar_idx = -10 ** 9
     decider._daily_counts = {}
@@ -206,14 +181,9 @@ def replay_symbol(
         f'({test_start} -> {test_end})...', flush=True,
     )
 
-    signals_emitted: List[Dict[str, Any]] = []
+    trades_out: List[Dict[str, Any]] = []
     n_bear_active = 0
-    n_hard_gate_pass = 0
-
-    # We need the test_slice index to be able to look up forward
-    # outcome given a timestamp. Use positional index lookup.
-    ts_index = test_slice.index
-    ts_to_pos = {ts: i for i, ts in enumerate(ts_index)}
+    n_live_without_batch_match = 0
 
     for ts, row in test_slice.iterrows():
         sig = decider.on_15m_bar({
@@ -226,97 +196,98 @@ def replay_symbol(
         })
         if decider._last_bear_active:
             n_bear_active += 1
-        # "hard gate passed" = any non-flat ML evaluation happened
-        # Proxy: _last_effective_threshold is set when feature vector
-        # was built, i.e. past hard gate. We don't expose a bool
-        # directly — use the signal.direction as a proxy for final.
-        if sig.direction != 0:
-            n_hard_gate_pass += 1
-            pos = ts_to_pos.get(ts)
-            if pos is None:
-                continue
-            outcome = _forward_outcome(test_slice, pos, int(sig.direction))
-            if not outcome.get('valid'):
-                continue
-            signals_emitted.append({
-                'timestamp':    ts.isoformat(),
-                'direction':    int(sig.direction),
-                'conviction':   float(sig.conviction),
-                'bear_active':  bool(decider._last_bear_active),
-                'eff_threshold': float(decider._last_effective_threshold),
-                **outcome,
-            })
+        if sig.direction == 0:
+            continue
+
+        # Look up forward outcome from NYXPipeline's candidate dict.
+        cand = outcome_by_ts.get(pd.Timestamp(ts))
+        if cand is None:
+            n_live_without_batch_match += 1
+            continue
+
+        # Sanity: direction should match (same hard gate).
+        if int(cand['direction']) != int(sig.direction):
+            n_live_without_batch_match += 1
+            continue
+
+        net = float(cand['outcome_net'])
+        entry = float(cand['entry_price'])
+        trades_out.append({
+            'timestamp':    ts.isoformat(),
+            'direction':    int(sig.direction),
+            'conviction':   float(sig.conviction),
+            'bear_active':  bool(decider._last_bear_active),
+            'eff_threshold': float(decider._last_effective_threshold),
+            'entry_price': entry,
+            'reason':      str(cand['reason']),
+            'net':         net,
+            'pct_return':  float(net / entry) if entry > 0 else 0.0,
+        })
 
     # Metrics
-    n_trades = len(signals_emitted)
+    n_trades = len(trades_out)
     if n_trades == 0:
         return {
-            'symbol':        symbol,
-            'n_trades':      0,
-            'note':          'no actionable signals emitted',
-            'n_bear_active': n_bear_active,
-            'seed_range':    f'{seed_start}..{test_start}',
-            'test_range':    f'{test_start}..{test_end}',
+            'symbol':                    symbol,
+            'n_trades':                  0,
+            'n_live_without_batch_match': n_live_without_batch_match,
+            'note':                      'no actionable signals emitted',
+            'seed_range':                f'{seed_start}..{test_start}',
+            'test_range':                f'{test_start}..{test_end}',
         }
 
-    nets = np.array([s['net'] for s in signals_emitted])
-    pcts = np.array([s['pct_return'] for s in signals_emitted])
+    nets = np.array([t['net'] for t in trades_out])
+    pcts = np.array([t['pct_return'] for t in trades_out])
     wins = int((nets > 0).sum())
     losses = int((nets < 0).sum())
     win_rate = wins / n_trades
-    gross_wins = float(nets[nets > 0].sum())
-    gross_losses = float(abs(nets[nets <= 0].sum()))
-    profit_factor = (
-        gross_wins / gross_losses if gross_losses > 0 else float('inf')
-    )
+    gw = float(nets[nets > 0].sum())
+    gl = float(abs(nets[nets <= 0].sum()))
+    pf = gw / gl if gl > 0 else float('inf')
 
-    # Equity curve (per-unit PnL, normalized to pct returns)
     equity = np.concatenate([[1.0], np.cumprod(1.0 + pcts)])
     peak = np.maximum.accumulate(equity)
     dd = (peak - equity) / peak
     max_dd = float(dd.max())
 
-    # Sharpe per-trade (not annualized here — we note the count)
-    sharpe_per_trade = (
+    sharpe_pt = (
         float(pcts.mean() / max(pcts.std(), 1e-12))
         if len(pcts) > 1 else 0.0
     )
 
-    # Direction distribution
-    n_long = sum(1 for s in signals_emitted if s['direction'] > 0)
+    n_long = sum(1 for t in trades_out if t['direction'] > 0)
     n_short = n_trades - n_long
-
-    # Exit reason breakdown
     exits = {'TP': 0, 'SL': 0, 'TIME': 0}
-    for s in signals_emitted:
-        exits[s['reason']] = exits.get(s['reason'], 0) + 1
+    for t in trades_out:
+        exits[t['reason']] = exits.get(t['reason'], 0) + 1
 
     return {
-        'symbol':                symbol,
-        'seed_range':            f'{seed_start}..{test_start}',
-        'test_range':            f'{test_start}..{test_end}',
-        'n_test_bars':           int(len(test_slice)),
-        'n_trades':              n_trades,
-        'n_long':                n_long,
-        'n_short':               n_short,
-        'n_bear_active_bars':    int(n_bear_active),
-        'bear_active_rate':      (
+        'symbol':                    symbol,
+        'seed_range':                f'{seed_start}..{test_start}',
+        'test_range':                f'{test_start}..{test_end}',
+        'n_test_bars':               int(len(test_slice)),
+        'n_trades':                  n_trades,
+        'n_long':                    n_long,
+        'n_short':                   n_short,
+        'n_bear_active_bars':        int(n_bear_active),
+        'bear_active_rate':          (
             float(n_bear_active / max(len(test_slice), 1))
         ),
-        'n_bear_active_trades':  sum(
-            1 for s in signals_emitted if s['bear_active']
+        'n_bear_active_trades':      sum(
+            1 for t in trades_out if t['bear_active']
         ),
-        'win_rate':              float(win_rate),
-        'wins':                  wins,
-        'losses':                losses,
-        'profit_factor':         profit_factor,
-        'total_return_pct':      float(equity[-1] - 1.0),
-        'max_drawdown_pct':      max_dd,
-        'sharpe_per_trade':      sharpe_per_trade,
-        'exit_breakdown':        exits,
-        'avg_pct_return':        float(pcts.mean()),
-        'median_pct_return':     float(np.median(pcts)),
-        'trades':                signals_emitted,
+        'n_live_without_batch_match': n_live_without_batch_match,
+        'win_rate':                  float(win_rate),
+        'wins':                      wins,
+        'losses':                    losses,
+        'profit_factor':             pf,
+        'total_return_pct':          float(equity[-1] - 1.0),
+        'max_drawdown_pct':          max_dd,
+        'sharpe_per_trade':          sharpe_pt,
+        'exit_breakdown':            exits,
+        'avg_pct_return':            float(pcts.mean()),
+        'median_pct_return':         float(np.median(pcts)),
+        'trades':                    trades_out,
     }
 
 
@@ -334,9 +305,10 @@ def main() -> int:
         results[symbol] = res
         print(
             f'[{symbol}] DONE — n_trades={res.get("n_trades", "?")}, '
-            f'total_return={res.get("total_return_pct", "?"):.4f}, '
+            f'total_return={res.get("total_return_pct", 0.0):.4f}, '
             f'win_rate={res.get("win_rate", 0.0):.2%}, '
-            f'bear_activation_rate={res.get("bear_active_rate", 0.0):.2%}',
+            f'bear_activation_rate='
+            f'{res.get("bear_active_rate", 0.0):.2%}',
             flush=True,
         )
 
@@ -345,7 +317,6 @@ def main() -> int:
         json.dump(results, f, indent=2, default=str)
     print(f'\nwrote {out}')
 
-    # Trio aggregate
     valid = [r for r in results.values() if r.get('n_trades', 0) > 0]
     if valid:
         n_total = sum(r['n_trades'] for r in valid)
