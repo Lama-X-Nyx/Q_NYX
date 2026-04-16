@@ -61,16 +61,20 @@ _OLD_FEATURE_COUNTS = {
 
 def _agent_backtest(agent, df: pd.DataFrame, **extra) -> Dict[str, Any]:
     """Run mono-file Jesse agent's .backtest() + .train() + .analyze()
-    check and collect metrics."""
+    check and collect metrics. Reads the canonical keys returned by
+    the mono-file `_BaseJesseAgent.backtest()`:
+      {accuracy, n_bars, pct_bullish, pct_bearish, pct_neutral,
+       pct_passed, avg_score, state_distribution}.
+    """
     t0 = time.time()
     res = agent.backtest(df, train_ratio=0.75)
     elapsed = time.time() - t0
     return {
-        'train_accuracy': float(res.get('train_accuracy', 0.0)),
-        'test_accuracy': float(res.get('test_accuracy', 0.0)),
-        'n_train': int(res.get('n_train', 0)),
-        'n_test': int(res.get('n_test', 0)),
-        'elapsed_s': round(elapsed, 2),
+        'accuracy':    float(res.get('accuracy', 0.0)),
+        'n_bars':      int(res.get('n_bars', 0)),
+        'pct_passed':  float(res.get('pct_passed', 0.0)),
+        'avg_score':   float(res.get('avg_score', 0.0)),
+        'elapsed_s':   round(elapsed, 2),
     }
 
 
@@ -109,11 +113,11 @@ def main() -> int:
             stats = {'error': repr(e)}
             print(f'  ERROR: {e}')
         else:
-            print(f'  train_acc: {stats["train_accuracy"]:.3f}')
-            print(f'  test_acc:  {stats["test_accuracy"]:.3f}')
-            print(f'  n_train:   {stats["n_train"]}')
-            print(f'  n_test:    {stats["n_test"]}')
-            print(f'  elapsed:   {stats["elapsed_s"]:.1f}s')
+            print(f'  accuracy:   {stats["accuracy"]:.3f}')
+            print(f'  n_bars:     {stats["n_bars"]}')
+            print(f'  pct_passed: {stats["pct_passed"]:.3f}')
+            print(f'  avg_score:  {stats["avg_score"]:.3f}')
+            print(f'  elapsed:    {stats["elapsed_s"]:.1f}s')
         results[name] = {
             'old_n_features': _OLD_FEATURE_COUNTS[name],
             'new_n_features': new_n_features,
