@@ -405,3 +405,83 @@ Pas de rename des champs internes — additif strict.
   passe un dict non-vide à MetaGBM)
 - OU Ticket 12 : Option B — retraining avec le contract étendu
   (84 + 13 nouvelles features liquidity-hunter)
+
+---
+
+## 2026-04-16 — Ticket 11 (BTC Meta-GBM trained + artefacts persisted)
+
+### Problème
+Le ticket demande d'entraîner le Meta-GBM sur la pipeline BTC
+canonique maintenant que le runtime est unifié (Tickets 04-10).
+Avant ce ticket, BTC n'avait PAS d'artefact persisté (gap flagué
+dans STATE_OF_PROJECT §3). Les numbers BTC venaient du
+training-inside-test de NYXEngine.run(), pas d'un artefact loadable.
+
+### Hypothèse testée
+Utiliser `train_asset_model.train_and_save` (canonical helper avec
+Rule 2 MTF coverage enforcement) sur BTC 2019-09→2022-12 puis run
+OOS 2023 via NYXEngine.run() (qui délègue à MetaGBM ticket 07).
+Les features incluent la famille liquidity-hunter du Ticket 09
+automatiquement (compute_stationary_features 'full').
+
+### Fichiers touchés
+- `scripts/train_btc_model.py` (nouveau) — mirror de train_eth_model
+  avec data/raw/mtf/ prefix
+- `tests/test_train_btc_model.py` (nouveau) — 15 tests GREEN
+  (artefact files + loadable + MTF coverage + OOS non-degenerate +
+  MetaGBM constructible from BTC artefact)
+- `models/BTCUSDT/ml_filter_v1.pkl` (nouveau, 332 KB)
+- `models/BTCUSDT/scaler.pkl` (nouveau)
+- `models/BTCUSDT/feature_names.json` (nouveau, 173 features)
+- `models/BTCUSDT/training_metadata.json` (nouveau)
+- `reports/BTCUSDT_oos_report.json` (nouveau)
+- `docs/STATE_OF_PROJECT.md` — BTCUSDT row ajoutée, gap marqué CLOSED
+- `docs/CHANGELOG.md` — entrée Ticket 11
+- `docs/SESSION_LOG.md` — ce log
+
+### Tests
+- 15/15 GREEN sur tests/test_train_btc_model.py
+- MTF coverage : n_features=173 ≥ 65 ✓
+- Rule 2 : h1_ / h4_ / d1_ prefixes présents ✓
+- MetaGBM constructible depuis l'artefact BTC ✓
+- Pyright : pas de fichier src/ touché (script seulement)
+
+### Numbers obtenus
+- In-sample accuracy : 90.2 %
+- n_train_candidates : 1,248
+- 2023 OOS :
+  - n_trades : 54
+  - Sharpe (per-trade) : 9.96
+  - Total PnL : $2,171.18
+  - Max Drawdown : 0.37 %
+  - Bear dial activation : 46.6 %
+  - Execution reject rate : 0 %
+
+### Impact architectural
+- UN artefact BTC persisté, prêt pour NYXLiveDecider en production
+- La pipeline entière (data MTF → EdgeStrategy → features → train →
+  NYXEngine → MetaGBM → trade decisions) est maintenant VALIDÉE
+  end-to-end sur BTC (canonical source du Sharpe 5+ historique)
+- Le gap "Tickets 01/07 : BTC has no persisted artefact" est
+  officiellement CLOSED
+- Les features Ticket 09 liquidity-hunter sont DANS le modèle BTC
+  (n_features=173 vs 84 pour ETH/SOL)
+
+### Risques restants
+- ETH et SOL restent sur leur 84-feature contract pré-Ticket-09.
+  Un ticket futur pourrait les retrain avec la même stack étendue
+  pour homogénéiser (hors-scope Ticket 11, "ETH/SOL rollout" exclu).
+- Sharpe per-trade 9.96 est EXCELLENT mais pas directement
+  comparable au Sharpe daily-equity — la reality check Ticket 6
+  ancien montre que daily ≈ sqrt(N)-adjusted ≈ 4-5.
+- Bear dial activation 46.6 % — consistant avec PIPELINE_V031_RESULTS
+  historique (39-47 % selon l'année).
+
+### Next smallest step possible
+- Ticket 12 : retrain ETH + SOL avec la nouvelle feature stack
+  (173 features) pour homogénéiser les 3 majors. OOS equivalence
+  vs baseline 84-features.
+- OU Ticket 13 : wire les FractalReports des 4 Jesse agents dans
+  NYXEngine.run() runtime path (agent.report() per candidate bar)
+  + retrain pour que le GBM VOIE les report.score vs les proxies
+  hand-crafted.

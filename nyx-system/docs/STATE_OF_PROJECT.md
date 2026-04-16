@@ -65,12 +65,15 @@ history.
 
 | Symbol | Artefact | Train end | # features | Validated OOS? |
 |---|---|---|---:|---|
+| **BTCUSDT** | `models/BTCUSDT/ml_filter_v1.pkl` + scaler + names | 2022-12-31 | 173 (full-feature set inc. Ticket 09 liquidity-hunter) | 2023 OOS Sharpe 9.96, 54 trades, MaxDD 0.37% |
 | **ETHUSDT** | `models/ETHUSDT/ml_filter_v1.pkl` + scaler + names | 2022-12-31 | 84 | 2023 OOS in §2 |
 | **SOLUSDT** | `models/SOLUSDT/ml_filter_v1.pkl` + scaler + names | 2022-12-31 | 84 | 2023 OOS in §2 |
 
-BTCUSDT has **no persisted artefact** in `models/`. The BTC numbers in
-§2 come from training-inside-test-setup of `NYXEngine.run()`, not a
-loaded artefact. This is a gap vs ETH/SOL operational readiness.
+All three majors (BTC, ETH, SOL) now have persisted artefacts under
+`models/<SYMBOL>/` (Ticket 11 closed the BTC gap). The BTC artefact
+includes the Ticket 09 liquidity-hunter features (`n_features=173`)
+— ETH/SOL still run the pre-Ticket-09 84-feature contract (they
+were trained before the feature expansion).
 
 ### Known operational truths
 
@@ -184,7 +187,7 @@ honesty, not a regression** — see §3.
 
 | Gap | Consequence | File/Issue |
 |---|---|---|
-| **BTCUSDT has no persisted artefact** in `models/`. | Can't run the live decider for BTC — the best-validated asset. | missing `models/BTCUSDT/` |
+| ~~BTCUSDT has no persisted artefact~~ ✓ **CLOSED (Ticket 11)** — `models/BTCUSDT/ml_filter_v1.pkl` persisted, 2023 OOS Sharpe 9.96, 54 trades. | — | — |
 | **Binance WebSocket adapter** not written. | No real-time bar feed into `NYXLiveDecider`. Everything live-tested is replay. | no `src/live/binance_ws.py` |
 | **Live miss-rate vs paper miss-rate** never measured on real order books. | The 14.6 % paper number may be optimistic or pessimistic under real maker priority. | would need live Binance testnet |
 | **Allocator live**: code ready (`PortfolioAllocator`), but with only ETH + SOL artefacts live, the 3-asset cluster cap logic is under-exercised. | Multi-asset live-ready status = **architecturally valid, operationally 2/3** | `docs/HUB_AND_SPOKE_ARCHITECTURE.md` explicitly says "activate only after ≥ 2 assets validated" — we have 2, but not live. |

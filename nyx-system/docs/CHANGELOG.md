@@ -2,6 +2,81 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 11 — Train Meta-GBM on canonical BTC pipeline (2026-04-16)
+
+Close the BTC artefact gap that was flagged in Tickets 01, 02, and
+07 (`STATE_OF_PROJECT.md` §3 row). Train the Meta-GBM's
+encapsulated `GradientBoostingClassifier` on BTC 2019-09 → 2022-12
+and persist the artefacts under `models/BTCUSDT/`.
+
+- **Training flow** (canonical) :
+  - MTF OHLCV 15m / 1h / 4h / 1d from `data/raw/mtf/`
+  - Features via `compute_stationary_features` (incl. Ticket 09
+    liquidity-hunter family)
+  - `train_asset_model.train_and_save` (canonical helper, MTF
+    coverage enforced — `MIN_FEATURES = 65`, prefixes `h1_`,
+    `h4_`, `d1_` required)
+  - `train_end = 2022-12-31` (matches ETH / SOL convention)
+  - OOS pass on 2023 via `NYXEngine.run()` (canonical runtime) —
+    which delegates scoring to `MetaGBM` (Ticket 07 wrapper).
+- **Artefacts produced** :
+  - `models/BTCUSDT/ml_filter_v1.pkl` (GBM, 332 KB)
+  - `models/BTCUSDT/scaler.pkl` (StandardScaler)
+  - `models/BTCUSDT/feature_names.json` (173 features — full set
+    including Ticket 09 liquidity-hunter)
+  - `models/BTCUSDT/training_metadata.json` (symbol, train_end,
+    n_train_candidates=1248, n_features=173, in_sample_accuracy=
+    0.902, positive_class_rate=0.437)
+  - `reports/BTCUSDT_oos_report.json` (training meta + 2023 OOS
+    summary)
+- **2023 OOS (canonical runtime, NYXEngine + MetaGBM)** :
+  - `n_trades = 54`
+  - `sharpe = 9.96` (per-trade; Ticket 2 reality check notes the
+    daily-equity equivalent ~4-5 on BTC historically)
+  - `total_pnl_dollars = 2171.18`
+  - `max_drawdown_pct = 0.37 %`
+  - `bear_dial_activation_rate = 46.6 %`
+  - `execution_reject_rate = 0 %`
+- **TDD** : `tests/test_train_btc_model.py` — 15 GREEN tests :
+  - Artefact files present (ml_filter_v1.pkl, scaler.pkl,
+    feature_names.json, training_metadata.json)
+  - `load_artifact(models/BTCUSDT/)` succeeds + model has
+    `predict_proba` + scaler has `transform`
+  - MTF coverage: `n_features ≥ 65`, train_end 2022-12-31, symbol
+    BTCUSDT, `feature_names` includes `h1_`, `h4_`, `d1_` prefixes
+  - OOS report exists, `symbol == 'BTCUSDT'`, `n_trades ≥ 10`,
+    Sharpe finite
+  - `MetaGBM(model=art['model'], scaler=art['scaler'],
+    feature_names=art['feature_names'])` constructible → trained
+    Meta-GBM ready for runtime
+- **Script** : `scripts/train_btc_model.py` (reproducible,
+  `random_state=42` inside `train_and_save`)
+- **Docs** :
+  - `STATE_OF_PROJECT.md` : §1 "Models actually on disk" table now
+    includes BTCUSDT row ; §3 "What is NOT yet done" BTC-artefact
+    gap marked CLOSED.
+  - `CHANGELOG.md` : this entry.
+
+Reproducibility : the training pipeline is idempotent on the same
+OHLCV + feature parquet inputs. `random_state=42` in
+`train_and_save` guarantees the same GBM fit.
+
+Acceptance criteria (from ticket) all met :
+
+- ☑ Meta-GBM trained on the unified BTC pipeline (NYXEngine +
+  EdgeStrategy candidate generation + 4-TF features + train_and_save)
+- ☑ Results reproducible (random_state=42, cached parquet features)
+- ☑ Artifacts versioned (`ml_filter_v1.pkl` naming convention +
+  `training_metadata.json` embedded provenance)
+- ☑ OOS path clear + documented (`scripts/train_btc_model.py`
+  emits `reports/BTCUSDT_oos_report.json` ; NYXEngine.run() is the
+  canonical OOS entrypoint)
+
+Out of scope (per ticket) :
+
+- ETH / SOL retraining (stay on pre-Ticket-09 84-feature contract)
+- Live deployment
+
 ### Ticket 10 — Freeze the Meta-GBM I/O contract (2026-04-16)
 
 Freeze the exact API of the Meta-GBM so training, inference, risk,
