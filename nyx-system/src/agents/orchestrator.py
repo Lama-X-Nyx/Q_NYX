@@ -19,7 +19,7 @@ from src.macro.real_macro_engine import RealMacroEngine
 class Orchestrator:
     """
     Orchestrator - Central Decision Maker
-    
+
     Responsibilities:
     1. Call 4 agents in sequence
     2. Aggregate results
@@ -27,8 +27,17 @@ class Orchestrator:
     4. Check centralized risk
     5. Produce final decision
     6. Log which agent blocked/passed
+
+    ⚠️ DEPRECATED (Ticket 06) — step 3 ("AND logic") = "ALL must pass
+    → trade / any block → WAIT", the vote-based strategy rule Ticket
+    06 replaced with the canonical strategy brain
+    `src.core.meta_gbm.MetaGBM`. The MetaGBM treats disagreement as a
+    feature (not an automatic failure) and emits a `MetaDecision`
+    with `quality_bucket` + `risk_hint`. Kept here for backward
+    compat ; no new code must call this orchestrator. See
+    `docs/ARCHITECTURE_CANONIQUE.md`.
     """
-    
+
     def __init__(self, config: Dict):
         """
         Initialize Orchestrator

@@ -32,6 +32,7 @@ CANONICAL_AGENTS = ('context', 'regime', 'setup', 'entry')
 CANONICAL_DIRECTIONS = (-1, 0, 1)
 CANONICAL_ORDER_TYPES = ('post_only_limit', 'market')
 CANONICAL_SIDES = ('buy', 'sell')
+CANONICAL_QUALITY_BUCKETS = ('high', 'medium', 'low')
 
 
 if TYPE_CHECKING:
@@ -311,6 +312,10 @@ class MetaDecision:
     candidate_quality: float         # [0,1]
     fractal_reports: Dict[str, 'FractalReport'] = field(default_factory=dict)
     features_snapshot: Dict[str, float] = field(default_factory=dict)
+    # Optional strategy-brain outputs (Ticket 06). None by default for
+    # backward compatibility with MetaDecision constructed pre-Ticket-06.
+    quality_bucket: Optional[str] = None   # ∈ CANONICAL_QUALITY_BUCKETS
+    risk_hint: Optional[float] = None      # ∈ [0, 1] — 1 = high confidence
 
     def __post_init__(self) -> None:
         self.direction = int(self.direction)
@@ -319,6 +324,16 @@ class MetaDecision:
         self.passed = bool(self.passed)
         self.expected_edge_net = float(self.expected_edge_net)
         self.candidate_quality = float(self.candidate_quality)
+        if self.quality_bucket is not None and \
+                self.quality_bucket not in CANONICAL_QUALITY_BUCKETS:
+            raise ValueError(
+                f"quality_bucket={self.quality_bucket!r} must be one of "
+                f"{CANONICAL_QUALITY_BUCKETS} or None"
+            )
+        if self.risk_hint is not None and not 0.0 <= float(self.risk_hint) <= 1.0:
+            raise ValueError(
+                f"risk_hint={self.risk_hint} out of [0,1] (or None)"
+            )
         if self.direction not in CANONICAL_DIRECTIONS:
             raise ValueError(
                 f"direction={self.direction} must be in "
@@ -372,6 +387,8 @@ class MetaDecision:
             'fractal_reports':   {k: r.to_dict()
                                    for k, r in self.fractal_reports.items()},
             'features_snapshot': dict(self.features_snapshot),
+            'quality_bucket':    self.quality_bucket,
+            'risk_hint':         self.risk_hint,
         }
 
 

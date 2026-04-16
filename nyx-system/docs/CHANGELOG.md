@@ -2,6 +2,83 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 06 — Replace "all must pass" with MetaGBM strategy brain (2026-04-16)
+
+Remove the simplistic "ALL must pass → trade / any block → WAIT"
+vote-based logic (used by `JesseOrchestrator` and per-file
+`Orchestrator`) and introduce the canonical strategy brain that
+interprets the 4 fractal reports + features via principled
+aggregation — disagreement becomes a feature, not an automatic
+failure.
+
+- **New module** `src/core/meta_gbm.py::MetaGBM`.
+  `.decide(fractal_reports, features, asset, timestamp,
+  timeframe='15m', hint_direction=0) -> MetaDecision`.
+  Logic :
+  - `aggregate_score = mean(report.score for report in 4 reports)`
+  - `disagreement = 1 - n_passed_agents / n`
+  - `probability = aggregate * (1 - disagreement_weight * disagreement)`
+  - `passed = direction != 0 AND probability >= threshold`
+    (NOT `all(r.passed)`)
+  - `quality_bucket ∈ {'high', 'medium', 'low'}` from aggregate
+    cutoffs (0.75 / 0.60)
+  - `risk_hint = 1 - disagreement` ∈ [0, 1]
+  - `features_snapshot` includes injected `disagreement`,
+    `n_passed_agents`, `aggregate_score` for traceability
+- **Contract extension** `MetaDecision` (ticket 03) gets two optional
+  fields (default None, backward-compat) :
+  - `quality_bucket: Optional[str]` ∈
+    `CANONICAL_QUALITY_BUCKETS = ('high', 'medium', 'low')`
+  - `risk_hint: Optional[float]` ∈ [0, 1]
+  Validated in `__post_init__`, serialised in `to_dict()`.
+- **Legacy orchestrators marked DEPRECATED**
+  (docstrings only, code untouched) :
+  - `src/ml/jesse_agents.py::JesseOrchestrator`
+  - `src/agents/orchestrator.py::Orchestrator`
+  The deprecation note is enforced by
+  `tests/test_meta_gbm.py::TestLegacyOrchestratorDeprecated`.
+- **TDD** : `tests/test_meta_gbm.py` — 17 GREEN tests covering :
+  - MetaDecision shape + optional outputs
+  - `passes_with_one_agent_blocked_if_score_holds` (3/4 pass +
+    aggregate > threshold → passed=True ; vote-based would say WAIT)
+  - `passes_with_two_agents_blocked_if_score_holds` (2/4 block +
+    aggregate 0.725 > 0.60 → still passed=True)
+  - `blocks_when_direction_is_zero_regardless_of_scores`
+  - `blocks_when_probability_below_threshold`
+  - `disagreement_in_features_snapshot` + `disagreement_moderates_probability`
+    (same aggregate, different disagreement → different probability)
+  - quality bucket mapping × 3 (high/medium/low)
+  - risk_hint range + inverse relation to disagreement
+  - legacy orchestrator deprecation-note guards
+- **Regression sweep** : 175 tests GREEN across Jesse agents,
+  canonical contracts, entrypoint, architecture, rules, inventory,
+  orchestrators, and the new MetaGBM.
+- **Pyright** : 0 errors on the 2 touched src/ files (`meta_gbm.py`,
+  `contracts.py`).
+- **Docs** :
+  - `ARCHITECTURE_CANONIQUE.md` : new "Canonical strategy-brain
+    interface (Ticket 06)" subsection + history note explaining how
+    `MetaGBM` (class) coexists with NYXEngine's internal GBM (role).
+  - `CHANGELOG.md` : this entry.
+
+Acceptance criteria (from ticket) all met :
+
+- ☑ "all must pass" is no longer the main strategy rule (two tests
+  explicitly prove the MetaGBM can pass with 1 or 2 blocked agents)
+- ☑ Disagreement becomes a feature, not an automatic failure
+  (present in `features_snapshot`, moderates probability instead of
+  hard-blocking)
+- ☑ The final decision is model-driven and strategy-aware — emits
+  `trade/no-trade` (passed), `direction`, `confidence` (probability),
+  `quality_bucket`, `risk_hint`, backed by the MetaDecision canonical
+  contract
+
+Out of scope (per ticket) :
+- Full feature-set redesign + GBM retraining
+- Full risk manager integration (MetaGBM not yet wired into
+  NYXEngine — the runtime path still uses NYXEngine's internal GBM
+  on `rule_*` proxy scalars)
+
 ### Ticket 05 — Jesse agents as fractal reporters (2026-04-16)
 
 Reposition the 4 Jesse agents (Context / Regime / Setup / Entry) as

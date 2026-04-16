@@ -216,9 +216,55 @@ the strategy decision probability.
 - **Label** : sign of `outcome_net` after TP/SL/TIME + maker fees +
   slippage
 
-There is no "Meta-GBM" class distinct from NYXEngine's GBM. The
-name "Meta-GBM" names the **role** (strategy brain), not a new
-module.
+### Canonical strategy-brain interface (Ticket 06)
+
+`src/core/meta_gbm.py::MetaGBM` is the canonical **interface** that
+future tickets will wire into the runtime path in place of the
+vote-based orchestrators. It takes 4 `FractalReport` + a features
+dict and emits a canonical `MetaDecision` (contract from Ticket 03,
+extended in Ticket 06 with `quality_bucket` + `risk_hint`).
+
+Key semantic — **disagreement is a feature, not an automatic
+failure** :
+
+- `MetaDecision.passed = (direction != 0) AND (probability ≥ threshold)`.
+  **NOT** `all(r.passed for r in fractal_reports.values())`.
+- `probability = aggregate_score × (1 − disagreement_weight ×
+  disagreement)` where `disagreement = 1 − n_passed / n`. High
+  disagreement moderates probability but does not hard-block.
+- `quality_bucket ∈ {'high', 'medium', 'low'}` from aggregate score
+  cutoffs (0.75 / 0.60).
+- `risk_hint ∈ [0, 1]` = 1 − disagreement, for downstream sizing.
+- `features_snapshot` carries injected `disagreement` /
+  `n_passed_agents` / `aggregate_score` alongside caller features.
+
+The legacy vote-based orchestrators (`JesseOrchestrator`,
+`Orchestrator`) are explicitly marked DEPRECATED in their docstrings
+(enforced by `tests/test_meta_gbm.py::TestLegacyOrchestratorDeprecated`)
+but kept for backward-compat of their existing tests.
+
+**Not yet wired** — per Ticket 06 out-of-scope ("Full risk manager
+integration"), NYXEngine still consumes the `rule_*` proxy scalars
+through its internal GBM. `MetaGBM` is the public interface for
+when a future ticket plugs the real strategy brain into the runtime
+path.
+
+---
+
+## Meta-GBM — history note on the role vs the class
+
+Before Ticket 06, "Meta-GBM" in this doc referred only to the
+**role** (strategy brain) occupied by `NYXEngine`'s internal
+`GradientBoostingClassifier`. Ticket 06 adds a concrete canonical
+class `MetaGBM` at `src/core/meta_gbm.py` that **implements the
+role's interface** (reports + features → MetaDecision) but does
+not yet replace `NYXEngine`'s internal GBM (feature redesign +
+retraining is out of scope). Both coexist during the migration :
+
+- `NYXEngine`'s internal GBM is the **validated** strategy brain
+  that produced every A/B/C / walk-forward / reality-check number.
+- `MetaGBM` is the **canonical interface** that future tickets can
+  wire without breaking the validated path.
 
 ---
 

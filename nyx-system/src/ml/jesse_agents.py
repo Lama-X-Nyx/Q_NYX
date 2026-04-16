@@ -648,6 +648,15 @@ class JesseOrchestrator:
     Input: 4 AgentResults
     Output: OrchestratorDecision (BUY/SELL/WAIT + size_factor)
     Sizing: P>0.75→1.5x, P>0.65→1.2x, P<0.60→0.75x
+
+    ⚠️ DEPRECATED (Ticket 06) — this class uses "ALL must pass → trade
+    / any block → WAIT" vote-based logic, which Ticket 06 replaced
+    with the canonical strategy brain `src.core.meta_gbm.MetaGBM`.
+    The MetaGBM treats disagreement as a feature (not an automatic
+    failure) and emits a `MetaDecision` with `quality_bucket` +
+    `risk_hint`. Kept here for backward compat + 45 existing
+    GREEN tests ; no new code must call this orchestrator. See
+    `docs/ARCHITECTURE_CANONIQUE.md` and `docs/JESSE_AGENTS_STATUS.md`.
     """
 
     def __init__(self):
