@@ -24,9 +24,12 @@ sessions (human or AI) never again confuse "code present" with
 
 ### Engine (mono-asset, BTC reference)
 
-The reference engine is **`NYXPipeline` v0.3.1** (file
-`src/ml/nyx_pipeline.py`). It is the code path that produced every
-validated number in section 2. It layers:
+The reference engine is **`NYXEngine` v0.3.1** at
+`src/core/nyx_engine.py` (Ticket 04 rename of the previous
+`NYXEngine`). It is the code path that produced every validated
+number in section 2. A deprecation shim at `src/ml/nyx_pipeline.py`
+re-exports `NYXEngine as NYXEngine` so pre-ticket-04 callers keep
+working. It layers:
 
 - MTF candidates (15m + 1h + 4h + 1d, 84 features total)
 - ML filter (GradientBoostingClassifier, threshold 0.60)
@@ -66,7 +69,7 @@ history.
 | **SOLUSDT** | `models/SOLUSDT/ml_filter_v1.pkl` + scaler + names | 2022-12-31 | 84 | 2023 OOS in §2 |
 
 BTCUSDT has **no persisted artefact** in `models/`. The BTC numbers in
-§2 come from training-inside-test-setup of `NYXPipeline.run()`, not a
+§2 come from training-inside-test-setup of `NYXEngine.run()`, not a
 loaded artefact. This is a gap vs ETH/SOL operational readiness.
 
 ### Known operational truths
@@ -74,11 +77,11 @@ loaded artefact. This is a gap vs ETH/SOL operational readiness.
 - **Post-only miss rate on real data**: 14.6 % of ranked trades don't
   fill within `max_wait_bars` — they become `TIMED_OUT`, logged to
   `missed_trades.db`, never silently filled as taker.
-- **`HubSpokeRunner` + `NYXPipelinePod` → 3.8 % allocator cut** when
+- **`HubSpokeRunner` + `NYXEnginePod` → 3.8 % allocator cut** when
   replaying A/B/C via the shared broker (was 98.5 % before the
   position-lifecycle fix — commits `b569ef2` → `eb29997`).
 - **`NYXLiveDecider` + bear-dial conditional wire**: parity-tested
-  against batch `NYXPipeline` on ETH H1 2023, directional agreement
+  against batch `NYXEngine` on ETH H1 2023, directional agreement
   ≥ 60 % on overlapping timestamps, trade-count ratio 0.15 with
   documented cold-start asymmetry.
 
@@ -126,7 +129,7 @@ Source: `docs/REALITY_CHECK.md`,
 | 6. B&H benchmark hypocrisy fix (30 % forced-stop) | B&H with human stop = **−16 %**, not +1 283 %. Real alpha **+227 pp** |
 | 7. Forced-stop B&H parity | Strategy +211 % vs B&H −16 % |
 
-### NYXPipeline v0.3.1 BTC 4-year OOS
+### NYXEngine v0.3.1 BTC 4-year OOS
 
 Source: `docs/PIPELINE_V031_RESULTS.md`, `docs/MC_FINAL_V031.md`.
 
@@ -152,7 +155,7 @@ Source: `scripts/oos_live_replay.py`,
 | ETHUSDT | 15 | 46.7 % | +0.51 % | 1.85 % | 1.12 |
 | SOLUSDT | 1 | 100 % | +1.71 % | 0 % | ∞ |
 
-These numbers are **much lower than batch NYXPipeline** (52+ trades on
+These numbers are **much lower than batch NYXEngine** (52+ trades on
 ETH H1 alone) because the live path applies the bear dial correctly
 during cold-start windows batch silently skips. **This is measured
 honesty, not a regression** — see §3.
@@ -169,12 +172,12 @@ honesty, not a regression** — see §3.
 - `NYXLiveDecider` (`src/ml/nyx_live_decider.py`) — real-time per-bar
   multi-TF decider. Loads persisted artefact, maintains 4 rolling
   buffers, applies hard gate → ML score → bear dial → cooldown.
-- `NYXLivePod` + `NYXPipelinePod` — `SignalPod` wrappers for
+- `NYXLivePod` + `NYXEnginePod` — `SignalPod` wrappers for
   `HubSpokeRunner`.
 - Position lifecycle: `Signal.expected_hold_bars` + timestamp-based
   release in `HubSpokeRunner._release_expired_positions`.
 - `scripts/oos_live_replay.py` — drives the live decider bar-by-bar
-  over 2023 and cross-checks outcomes against NYXPipeline via
+  over 2023 and cross-checks outcomes against NYXEngine via
   `_generate_candidates` (zero duplication).
 
 ### What is NOT yet done
@@ -208,9 +211,9 @@ honesty, not a regression** — see §3.
 | `docs/README.md` v0.2.5 language, "200 tests" | This file + `PIPELINE_V031_RESULTS.md` + current test count (~265) |
 | `docs/EVOLUTION_A_TO_B.md` | Historical context only — explains how v0.8 → v0.2.5 → v0.3.1 happened. Not a statement of current architecture. |
 | `docs/PHASE1_BASELINE.md`, `docs/MTF_BASELINE.md` | Early exploration. Numbers here are pre-reality-check. |
-| `docs/FRACTAL_*.md` (6 files) | Fractal-agent research stream — not integrated into `NYXPipeline` or the live decider. Parked. |
+| `docs/FRACTAL_*.md` (6 files) | Fractal-agent research stream — not integrated into `NYXEngine` or the live decider. Parked. |
 | `docs/HSMM_*.md` (3 files) | HSMM exploration — not wired. Parked. |
-| `docs/SETUP_INVESTIGATION*.md` (5 files) | Iterative debugging of the "setup" rule block. Resolved; the current rule calc is in `src/ml/nyx_pipeline.py`. |
+| `docs/SETUP_INVESTIGATION*.md` (5 files) | Iterative debugging of the "setup" rule block. Resolved; the current rule calc is in `src/core/nyx_engine.py`. |
 | `docs/SMC_*.md` (3 files) | Smart-money-concepts experiments. Not wired. Parked. |
 | `docs/REGIME_*.md` (2 files) | Early regime-detection debugging. Superseded by `src/ml/conditional_dial.py` + `src/ml/bear_risk_dial.py`. |
 | **5 Jesse agents** (`src/ml/jesse_agents.py`, 683 LOC, 45 tests) | Alternative modular RF architecture. **Not wired into production.** Kept as fallback. See `docs/JESSE_AGENTS_STATUS.md`. |
@@ -221,7 +224,7 @@ honesty, not a regression** — see §3.
 
 | Question you want to answer | File to open |
 |---|---|
-| "What does the engine produce today?" | `src/ml/nyx_pipeline.py` + §1 above |
+| "What does the engine produce today?" | `src/core/nyx_engine.py` + §1 above |
 | "What OOS numbers can I quote?" | §2 above + `docs/PIPELINE_V031_RESULTS.md` + `docs/WALK_FORWARD_TRIO.md` |
 | "Which assets have trained models?" | `models/` — ETH + SOL today |
 | "Is the system live yet?" | **No.** §3 lists the 5 remaining gaps. |

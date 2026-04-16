@@ -59,12 +59,12 @@ improves. If a test lands here, the system is safer.
 |---|---|
 | `python -m src.paper_live.main` | paper-live loop (Docker entry) |
 | `NYXLiveDecider.on_15m_bar(bar)` | per-bar live inference |
-| `NYXPipeline.run(...)` | batch run over a historical window |
+| `NYXEngine.run(...)` | batch run over a historical window (pre-Ticket 04 called `NYXPipeline.run`) |
 | `HubSpokeRunner.on_bars(bars)` | multi-asset orchestration tick |
 
 ### Decision engine
 
-- `src/ml/nyx_pipeline.py` — `NYXPipeline` batch engine (GBM threshold 0.60, 84 features, conditional bear dial, soft gate sizing, maker fees + slippage).
+- `src/core/nyx_engine.py` — `NYXEngine` batch engine (Ticket 04 rename of NYXPipeline). GBM threshold 0.60, 84 features, conditional bear dial, soft gate sizing, maker fees + slippage. Deprecation shim at `src/ml/nyx_pipeline.py` re-exports `NYXEngine as NYXPipeline` for pre-ticket-04 callers.
 - `src/ml/nyx_live_decider.py` — `NYXLiveDecider` per-bar equivalent. Parity guarded by `tests/test_nyx_equivalence_replay_vs_live.py`.
 
 ### Data & feature layer
@@ -153,7 +153,7 @@ Exploratory code. Tests may be GREEN, but no production path uses it.
 
 ### Alternative agent stacks
 
-- `src/ml/jesse_agents.py` (5 Jesse agents in one file) + `src/agents/*.py` (same 5 agents per-file). 45 GREEN tests. **Not wired** ; `NYXPipeline` uses proxy `rule_*` scalars. Swap path in `docs/JESSE_AGENTS_STATUS.md`.
+- `src/ml/jesse_agents.py` (5 Jesse agents in one file) + `src/agents/*.py` (same 5 agents per-file). 45 GREEN tests. **Not wired** ; `NYXEngine` uses proxy `rule_*` scalars. Swap path in `docs/JESSE_AGENTS_STATUS.md`.
 - `src/ml/ml_agents.py`, `ml_entry_agent.py`, `ml_orchestrator.py` (LightGBM + River alternative).
 - `src/ml/jesse_strategy.py`, `jesse_backtest.py`, `jesse_ab_runner.py`, `jesse_research.py`, `jesse_utils.py`.
 
@@ -175,8 +175,8 @@ Exploratory code. Tests may be GREEN, but no production path uses it.
 
 | You want to... | Rule |
 |---|---|
-| add a new runtime strategy | **no new layer** — patch `NYXPipeline` or document deliberate replacement in a ticket |
-| run a new backtest | use `NYXPipeline.run` or `scripts/validate_abc*.py` — never `NYXEngine` |
+| add a new runtime strategy | **no new layer** — patch `NYXEngine` (src/core/nyx_engine.py) or document deliberate replacement in a ticket |
+| run a new backtest | use `NYXEngine.run` or `scripts/validate_abc*.py` — never the legacy v0.8 `NYXEngine` at `src/core/nyx_engine_v08.py` |
 | calibrate a threshold / parameter | add to Layer 2 (`threshold_optimizer` pattern), not to the runtime |
 | experiment with a new agent / ML stack | Layer 4 — keep it off any import path from Layer 1 |
 | delete legacy code | open a dedicated ticket — must prove nothing in Layer 1 / 2 imports it |

@@ -55,11 +55,11 @@ class TestRuntimePathDeclaration:
     """The runtime path must name its components explicitly."""
 
     def test_runtime_entrypoint_declared(self, arch_text):
-        """NYXPipeline.run must be named as the canonical runtime
-        entrypoint today (even if the target is Jesse reporters +
-        Meta-GBM, the production reality is NYXPipeline)."""
-        assert 'NYXPipeline' in arch_text
-        assert 'NYXPipeline.run' in arch_text
+        """`NYXEngine.run` (Ticket 04 rename from NYXPipeline) must be
+        the canonical runtime entrypoint. The old name may still
+        appear in historical / deprecation-shim wording."""
+        assert 'NYXEngine' in arch_text
+        assert 'NYXEngine.run' in arch_text
 
     def test_runtime_lists_core_layers(self, arch_text):
         """All 6 layers of the canonical runtime path must be named."""

@@ -25,7 +25,7 @@ from typing import Optional
 # Add project to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.core.nyx_engine import NYXEngine
+from src.core.nyx_engine_v08 import NYXEngine  # legacy v0.8 (Ticket 04)
 from src.execution.paper_engine import PaperEngine
 from src.data.live_feed import BinanceFeed
 

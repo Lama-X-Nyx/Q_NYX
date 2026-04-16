@@ -26,12 +26,12 @@ is invocable. All are listed. 35 scripts total.
 
 | Script | Purpose | Engine called | Status |
 |---|---|---|---|
-| `scripts/validate_abc.py` | A/B/C portfolio OOS + MC + bootstrap (BTC / BTC+ETH / BTC+ETH+SOL) | `NYXPipeline.run` | **canonical runtime** (offline validation of the runtime engine) |
-| `scripts/validate_ab.py` | A/B subset of the above (BTC / BTC+ETH) | `NYXPipeline.run` | canonical runtime (offline validation) |
+| `scripts/validate_abc.py` | A/B/C portfolio OOS + MC + bootstrap (BTC / BTC+ETH / BTC+ETH+SOL) | `NYXEngine.run` (via shim) | **canonical runtime** (offline validation of the runtime engine) |
+| `scripts/validate_ab.py` | A/B subset of the above (BTC / BTC+ETH) | `NYXEngine.run` (via shim) | canonical runtime (offline validation) |
 | `scripts/validate_abc_via_hubspoke.py` | A/B/C re-run through `HubSpokeRunner` + `PostOnlyPaperBroker` | `NYXPipelinePod` + `HubSpokeRunner` | canonical runtime (offline validation) |
-| `scripts/walk_forward_trio.py` | 4-year walk-forward BTC+ETH+SOL | `NYXPipeline.run` | canonical runtime (offline validation) |
-| `scripts/oos_live_replay.py` | Replay 2023 bar-by-bar through `NYXLiveDecider`, PnL via `NYXPipeline._generate_candidates` lookup | `NYXLiveDecider` + `NYXPipeline._generate_candidates` | **canonical runtime** (live replay) |
-| `scripts/run_reality_checks.py` | 6 reality-check corrections (miss-rate, taker, daily Sharpe, block bootstrap, OOS 2024+, forced-stop B&H) | `NYXPipeline.run` | canonical runtime (offline validation) |
+| `scripts/walk_forward_trio.py` | 4-year walk-forward BTC+ETH+SOL | `NYXEngine.run` (via shim) | canonical runtime (offline validation) |
+| `scripts/oos_live_replay.py` | Replay 2023 bar-by-bar through `NYXLiveDecider`, PnL via `NYXEngine._generate_candidates` lookup | `NYXLiveDecider` + `NYXEngine._generate_candidates` | **canonical runtime** (live replay) |
+| `scripts/run_reality_checks.py` | 6 reality-check corrections (miss-rate, taker, daily Sharpe, block bootstrap, OOS 2024+, forced-stop B&H) | `NYXEngine.run` (via shim) | canonical runtime (offline validation) |
 | `scripts/train_eth_model.py` | Train + persist ETH artefact (`models/ETHUSDT/`) | `train_asset_model.train_and_save` | **offline calibration** |
 | `scripts/train_sol_model.py` | Train + persist SOL artefact (`models/SOLUSDT/`) | `train_asset_model.train_and_save` | offline calibration |
 | `scripts/precompute_features.py` | Precompute parquet feature files per TF | `jesse_features.compute_stationary_features` | offline calibration |
@@ -77,13 +77,15 @@ is invocable. All are listed. 35 scripts total.
 
 ## 2. Core runtime modules (`src/core/`)
 
-**All files in `src/core/` are v0.8-era and NOT part of the canonical
-runtime.** The canonical engine lives in `src/ml/nyx_pipeline.py` and
-`src/ml/nyx_live_decider.py`.
+Post-Ticket-04, the canonical batch engine `NYXEngine` lives at
+`src/core/nyx_engine.py`. Live per-bar inference is still
+`src/ml/nyx_live_decider.py::NYXLiveDecider`. Everything else in
+`src/core/` remains v0.8-era legacy.
 
 | File | Role | Who calls it | Status |
 |---|---|---|---|
-| `src/core/nyx_engine.py` | v0.8 `NYXEngine` — central unified trading engine ("used by backtest + paper + API") | `src/runner/run_paper.py`, `src/validation/{walk_forward,oos_report,benchmarks,smc_diagnostics,signal_funnel,pattern_quality}.py`, `scripts/run_backtest.py` | **legacy** |
+| `src/core/nyx_engine.py` | **Canonical batch engine** — `NYXEngine.run` is the production entrypoint (Ticket 04 rename of NYXPipeline). | canonical callers (via `src/ml/nyx_pipeline.py` shim while migrating) + `src/ml/nyx_live_decider.py` + `src/assets/nyx_pipeline_pod.py` + scripts/tests | **canonical runtime** |
+| `src/core/nyx_engine_v08.py` | Legacy v0.8 `NYXEngine` — HSMM + SMC + macro. Frozen for its legacy callers only. | `src/runner/run_paper.py`, `src/validation/{walk_forward,oos_report,benchmarks,smc_diagnostics,signal_funnel,pattern_quality}.py`, `scripts/run_backtest.py` | **legacy** |
 | `src/core/nyx_engine_mtf.py` | 4-TF fractal swing agent (v5.5M spec) | research scripts | legacy |
 | `src/core/precomputed_runner.py` | Cached-state fractal runner | `scripts/backtest_mtf.py` | legacy |
 | `src/core/fractal_cached_runner.py` | Fractal agents with state caching | research scripts | research/experimental |
@@ -99,7 +101,7 @@ runtime.** The canonical engine lives in `src/ml/nyx_pipeline.py` and
 
 | File | Role | Status |
 |---|---|---|
-| `src/ml/nyx_pipeline.py` | **Canonical batch engine** — `NYXPipeline.run` is the production entrypoint | **canonical runtime** |
+| `src/ml/nyx_pipeline.py` | **Deprecation shim** — re-exports `NYXEngine as NYXPipeline` so pre-ticket-04 callers keep working. See `src/core/nyx_engine.py` for the real engine. | canonical runtime (shim) |
 | `src/ml/nyx_live_decider.py` | **Canonical live engine** — `NYXLiveDecider.on_15m_bar` per-bar inference | **canonical runtime** |
 | `src/ml/mtf_feature_stack.py` | 4-TF rolling buffers + 15m→1h/4h/1d aggregation | canonical runtime |
 | `src/ml/feature_buffer.py` | Sliding-window feature buffer per TF | canonical runtime |
@@ -131,7 +133,7 @@ runtime.** The canonical engine lives in `src/ml/nyx_pipeline.py` and
 
 | File | Role | Status |
 |---|---|---|
-| `src/ml/jesse_agents.py` | 5 Jesse agents (Context / Regime / Setup / Entry / Orchestrator) — alternative to monolithic `NYXPipeline` | research/experimental — **not wired** (proxied by `rule_*` scalars; see `JESSE_AGENTS_STATUS.md`) |
+| `src/ml/jesse_agents.py` | 5 Jesse agents (Context / Regime / Setup / Entry / Orchestrator) — alternative to monolithic `NYXEngine` | research/experimental — **not wired** (proxied by `rule_*` scalars; see `JESSE_AGENTS_STATUS.md`) |
 | `src/ml/edge_strategy.py` | Historical trend+volume edge validator (walk-forward 14/14 quarters) | legacy (not a standalone runtime strategy) |
 | `src/ml/ml_agents.py` | `MLContextAgent` / `MLRegimeAgent` / `MLSetupAgent` (LightGBM 4-agent fractal) | research/experimental |
 | `src/ml/ml_entry_agent.py` | `MLEntryAgent` (blend 0.7×LGB + 0.3×River) | research/experimental |
@@ -171,7 +173,7 @@ alternative; swap path in `JESSE_AGENTS_STATUS.md`.
 | `src/assets/hub_spoke_runner.py` | `HubSpokeRunner` — orchestrator | **canonical runtime** |
 | `src/assets/portfolio_allocator.py` | `PortfolioAllocator` — risk caps + no-pyramiding + cluster veto | **canonical runtime** |
 | `src/assets/nyx_live_pod.py` | Live pod wrapping `NYXLiveDecider` | **canonical runtime** |
-| `src/assets/nyx_pipeline_pod.py` | Replay pod wrapping `NYXPipeline` (batch) | canonical runtime (replay) |
+| `src/assets/nyx_pipeline_pod.py` | Replay pod wrapping `NYXEngine` (batch) via shim | canonical runtime (replay) |
 | `src/assets/registry.py` | Asset registry / YAML loader | canonical runtime |
 | `src/assets/execution_profile.py` | Per-asset execution profile | canonical runtime |
 | `src/assets/combined_portfolio.py` | Portfolio aggregator | canonical runtime |

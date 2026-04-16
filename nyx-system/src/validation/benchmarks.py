@@ -286,7 +286,7 @@ def run_benchmark(benchmark_name: str, data: pd.DataFrame, config: dict) -> Dict
     
     elif benchmark_name == 'hsmm_only':
         # Use NYXEngine but disable SMC and Macro
-        from src.core.nyx_engine import NYXEngine
+        from src.core.nyx_engine_v08 import NYXEngine  # legacy v0.8 (Ticket 04)
         
         # Modify config to disable SMC/Macro
         test_config = config.copy()

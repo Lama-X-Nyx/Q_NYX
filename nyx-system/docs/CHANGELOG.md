@@ -2,6 +2,49 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 04 — NYXEngine = single canonical runtime entrypoint (2026-04-16)
+
+Unifies the runtime brain : rename `NYXPipeline` → `NYXEngine` and
+move it from `src/ml/nyx_pipeline.py` → `src/core/nyx_engine.py`.
+Segregate the legacy v0.8 engine (HSMM + SMC + macro) at
+`src/core/nyx_engine_v08.py` for its 9 legacy callers.
+
+- **Renamed + moved** : `src/ml/nyx_pipeline.py::NYXPipeline` →
+  `src/core/nyx_engine.py::NYXEngine`. Class renamed, code unchanged
+  (validated behaviour preserved — all ETH/SOL artefacts, A/B/C
+  numbers, walk-forward reality checks still valid).
+- **Segregated legacy v0.8** : previous content of
+  `src/core/nyx_engine.py` (HSMM + SMC + macro) moved to
+  `src/core/nyx_engine_v08.py`. Frozen list of 9 legacy callers
+  updated to import from the `_v08` path :
+  `src/runner/run_paper.py`, 6 × `src/validation/*.py`,
+  `scripts/run_backtest.py`.
+- **Deprecation shim** : `src/ml/nyx_pipeline.py` becomes a 23-line
+  shim that re-exports `NYXEngine as NYXPipeline`. The ~45 canonical
+  callers (tests, scripts, lazy imports inside `conditional_dial` /
+  `bear_risk_dial` / `reality_check` / `train_asset_model` /
+  `monte_carlo` / `nyx_pipeline_pod`) keep working unchanged.
+- **RED → GREEN** : `tests/test_canonical_entrypoint.py` (16 tests)
+  asserts :
+  - `from src.core.nyx_engine import NYXEngine` works
+  - `NYXEngine` has `.run()` and instantiates with no args
+  - `src.core.nyx_engine_v08` holds a DIFFERENT class
+  - Shim re-export : `NYXPipeline is NYXEngine`
+  - Shim size < 1500 chars and no redeclared class (regex guard)
+  - `ARCHITECTURE_CANONIQUE.md` now names `NYXEngine` as canonical
+  - Each of the 8 legacy caller files imports from `_v08` path
+    (parametrised — extensible)
+- **Updated docs** : `ARCHITECTURE_CANONIQUE.md`, `RUNNER_INVENTORY.md`,
+  `PROJECT_TRUTH_MAP.md`, `STATE_OF_PROJECT.md` all updated. Existing
+  `test_architecture_canonical.py` assertions updated from
+  `NYXPipeline.run` → `NYXEngine.run`.
+- **Regression sweep** : 76 tests GREEN on
+  `test_nyx_pipeline`, `test_nyx_live_decider`, `test_nyx_pipeline_pod`,
+  `test_hub_spoke_lifecycle`, `test_canonical_contracts`,
+  `test_signal_contract` — shim handles all pre-existing callers.
+- **No behavioural change** : per ticket out-of-scope constraint —
+  entrypoint unification only, no NYX_0 logic migration.
+
 ### Ticket 03 — Unified contracts and system language (2026-04-15)
 
 - **New** : 4 canonical types in `src/agents/contracts.py` :

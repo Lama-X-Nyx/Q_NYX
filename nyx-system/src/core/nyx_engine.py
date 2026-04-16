@@ -1,516 +1,550 @@
 """
-NYX Engine v0.8 - Central Unified Trading Engine
+NYXEngine — canonical runtime engine (Ticket 04).
 
-Single source of truth for all trading signals.
-Used by: backtest + paper trading + API + dashboard
+Single unified engine that merges :
+  1. MTF data (15m execution + 1h regime + 4h structure + 1d context)
+  2. Edge candidates (trend alignment + volume > 3x on 15m)
+  3. 84 features (15m + h1_* + h4_* + d1_* + ctx_1d_* + reg_1h_*
+     + rule_*/disagreement + extras)
+  4. Meta-GBM (threshold 0.60, trained on net outcomes)
+  5. Conditional bear dial (stricter threshold + cooldown in bear)
+  6. Soft gate sizing (rule scores → disagreement → size factor)
+  7. Realistic execution (maker fees, slippage, cooldown)
 
-Key principle: ONE engine, multiple consumers
+Usage :
+    from src.core.nyx_engine import NYXEngine
+    engine = NYXEngine()
+    result = engine.run(mtf_data, mtf_features, train_end, test_start)
+
+Historical note : this class was named `NYXPipeline` and lived at
+`src/ml/nyx_pipeline.py` until Ticket 04 renamed it. A thin
+deprecation shim at `src/ml/nyx_pipeline.py` re-exports
+`NYXEngine as NYXPipeline` so the ~45 existing callers keep working
+through the migration.
+
+The old v0.8 `NYXEngine` (HSMM + SMC + macro) now lives at
+`src/core/nyx_engine_v08.py` (legacy, 9 callers frozen).
+
+See `docs/ARCHITECTURE_CANONIQUE.md` for the canonical runtime path.
 """
-
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional
-from datetime import datetime
-import sys
-from pathlib import Path
-
-# Import components
-from src.core.hsmm import SemiMarkovHMM
-from src.core.smc import SMCDetector
-from src.macro.real_macro_engine import RealMacroEngine
+from typing import Any, Dict, List, Optional
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.preprocessing import StandardScaler
+from src.ml.jesse_features import _ema, _atr, _rsi, _adx
+from src.ml.soft_gate import compute_disagreement, compute_size_factor
+from src.ml.conditional_dial import should_activate_bear_dial, _compute_bar_signals
+from src.ml.bear_risk_dial import get_risk_params
 
 
 class NYXEngine:
     """
-    Central NYX Trading Engine
-    
-    Combines:
-    - HSMM (regime detection)
-    - SMC (pattern detection)
-    - Macro (event-based context)
-    
-    Produces standardized signals for all consumers
+    Unified MTF pipeline v0.3.1. One class, one call, everything merged.
+    Includes conditional bear dial by default.
     """
-    
-    def __init__(self, config: Dict):
-        """
-        Initialize NYX Engine
-        
-        Args:
-            config: Configuration dict from config.yaml
-        """
-        self.config = config
-        
-        # Initialize components
-        self.hsmm = SemiMarkovHMM()
-        self.smc = SMCDetector()
-        self.macro = RealMacroEngine('data/macro_events.json')
-        
-        # Config thresholds
-        strategy_config = config.get('strategy', {})
-        self.sdc_threshold = strategy_config.get('hsmm', {}).get('sdc_threshold', 3.5)
-        self.prob_threshold = strategy_config.get('hsmm', {}).get('prob_threshold', 0.55)
-        self.min_required_bars = strategy_config.get('min_required_bars', 100)
-        
-        # Risk config
-        risk_config = config.get('risk', {})
-        self.base_size = risk_config.get('base_size', 0.05)
-        self.max_position = risk_config.get('max_position', 0.25)
-        self.stop_loss_pct = risk_config.get('stop_loss', 0.05)
-        self.take_profit_pct = risk_config.get('take_profit', 0.15)
-        
-        # Regime multipliers
-        self.bull_multiplier = risk_config.get('bull_multiplier', 2.5)
-        self.bear_multiplier = risk_config.get('bear_multiplier', 0.7)
-        self.range_multiplier = risk_config.get('range_multiplier', 1.0)
-        
-        # HSMM initialized flag
-        self.hsmm_initialized = False
-    
-    def prepare_data(self, data: pd.DataFrame) -> pd.DataFrame:
-        """
-        Precompute all features needed for signal generation
-        
-        This method calculates features once to avoid repeated computation
-        in validation loops (OOS, walk-forward).
-        
-        Args:
-            data: Raw OHLCV DataFrame
-        
-        Returns:
-            DataFrame with precomputed features
-        """
-        prepared = data.copy()
-        
-        # Returns
-        if 'returns' not in prepared.columns:
-            prepared['returns'] = prepared['close'].pct_change().fillna(0)
-        
-        # ATR
-        if 'atr_14' not in prepared.columns:
-            prepared['atr_14'] = (prepared['high'] - prepared['low']).rolling(14).mean().fillna(0)
-        
-        # SMAs (for SMC patterns)
-        if 'sma_20' not in prepared.columns:
-            prepared['sma_20'] = prepared['close'].rolling(20).mean()
-        
-        if 'sma_50' not in prepared.columns:
-            prepared['sma_50'] = prepared['close'].rolling(50).mean()
-        
-        return prepared
-    
-    def generate_signal_at_index(
-        self,
-        pair: str,
-        prepared_data: pd.DataFrame,
-        i: int,
-        current_date: Optional[str] = None,
-        lookback_bars: Optional[int] = None
-    ) -> Dict:
-        """
-        Generate signal at a specific index using precomputed data
-        
-        Optimized for validation loops with BOUNDED LOOKBACK.
-        Instead of using all history [0:i+1], uses only the last
-        lookback_bars to keep computational cost constant.
-        
-        Args:
-            pair: Trading pair
-            prepared_data: DataFrame with precomputed features
-            i: Current index
-            current_date: Optional date override
-            lookback_bars: Max historical bars to use (default: 1000)
-        
-        Returns:
-            Same signal format as generate_signal()
-        """
-        # Default lookback
-        if lookback_bars is None:
-            lookback_bars = 1000
-        
-        # Calculate bounded window
-        # Use only [max(0, i - lookback + 1) : i + 1]
-        start_idx = max(0, i - lookback_bars + 1)
-        data_slice = prepared_data.iloc[start_idx:i+1]
-        
-        if current_date is None:
-            current_date = str(data_slice.index[-1].isoformat())
 
-        # Call standard generate_signal with bounded window
-        return self.generate_signal(pair, data_slice, current_date or "")
-    
-    def generate_signal(
-        self, 
-        pair: str, 
-        data: pd.DataFrame, 
-        current_date: str
-    ) -> Dict:
-        """
-        Generate standardized trading signal
-        
-        THIS IS THE SINGLE SOURCE OF TRUTH for all trading decisions.
-        
-        Args:
-            pair: Trading pair (e.g., 'BTCUSDT')
-            data: Historical OHLCV DataFrame
-            current_date: Current date string 'YYYY-MM-DD'
-        
-        Returns:
-            {
-                'action': 'BUY' | 'SELL' | 'HOLD',
-                'confidence': 0-10 (SdC score),
-                'position_size': 0-1 (% of capital),
-                'stop_loss': price level,
-                'take_profit': price level,
-                'regime': 'Bull' | 'Bear' | 'Range',
-                'macro_signal': 'BULLISH' | 'BEARISH' | 'NEUTRAL',
-                'macro_strength': 0-1,
-                'reasons': [list of reasons],
-                'hsmm_state': raw HSMM state,
-                'smc_patterns': dict of patterns
-            }
-        """
-        
-        if len(data) < self.min_required_bars:
-            return self._hold_signal(f"Insufficient data (< {self.min_required_bars} candles)")
-        
-        # 1. HSMM State Detection
-        hsmm_result = self._get_hsmm_signal(data)
-        if hsmm_result is None:
-            return self._hold_signal("HSMM initialization failed")
-        
-        hsmm_state = hsmm_result['state']
-        confidence = hsmm_result['confidence']
-        regime = hsmm_result['regime']
-        
-        # 2. SMC Pattern Detection
-        smc_patterns = self.smc.detect_all(data)
-        
-        # 3. Macro Context
-        asset = pair.replace('USDT', '')
-        macro_signal = self.macro.get_macro_signal(asset, current_date)
-        
-        # 4. Combine into decision
-        signal = self._combine_signals(
-            pair=pair,
-            data=data,
-            hsmm_state=hsmm_state,
-            confidence=confidence,
-            regime=regime,
-            smc_patterns=smc_patterns,
-            macro_signal=macro_signal
-        )
-        
-        return signal
-    
-    def _get_hsmm_signal(self, data: pd.DataFrame) -> Optional[Dict]:
-        """
-        Get HSMM state and confidence
-        
-        Returns:
-            {
-                'state': 'Trend+' | 'Trend-' | 'Range',
-                'confidence': 0-10,
-                'regime': 'Bull' | 'Bear' | 'Range',
-                'state_probs': array of probabilities
-            }
-        """
-        try:
-            # Initialize if needed (HSMM expects DataFrame)
-            if not self.hsmm_initialized:
-                # HSMM needs DataFrame with 'returns' and 'atr_14' columns
-                if 'returns' not in data.columns:
-                    data = data.copy()
-                    data['returns'] = data['close'].pct_change().fillna(0)
-                
-                if 'atr_14' not in data.columns:
-                    data['atr_14'] = (data['high'] - data['low']).rolling(14).mean().fillna(0)
-                
-                self.hsmm.initialize_parameters(data)
-                self.hsmm_initialized = True
-            
-            # Prepare observations in CORRECT format (List[Dict])
-            # CRITICAL: HSMM expects dicts with 'price' and 'atr' keys
-            returns = data['close'].pct_change().fillna(0).values
-            atr = (data['high'] - data['low']).rolling(14).mean().fillna(0).values
-            
-            # Build observations as List[Dict]
-            observations = [
-                {'price': float(returns[i]), 'atr': float(atr[i])}
-                for i in range(len(returns))
-            ]
-            
-            # Get state probabilities
-            state_probs = self.hsmm.forward_backward(observations)
-            
-            if len(state_probs) == 0:
-                return None
-            
-            # Current state
-            current_probs = state_probs[-1]
-            dominant_idx = np.argmax(current_probs)
-            dominant_state = self.hsmm.states[dominant_idx]
-            
-            # Confidence (SdC score)
-            confidence = np.max(current_probs) * 10
-            
-            # Map to regime
-            regime = self._map_hsmm_to_regime(dominant_state)
-            
-            return {
-                'state': dominant_state,
-                'confidence': confidence,
-                'regime': regime,
-                'state_probs': current_probs
-            }
-        
-        except Exception as e:
-            print(f"⚠️ HSMM error: {e}")
-            return None
-    
-    def _map_hsmm_to_regime(self, hsmm_state: str) -> str:
-        """
-        Map HSMM states to regime names
-        
-        Args:
-            hsmm_state: 'Trend+', 'Range', or 'Trend-'
-        
-        Returns:
-            'Bull', 'Range', or 'Bear'
-        """
-        mapping = {
-            'Trend+': 'Bull',
-            'Trend-': 'Bear',
-            'Range': 'Range'
-        }
-        return mapping.get(hsmm_state, 'Range')
-    
-    def _combine_signals(
+    def __init__(
         self,
-        pair: str,
-        data: pd.DataFrame,
-        hsmm_state: str,
-        confidence: float,
-        regime: str,
-        smc_patterns: Dict,
-        macro_signal: Dict
-    ) -> Dict:
+        # Edge parameters
+        vol_min: float = 3.0,
+        tp_mult: float = 1.5,
+        sl_mult: float = 1.0,
+        max_bars: int = 50,
+        # ML filter
+        ml_threshold: float = 0.60,
+        # Execution
+        fee_rate: float = 0.0002,       # maker
+        slippage_rate: float = 0.0001,
+        risk_pct: float = 0.02,
+        initial_capital: float = 10_000.0,
+        cooldown_bars: int = 32,
+        max_daily_trades: int = 1,
+        # Conditional bear dial
+        use_conditional_dial: bool = True,
+        # Execution policy
+        use_execution_filter: bool = False,
+    ):
+        self.vol_min = vol_min
+        self.tp_mult = tp_mult
+        self.sl_mult = sl_mult
+        self.max_bars = max_bars
+        self.ml_threshold = ml_threshold
+        self.fee_rate = fee_rate
+        self.slippage_rate = slippage_rate
+        self.risk_pct = risk_pct
+        self.initial_capital = initial_capital
+        self.cooldown_bars = cooldown_bars
+        self.max_daily_trades = max_daily_trades
+        self.use_conditional_dial = use_conditional_dial
+        self.use_execution_filter = use_execution_filter
+
+    def run(
+        self,
+        mtf_data: Dict[str, pd.DataFrame],
+        mtf_features: Dict[str, pd.DataFrame],
+        train_end: str,
+        test_start: str,
+        test_end: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
-        Combine all signals into final decision
-        
-        Logic:
-        1. Check confidence threshold
-        2. Check regime + SMC confluence
-        3. Check macro reinforcement/conflict
-        4. Calculate position size
-        5. Set stop/TP levels
+        Full pipeline: generate candidates → train ML → filter → execute.
+
+        Args:
+            mtf_data: {'15m': df, '1h': df, '1d': df} OHLCV DataFrames
+            mtf_features: {'15m': df, '1h': df, '1d': df} parquet features
+            train_end: last date of training data
+            test_start: first date of test data
+            test_end: optional last date of test
         """
-        
-        reasons = []
-        current_price = data['close'].iloc[-1]
-        
-        # Check confidence threshold
-        if confidence < self.sdc_threshold:
-            return self._hold_signal(
-                f"Low confidence: {confidence:.1f} < {self.sdc_threshold}",
-                confidence=confidence,
-                regime=regime,
-                macro_signal=macro_signal
-            )
-        
-        reasons.append(f"Confidence: {confidence:.1f}/10")
-        
-        # Bullish setup
-        has_bullish_smc = (
-            smc_patterns.get('bullish_ob', False) or 
-            smc_patterns.get('bullish_fvg', False)
+        df_15m = mtf_data['15m']
+        te = test_end or str(df_15m.index[-1].date())
+
+        # --- Step 1: Build MTF context arrays ---
+        ctx_1d = self._build_1d_context(mtf_data.get('1d', pd.DataFrame()),
+                                         mtf_features.get('1d', pd.DataFrame()))
+        ctx_1h = self._build_1h_context(mtf_data.get('1h', pd.DataFrame()),
+                                         mtf_features.get('1h', pd.DataFrame()))
+
+        # --- Step 2: Generate candidates with full MTF feature block ---
+        feat_1h = mtf_features.get('1h', pd.DataFrame())
+        feat_4h = mtf_features.get('4h', pd.DataFrame())
+        feat_1d = mtf_features.get('1d', pd.DataFrame())
+        train_cands = self._generate_candidates(
+            df_15m.loc[:train_end], mtf_features['15m'].loc[:train_end],
+            ctx_1d, ctx_1h,
+            feat_1h=feat_1h, feat_4h=feat_4h, feat_1d=feat_1d)
+        test_cands = self._generate_candidates(
+            df_15m.loc[test_start:te], mtf_features['15m'].loc[test_start:te],
+            ctx_1d, ctx_1h,
+            feat_1h=feat_1h, feat_4h=feat_4h, feat_1d=feat_1d)
+
+        if len(train_cands) < 30 or len(test_cands) == 0:
+            return self._empty_result()
+
+        # --- Step 3: Train ML filter ---
+        feature_names = sorted(train_cands[0]['features'].keys())
+        X_train = np.array([[c['features'].get(f, 0) for f in feature_names] for c in train_cands])
+        y_train = np.array([1 if c['outcome_net'] > 0 else 0 for c in train_cands])
+        X_train = np.clip(np.nan_to_num(X_train, nan=0.0, posinf=10, neginf=-10), -1e6, 1e6)
+
+        scaler = StandardScaler()
+        X_tr_s = scaler.fit_transform(X_train)
+        X_tr_s = np.nan_to_num(X_tr_s, nan=0.0, posinf=3, neginf=-3)
+
+        model = GradientBoostingClassifier(
+            n_estimators=300, max_depth=3, learning_rate=0.03,
+            min_samples_leaf=30, subsample=0.7, random_state=42,
         )
-        
-        # Bearish setup
-        has_bearish_smc = (
-            smc_patterns.get('bearish_ob', False) or 
-            smc_patterns.get('bearish_fvg', False)
-        )
-        
-        # BUY Logic
-        if (regime == 'Bull' and 
-            has_bullish_smc and 
-            macro_signal['signal'] in ['BULLISH', 'NEUTRAL']):
-            
-            reasons.append(f"Regime: {regime}")
-            reasons.append("SMC: Bullish pattern")
-            reasons.append(f"Macro: {macro_signal['signal']} ({macro_signal['strength']:.2f})")
-            
-            # Calculate size
-            position_size = self._calculate_position_size(
-                confidence, 
-                regime, 
-                macro_signal
-            )
-            
-            # Set levels
-            stop_loss = current_price * (1 - self.stop_loss_pct)
-            take_profit = current_price * (1 + self.take_profit_pct)
-            
-            return {
-                'action': 'BUY',
-                'confidence': confidence,
-                'position_size': position_size,
-                'stop_loss': stop_loss,
-                'take_profit': take_profit,
-                'regime': regime,
-                'macro_signal': macro_signal['signal'],
-                'macro_strength': macro_signal['strength'],
-                'reasons': reasons,
-                'hsmm_state': hsmm_state,
-                'smc_patterns': smc_patterns
-            }
-        
-        # SELL Logic (for closing positions)
-        elif (regime == 'Bear' and 
-              has_bearish_smc and 
-              macro_signal['signal'] in ['BEARISH', 'NEUTRAL']):
-            
-            reasons.append(f"Regime: {regime}")
-            reasons.append("SMC: Bearish pattern")
-            reasons.append(f"Macro: {macro_signal['signal']}")
-            
-            return {
-                'action': 'SELL',
-                'confidence': confidence,
-                'position_size': 0,
-                'stop_loss': None,
-                'take_profit': None,
-                'regime': regime,
-                'macro_signal': macro_signal['signal'],
-                'macro_strength': macro_signal['strength'],
-                'reasons': reasons,
-                'hsmm_state': hsmm_state,
-                'smc_patterns': smc_patterns
-            }
-        
-        # HOLD (no setup)
+        model.fit(X_tr_s, y_train)
+
+        # --- Step 4: Score test candidates ---
+        X_test = np.array([[c['features'].get(f, 0) for f in feature_names] for c in test_cands])
+        X_test = np.clip(np.nan_to_num(X_test, nan=0.0, posinf=10, neginf=-10), -1e6, 1e6)
+        X_te_s = np.nan_to_num(scaler.transform(X_test), nan=0, posinf=3, neginf=-3)
+
+        proba = model.predict_proba(X_te_s)
+        classes = list(model.classes_)
+        p1_idx = classes.index(1) if 1 in classes else 0
+        scores = proba[:, p1_idx]
+
+        # --- Step 5: Precompute conditional dial signals ---
+        bear_dial_signals = None
+        if self.use_conditional_dial:
+            try:
+                test_15m = mtf_data['15m'].loc[test_start:te]
+                test_1h = mtf_data.get('1h', pd.DataFrame())
+                if not test_1h.empty:
+                    test_1h = test_1h.loc[test_start:te]
+                bear_dial_signals = _compute_bar_signals(test_15m, test_1h)
+            except Exception:
+                bear_dial_signals = None
+
+        bear_params = get_risk_params('bear')
+        n_bear_active = 0
+        n_exec_rejected = 0
+
+        # --- Step 6: Filter + conditional dial + soft gate sizing + execute ---
+        capital = self.initial_capital
+        trades: List[Dict] = []
+        equity_curve = [capital]
+        last_bar = -999
+        daily_counts: Dict[str, int] = {}
+        total_fees = 0.0
+
+        for i, (cand, score) in enumerate(zip(test_cands, scores)):
+            # Conditional bear dial check
+            bear_active = False
+            if self.use_conditional_dial and bear_dial_signals is not None:
+                idx = cand['bar_idx']
+                if idx < len(bear_dial_signals.get('regime_1h', [])):
+                    regime_1h = str(bear_dial_signals['regime_1h'][idx])
+                    vol_r = float(bear_dial_signals['atr_ratio'][idx]) if idx < len(bear_dial_signals['atr_ratio']) else 1.0
+                    tq = float(bear_dial_signals['trend_quality'][idx]) if idx < len(bear_dial_signals['trend_quality']) else 0.5
+                    dis_check = cand['features'].get('disagreement', 0.1)
+                    bear_active = should_activate_bear_dial(regime_1h, vol_r, tq, dis_check)
+
+            if bear_active:
+                n_bear_active += 1
+
+            # ML filter — use bear threshold if dial active
+            threshold = bear_params['ml_threshold'] if bear_active else self.ml_threshold
+            if score < threshold:
+                continue
+
+            # Cooldown — use bear cooldown if dial active
+            cooldown = bear_params['cooldown_bars'] if bear_active else self.cooldown_bars
+            if cand['bar_idx'] - last_bar < cooldown:
+                continue
+
+            # Daily limit
+            day_key = str(cand['timestamp'].date())
+            if daily_counts.get(day_key, 0) >= self.max_daily_trades:
+                continue
+
+            # Soft gate sizing
+            dis = cand['features'].get('disagreement', 0)
+            rule_avg = np.mean([
+                cand['features'].get('rule_context', 0.5),
+                cand['features'].get('rule_regime', 0.5),
+                cand['features'].get('rule_setup', 0.5),
+            ])
+            sf = compute_size_factor(float(score), dis, rule_avg)
+
+            # Bear dial size reduction
+            if bear_active:
+                sf *= bear_params['size_mult']
+
+            # Hour bonus
+            hour = cand['timestamp'].hour if hasattr(cand['timestamp'], 'hour') else 12
+            sf *= 1.1 if 8 <= hour <= 18 else 0.8
+
+            # Execution filter: reject if cost > alpha
+            if self.use_execution_filter:
+                from src.ml.execution_policy import execution_check
+                vol_r = cand['features'].get('volume_spike', 2.0)
+                spread_est = cand['features'].get('atr_pct', 0.005) * 0.1
+                mom_abs = abs(cand['features'].get('momentum_10', 0) if 'momentum_10' in cand['features'] else cand['features'].get('mom_4', 0))
+                alpha_est = abs(cand['outcome_net']) / max(cand['entry_price'], 1) * 100
+                ex = execution_check(vol_r, spread_est, cand['features'].get('atr_pct', 0.005),
+                                     mom_abs, alpha_est)
+                if not ex['should_trade']:
+                    n_exec_rejected += 1
+                    continue
+
+            # Position sizing
+            risk_pct = bear_params['risk_pct'] if bear_active else self.risk_pct
+            atr_est = cand['features'].get('atr_pct', 0.005) * cand['entry_price']
+            atr_est = max(atr_est, 1.0)
+            risk_dollars = capital * risk_pct * sf
+            qty = min(risk_dollars / atr_est, capital / cand['entry_price'])
+            if qty <= 0 or capital <= 0:
+                continue
+
+            # Execute
+            net_pnl = cand['outcome_net'] * qty
+            fee = cand['entry_price'] * self.fee_rate * qty * 2
+            total_fees += fee
+            capital += net_pnl
+            capital = max(capital, 0)
+            equity_curve.append(capital)
+            last_bar = cand['bar_idx']
+            daily_counts[day_key] = daily_counts.get(day_key, 0) + 1
+
+            trades.append({
+                'timestamp': cand['timestamp'],
+                'direction': cand['direction'],
+                'entry_price': cand['entry_price'],
+                'net_pnl': net_pnl,
+                'ml_score': float(score),
+                'size_factor': sf,
+                'disagreement': dis,
+                'reason': cand['reason'],
+            })
+
+        # --- Metrics ---
+        nt = len(trades)
+        total_pnl = capital - self.initial_capital
+        wins = [t for t in trades if t['net_pnl'] > 0]
+        losses = [t for t in trades if t['net_pnl'] <= 0]
+        wr = len(wins) / nt if nt > 0 else 0
+        gw = sum(t['net_pnl'] for t in wins)
+        gl = abs(sum(t['net_pnl'] for t in losses))
+        pf = gw / gl if gl > 0 else float('inf')
+
+        eq = np.array(equity_curve)
+        peak = eq[0]; max_dd = 0
+        for e in eq:
+            peak = max(peak, e); dd = (peak - e) / peak if peak > 0 else 0; max_dd = max(max_dd, dd)
+
+        if nt > 5:
+            rets = [t['net_pnl'] / self.initial_capital for t in trades]
+            sharpe = float(np.mean(rets) / max(np.std(rets), 1e-8) * np.sqrt(min(nt, 252)))
         else:
-            reasons.append("No confluence")
-            if not has_bullish_smc and not has_bearish_smc:
-                reasons.append("No SMC pattern")
-            if regime not in ['Bull', 'Bear']:
-                reasons.append(f"Regime: {regime}")
-            
-            return self._hold_signal(
-                ' | '.join(reasons),
-                confidence=confidence,
-                regime=regime,
-                macro_signal=macro_signal,
-                hsmm_state=hsmm_state,
-                smc_patterns=smc_patterns
-            )
-    
-    def _calculate_position_size(
-        self, 
-        confidence: float, 
-        regime: str, 
-        macro_signal: Dict
-    ) -> float:
-        """
-        Calculate position size based on:
-        - Base size
-        - Confidence multiplier
-        - Regime multiplier
-        - Macro reinforcement
-        """
-        
-        # Base
-        size = self.base_size
-        
-        # Confidence multiplier
-        confidence_mult = confidence / 10.0
-        size *= confidence_mult
-        
-        # Regime multiplier
-        regime_mult = {
-            'Bull': self.bull_multiplier,
-            'Bear': self.bear_multiplier,
-            'Range': self.range_multiplier
-        }.get(regime, 1.0)
-        size *= regime_mult
-        
-        # Macro reinforcement
-        if macro_signal['signal'] == 'BULLISH':
-            size *= 1.5
-        elif macro_signal['signal'] == 'BEARISH':
-            size *= 0.5
-        
-        # Cap at max
-        size = min(size, self.max_position)
-        
-        return size
-    
-    def _hold_signal(
-        self,
-        reason: str,
-        confidence: float = 0,
-        regime: str = 'Unknown',
-        macro_signal: Optional[Dict] = None,
-        hsmm_state: Optional[str] = None,
-        smc_patterns: Optional[Dict] = None
-    ) -> Dict:
-        """Generate HOLD signal"""
-        
+            sharpe = 0.0
+
+        # Feature importance
+        try:
+            feat_imp = dict(zip(feature_names, model.feature_importances_))
+        except Exception:
+            feat_imp = {}
+
         return {
-            'action': 'HOLD',
-            'confidence': confidence,
-            'position_size': 0,
-            'stop_loss': None,
-            'take_profit': None,
-            'regime': regime,
-            'macro_signal': macro_signal['signal'] if macro_signal else 'UNKNOWN',
-            'macro_strength': macro_signal['strength'] if macro_signal else 0,
-            'reasons': [reason],
-            'hsmm_state': hsmm_state,
-            'smc_patterns': smc_patterns or {}
+            'n_trades': nt,
+            'n_candidates': len(test_cands),
+            'filter_reject_rate': 1 - nt / max(len(test_cands), 1),
+            'win_rate': wr,
+            'sharpe': sharpe,
+            'total_pnl_dollars': total_pnl,
+            'total_return_pct': total_pnl / self.initial_capital,
+            'max_drawdown_pct': max_dd,
+            'profit_factor': pf,
+            'total_fees': total_fees,
+            'feature_names': feature_names,
+            'feature_importance': feat_imp,
+            'bear_dial_activation_rate': n_bear_active / max(len(test_cands), 1) if self.use_conditional_dial else 0,
+            'execution_reject_rate': n_exec_rejected / max(len(test_cands), 1) if self.use_execution_filter else 0,
+            'trades': trades,
         }
 
+    # ------------------------------------------------------------------
+    # MTF context builders
+    # ------------------------------------------------------------------
 
-if __name__ == "__main__":
-    # Example usage
-    import yaml
-    
-    print("="*80)
-    print("NYX ENGINE v0.8 - Test")
-    print("="*80)
-    
-    # Load config
-    with open('config/config.yaml', 'r') as f:
-        config = yaml.safe_load(f)
-    
-    # Initialize engine
-    engine = NYXEngine(config)
-    print("\n✓ Engine initialized")
-    print(f"  SdC threshold: {engine.sdc_threshold}")
-    print(f"  Base size: {engine.base_size*100}%")
-    
-    # Load sample data
-    data = pd.read_csv('data/sample/BTCUSDT_1h_sample.csv')
-    data['timestamp'] = pd.to_datetime(data['timestamp'])
-    print(f"\n✓ Sample data loaded: {len(data)} rows")
-    
-    # Generate signal
-    signal = engine.generate_signal(
-        pair='BTCUSDT',
-        data=data,
-        current_date='2024-01-15'
-    )
-    
-    print("\n" + "="*80)
-    print("SIGNAL GENERATED")
-    print("="*80)
-    print(f"Action:          {signal['action']}")
-    print(f"Confidence:      {signal['confidence']:.1f}/10")
-    print(f"Position Size:   {signal['position_size']*100:.1f}%")
-    print(f"Regime:          {signal['regime']}")
-    print(f"Macro:           {signal['macro_signal']} ({signal['macro_strength']:.2f})")
-    print(f"\nReasons:")
-    for reason in signal['reasons']:
-        print(f"  • {reason}")
-    print("="*80)
+    def _build_1d_context(self, df_1d: pd.DataFrame, feat_1d: pd.DataFrame) -> Dict[str, pd.Series]:
+        """Build daily context signals: trend direction, momentum, vol."""
+        if df_1d.empty:
+            return {}
+        close = df_1d['close'].values.astype(float)
+        ema20 = _ema(close, 20)
+        ema50 = _ema(close, 50)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            trend = np.where(ema50 != 0, (ema20 - ema50) / np.abs(ema50), 0)
+        mom20 = np.zeros_like(close)
+        mom20[20:] = (close[20:] - close[:-20]) / np.maximum(close[:-20], 1e-8)
+
+        return {
+            'ctx_1d_trend': pd.Series(trend, index=df_1d.index),
+            'ctx_1d_mom20': pd.Series(mom20, index=df_1d.index),
+            'ctx_1d_bullish': pd.Series((trend > 0).astype(float), index=df_1d.index),
+        }
+
+    def _build_1h_context(self, df_1h: pd.DataFrame, feat_1h: pd.DataFrame) -> Dict[str, pd.Series]:
+        """Build hourly regime signals: ADX, momentum, volatility."""
+        if df_1h.empty:
+            return {}
+        close = df_1h['close'].values.astype(float)
+        high = df_1h['high'].values.astype(float)
+        low = df_1h['low'].values.astype(float)
+
+        adx = np.nan_to_num(_adx(high, low, close, 14), nan=0) / 100.0
+        atr = np.nan_to_num(_atr(high, low, close, 14), nan=0)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            atr_pct = np.where(close > 0, atr / close, 0)
+        mom12 = np.zeros_like(close)
+        mom12[12:] = (close[12:] - close[:-12]) / np.maximum(close[:-12], 1e-8)
+
+        # Use parquet features if available
+        regime_cols = {}
+        if not feat_1h.empty:
+            for col in ['buy_pressure', 'amihud', 'vol_surprise', 'ewma_vol_ratio']:
+                if col in feat_1h.columns:
+                    regime_cols[f'reg_1h_{col}'] = feat_1h[col]
+
+        result = {
+            'reg_1h_adx': pd.Series(adx, index=df_1h.index),
+            'reg_1h_atr_pct': pd.Series(atr_pct, index=df_1h.index),
+            'reg_1h_mom12': pd.Series(mom12, index=df_1h.index),
+            'reg_1h_trending': pd.Series((adx > 0.25).astype(float), index=df_1h.index),
+        }
+        result.update(regime_cols)
+        return result
+
+    # ------------------------------------------------------------------
+    # Candidate generation with MTF
+    # ------------------------------------------------------------------
+
+    def _generate_candidates(
+        self,
+        df_15m: pd.DataFrame,
+        feat_15m: pd.DataFrame,
+        ctx_1d: Dict[str, pd.Series],
+        ctx_1h: Dict[str, pd.Series],
+        feat_1h: Optional[pd.DataFrame] = None,
+        feat_1d: Optional[pd.DataFrame] = None,
+        feat_4h: Optional[pd.DataFrame] = None,
+    ) -> List[Dict]:
+        """Generate edge candidates with full MTF features.
+
+        PERMANENT RULE: every candidate must carry the 4 timeframes:
+          no prefix  15m execution features
+          h1_*       1h  stationary features
+          h4_*       4h  stationary features
+          d1_*       1d  stationary features
+        """
+        close = df_15m['close'].values.astype(float)
+        high = df_15m['high'].values.astype(float)
+        low = df_15m['low'].values.astype(float)
+        volume = df_15m['volume'].values.astype(float)
+        n = len(close)
+
+        atr = np.nan_to_num(_atr(high, low, close, 14), nan=0)
+        ema9 = _ema(close, 9); ema21 = _ema(close, 21); ema50 = _ema(close, 50)
+        vol_ma = _ema(volume, 20)
+
+        # Align parquet features (15m)
+        feat_cols = [c for c in feat_15m.columns if feat_15m[c].nunique() > 2]
+        feat_aligned = feat_15m.reindex(df_15m.index)
+        feat_arr = np.nan_to_num(feat_aligned[feat_cols].values, nan=0)
+
+        # Align full stationary feature vectors from 1h / 1d via ffill.
+        # For a 15m bar at time T, we use the last completed 1h (or 1d)
+        # bar's feature row — no look-ahead.
+        h1_cols: List[str] = []
+        h1_arr: np.ndarray = np.empty((n, 0), dtype=float)
+        if feat_1h is not None and not feat_1h.empty:
+            h1_cols = [c for c in feat_1h.columns if feat_1h[c].nunique() > 2]
+            if h1_cols:
+                h1_aligned = feat_1h[h1_cols].reindex(
+                    df_15m.index, method='ffill'
+                ).fillna(0.0)
+                h1_arr = np.nan_to_num(h1_aligned.values, nan=0.0)
+
+        d1_cols: List[str] = []
+        d1_arr: np.ndarray = np.empty((n, 0), dtype=float)
+        if feat_1d is not None and not feat_1d.empty:
+            d1_cols = [c for c in feat_1d.columns if feat_1d[c].nunique() > 2]
+            if d1_cols:
+                d1_aligned = feat_1d[d1_cols].reindex(
+                    df_15m.index, method='ffill'
+                ).fillna(0.0)
+                d1_arr = np.nan_to_num(d1_aligned.values, nan=0.0)
+
+        h4_cols: List[str] = []
+        h4_arr: np.ndarray = np.empty((n, 0), dtype=float)
+        if feat_4h is not None and not feat_4h.empty:
+            h4_cols = [c for c in feat_4h.columns if feat_4h[c].nunique() > 2]
+            if h4_cols:
+                h4_aligned = feat_4h[h4_cols].reindex(
+                    df_15m.index, method='ffill'
+                ).fillna(0.0)
+                h4_arr = np.nan_to_num(h4_aligned.values, nan=0.0)
+
+        # Align MTF context to 15m index
+        ctx_1d_aligned = {}
+        for name, series in ctx_1d.items():
+            ctx_1d_aligned[name] = series.reindex(df_15m.index, method='ffill').fillna(0).values
+
+        ctx_1h_aligned = {}
+        for name, series in ctx_1h.items():
+            ctx_1h_aligned[name] = series.reindex(df_15m.index, method='ffill').fillna(0).values
+
+        candidates = []
+        for i in range(60, n - self.max_bars):
+            if np.isnan(ema9[i]) or np.isnan(ema50[i]) or atr[i] <= 0:
+                continue
+            if np.isnan(vol_ma[i]) or vol_ma[i] <= 0:
+                continue
+
+            uptrend = ema9[i] > ema21[i] > ema50[i]
+            downtrend = ema9[i] < ema21[i] < ema50[i]
+            if not (uptrend or downtrend):
+                continue
+            if volume[i] / vol_ma[i] < self.vol_min:
+                continue
+            hour = df_15m.index[i].hour if hasattr(df_15m.index, 'hour') else 12
+            if hour < 6 or hour > 20:
+                continue
+
+            direction = 1 if uptrend else -1
+
+            # Vectorized outcome
+            entry_price = close[i] * (1 + direction * self.slippage_rate)
+            tp = entry_price + direction * self.tp_mult * atr[i]
+            sl = entry_price - direction * self.sl_mult * atr[i]
+            end_j = min(i + self.max_bars + 1, n)
+            fut_h = high[i + 1:end_j]; fut_l = low[i + 1:end_j]
+
+            if direction == 1:
+                tp_hits = np.where(fut_h >= tp)[0]
+                sl_hits = np.where(fut_l <= sl)[0]
+            else:
+                tp_hits = np.where(fut_l <= tp)[0]
+                sl_hits = np.where(fut_h >= sl)[0]
+
+            tp_bar = tp_hits[0] if len(tp_hits) > 0 else self.max_bars + 1
+            sl_bar = sl_hits[0] if len(sl_hits) > 0 else self.max_bars + 1
+
+            if tp_bar <= sl_bar and tp_bar < self.max_bars:
+                exit_p = tp * (1 - direction * self.slippage_rate)
+                outcome = direction * (exit_p - entry_price); reason = 'TP'
+            elif sl_bar < tp_bar and sl_bar < self.max_bars:
+                exit_p = sl * (1 - direction * self.slippage_rate)
+                outcome = direction * (exit_p - entry_price); reason = 'SL'
+            else:
+                exit_p = close[min(i + self.max_bars, n - 1)] * (1 - direction * self.slippage_rate)
+                outcome = direction * (exit_p - entry_price); reason = 'TIME'
+
+            fee = entry_price * self.fee_rate + abs(exit_p) * self.fee_rate
+            outcome_net = outcome - fee
+
+            # Build feature dict: parquet 15m + full h1_ + full d1_ + context + rules
+            features = {}
+            for k, col in enumerate(feat_cols):
+                features[col] = float(feat_arr[i, k]) if i < len(feat_arr) else 0.0
+
+            # Full 1h stationary features (h1_* prefix)
+            for k, col in enumerate(h1_cols):
+                features[f'h1_{col}'] = float(h1_arr[i, k]) if i < len(h1_arr) else 0.0
+
+            # Full 4h stationary features (h4_* prefix)
+            for k, col in enumerate(h4_cols):
+                features[f'h4_{col}'] = float(h4_arr[i, k]) if i < len(h4_arr) else 0.0
+
+            # Full 1d stationary features (d1_* prefix)
+            for k, col in enumerate(d1_cols):
+                features[f'd1_{col}'] = float(d1_arr[i, k]) if i < len(d1_arr) else 0.0
+
+            # MTF context features (1D hand-crafted)
+            for name, arr in ctx_1d_aligned.items():
+                features[name] = float(arr[i]) if i < len(arr) else 0.0
+
+            # MTF context features (1H hand-crafted)
+            for name, arr in ctx_1h_aligned.items():
+                features[name] = float(arr[i]) if i < len(arr) else 0.0
+
+            # Rule scores
+            ctx_ratio = (ema9[i] - ema50[i]) / max(ema50[i], 1e-8)
+            features['rule_context'] = float(np.clip(ctx_ratio * 20 + 0.5, 0, 1))
+            features['rule_regime'] = float(np.clip(atr[i] / close[i] * 200, 0, 1))
+            features['rule_setup'] = float(np.clip(abs(ema9[i] - ema21[i]) / max(ema21[i], 1e-8) * 100, 0, 1))
+            features['disagreement'] = compute_disagreement(direction, {
+                'context': features['rule_context'],
+                'regime': features['rule_regime'],
+                'setup': features['rule_setup'],
+            })
+
+            # Extra
+            features['volume_spike'] = float(volume[i] / vol_ma[i])
+            features['atr_pct'] = float(atr[i] / close[i])
+            features['trend_strength'] = float(np.clip(abs(ema9[i] - ema50[i]) / max(ema50[i], 1e-8) * 50, 0, 10))
+            features['direction'] = float(direction)
+            features['hour_norm'] = float(hour / 24.0)
+
+            candidates.append({
+                'bar_idx': i, 'timestamp': df_15m.index[i],
+                'direction': direction, 'entry_price': entry_price,
+                'outcome_net': float(outcome_net), 'reason': reason,
+                'features': features,
+            })
+
+        return candidates
+
+    def _empty_result(self):
+        return {
+            'n_trades': 0, 'n_candidates': 0, 'filter_reject_rate': 0,
+            'win_rate': 0, 'sharpe': 0, 'total_pnl_dollars': 0,
+            'total_return_pct': 0, 'max_drawdown_pct': 0, 'profit_factor': 0,
+            'total_fees': 0, 'feature_names': [], 'feature_importance': {},
+            'trades': [],
+        }

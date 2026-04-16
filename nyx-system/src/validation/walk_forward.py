@@ -149,7 +149,7 @@ class WalkForward:
         """
         
         # Import NYXEngine
-        from src.core.nyx_engine import NYXEngine
+        from src.core.nyx_engine_v08 import NYXEngine  # legacy v0.8 (Ticket 04)
         from src.validation.metrics import calculate_metrics
         import time
         
