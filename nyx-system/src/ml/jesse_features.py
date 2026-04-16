@@ -1,5 +1,5 @@
 """
-Stationary Feature Engine — Jesse ML Pipeline (v2)
+Stationary Feature Engine — Jesse ML Pipeline (v2 + Ticket 09).
 
 Key principle: NEVER raw values, ALWAYS RATIOS.
 When Jesse is installed, leverages 176 indicators via jesse.indicators as ta.
@@ -12,6 +12,46 @@ Feature groups:
   - Volume:      Volume ratio, MFI, OBV slope
   - Structure:   Bar position, High/Low ratio, returns
   - Advanced:    Hurst exponent proxy, Z-score
+
+Liquidity-hunter / microstructure (Ticket 09):
+  - vwap_dist        : (close − VWAP_20) / VWAP_20 — pull toward
+                       the volume-weighted price.
+  - ad_slope         : (AD − EMA20(AD)) / |EMA20(AD)| — direction
+                       of accumulation pressure (positive = buying
+                       pressure ramping up).
+  - adosc_norm       : Chaikin Osc EMA(3) − EMA(10) of AD line,
+                       normalized by its own rolling std — short-vs-
+                       long pressure imbalance.
+  - marketfi_ratio   : (MarketFI × close) deviation from its EMA(20)
+                       — effort vs displacement reversal signal.
+  - bop              : Balance Of Power = (close − open) / (high −
+                       low). Bounded [-1, +1]; bar-level rejection
+                       / pressure proxy.
+  - sr_dist_high_20  : (close − max(high[i-20:i])) / close, ≤ 0.
+                       Distance to the most recent 20-bar supply.
+  - sr_dist_low_20   : (close − min(low[i-20:i])) / close, ≥ 0.
+                       Distance to the most recent 20-bar demand.
+  - sr_break_up_20   : binary {0, 1}, close pierces 20-bar high.
+  - sr_break_dn_20   : binary {0, 1}, close pierces 20-bar low.
+  - chop_norm        : Choppiness Index (14) / 100 — compression
+                       (high values) vs expansion (low values).
+  - kvo_norm         : Klinger Volume Oscillator EMA(34) − EMA(55)
+                       of signed volume, normalized.
+  - vwma_dist        : (close − VWMA_20) / VWMA_20 — VWMA reversion.
+  - minmax_pos_20    : (close − min20) / (max20 − min20) ∈ [0, 1] —
+                       structural position within the 20-bar range.
+
+These families are designed for liquidity-hunting strategies:
+  - sweeps (sr_break_*),
+  - reclaims / failed breaks (combine sr_break_* with vwap_dist
+    direction reversal),
+  - pressure imbalance (ad_slope, adosc_norm, kvo_norm),
+  - volume-weighted displacement (vwap_dist, vwma_dist, marketfi_ratio),
+  - compression / expansion (chop_norm, minmax_pos_20),
+  - rejection around structural zones (bop near sr_dist_*).
+
+All features are stationary (scale-invariant under price ×k) and
+finite past warmup. Test contract: tests/test_jesse_liquidity_features.py.
 """
 import numpy as np
 import pandas as pd
@@ -156,6 +196,150 @@ def _mfi(high: np.ndarray, low: np.ndarray, close: np.ndarray,
         else:
             result[i] = 100.0 - 100.0 / (1.0 + pos_mf / neg_mf)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Liquidity-hunter / microstructure helpers (Ticket 09)
+#
+# These pure-numpy fallbacks back the new feature families when Jesse
+# is not installed. All return arrays the same length as `close` with
+# NaN during the warmup period.
+# ---------------------------------------------------------------------------
+
+def _rolling_vwap(high: np.ndarray, low: np.ndarray, close: np.ndarray,
+                  volume: np.ndarray, period: int = 20) -> np.ndarray:
+    """Rolling Volume-Weighted Average Price over `period` bars.
+
+    Typical price = (H + L + C) / 3.
+    VWAP_n = Σ(TP_i × V_i) / Σ(V_i) for i in last n bars.
+    """
+    n = len(close)
+    out = np.full(n, np.nan)
+    tp = (high + low + close) / 3.0
+    tpv = tp * volume
+    csum_tpv = np.cumsum(tpv)
+    csum_v = np.cumsum(volume)
+    for i in range(period - 1, n):
+        if i == period - 1:
+            num = csum_tpv[i]
+            den = csum_v[i]
+        else:
+            num = csum_tpv[i] - csum_tpv[i - period]
+            den = csum_v[i] - csum_v[i - period]
+        if den > 0:
+            out[i] = num / den
+    return out
+
+
+def _rolling_vwma(close: np.ndarray, volume: np.ndarray,
+                  period: int = 20) -> np.ndarray:
+    """Volume-weighted moving average of close over `period` bars."""
+    n = len(close)
+    out = np.full(n, np.nan)
+    cv = close * volume
+    csum_cv = np.cumsum(cv)
+    csum_v = np.cumsum(volume)
+    for i in range(period - 1, n):
+        if i == period - 1:
+            num = csum_cv[i]
+            den = csum_v[i]
+        else:
+            num = csum_cv[i] - csum_cv[i - period]
+            den = csum_v[i] - csum_v[i - period]
+        if den > 0:
+            out[i] = num / den
+    return out
+
+
+def _ad_line(high: np.ndarray, low: np.ndarray, close: np.ndarray,
+             volume: np.ndarray) -> np.ndarray:
+    """Accumulation/Distribution line.
+
+    CLV = ((C - L) - (H - C)) / (H - L).
+    AD_i = AD_{i-1} + CLV_i × V_i. Cumulative — UNBOUNDED.
+    Always wrap in a ratio for stationarity downstream.
+    """
+    n = len(close)
+    span = high - low
+    with np.errstate(divide='ignore', invalid='ignore'):
+        clv = np.where(span > 0,
+                       ((close - low) - (high - close)) / span, 0.0)
+    contrib = clv * volume
+    return np.cumsum(np.nan_to_num(contrib, nan=0.0))
+
+
+def _ad_oscillator(high: np.ndarray, low: np.ndarray, close: np.ndarray,
+                   volume: np.ndarray, fast: int = 3,
+                   slow: int = 10) -> np.ndarray:
+    """Chaikin A/D oscillator = EMA_fast(AD) − EMA_slow(AD)."""
+    ad = _ad_line(high, low, close, volume)
+    return _ema(ad, fast) - _ema(ad, slow)
+
+
+def _market_facilitation_index(high: np.ndarray, low: np.ndarray,
+                               volume: np.ndarray) -> np.ndarray:
+    """MarketFI = (high − low) / volume. NaN where volume is 0."""
+    n = len(high)
+    out = np.full(n, np.nan)
+    for i in range(n):
+        if volume[i] > 0:
+            out[i] = (high[i] - low[i]) / volume[i]
+    return out
+
+
+def _balance_of_power(open_: np.ndarray, high: np.ndarray,
+                      low: np.ndarray, close: np.ndarray) -> np.ndarray:
+    """Balance Of Power = (close − open) / (high − low). Bounded
+    [-1, +1] when the bar has positive range."""
+    n = len(close)
+    out = np.zeros(n)
+    span = high - low
+    for i in range(n):
+        if span[i] > 1e-12:
+            out[i] = (close[i] - open_[i]) / span[i]
+    return np.clip(out, -1.0, 1.0)
+
+
+def _choppiness_index(high: np.ndarray, low: np.ndarray,
+                      close: np.ndarray, period: int = 14) -> np.ndarray:
+    """Choppiness Index ∈ [0, 100]. Higher = choppier (range), lower =
+    trending (expansion).
+
+    CHOP = 100 × log10(Σ_n(TR) / (max(high, n) − min(low, n))) / log10(n).
+    """
+    n = len(close)
+    # True range
+    prev_close = np.roll(close, 1); prev_close[0] = close[0]
+    tr = np.maximum(high - low,
+                    np.maximum(np.abs(high - prev_close),
+                               np.abs(low - prev_close)))
+    out = np.full(n, np.nan)
+    log_n = np.log10(period)
+    for i in range(period - 1, n):
+        sum_tr = float(np.sum(tr[i - period + 1: i + 1]))
+        max_h = float(np.max(high[i - period + 1: i + 1]))
+        min_l = float(np.min(low[i - period + 1: i + 1]))
+        rng = max_h - min_l
+        if rng > 0 and sum_tr > 0 and log_n > 0:
+            out[i] = 100.0 * np.log10(sum_tr / rng) / log_n
+    return np.clip(out, 0.0, 100.0)
+
+
+def _klinger_volume_oscillator(high: np.ndarray, low: np.ndarray,
+                               close: np.ndarray, volume: np.ndarray,
+                               fast: int = 34, slow: int = 55) -> np.ndarray:
+    """Klinger Volume Oscillator (simplified).
+
+    VF = volume × sign(trend) where trend uses HLC.
+    KVO = EMA(VF, fast) − EMA(VF, slow).
+    """
+    n = len(close)
+    hlc = (high + low + close) / 3.0
+    prev_hlc = np.roll(hlc, 1); prev_hlc[0] = hlc[0]
+    sign = np.where(hlc > prev_hlc, 1.0,
+                    np.where(hlc < prev_hlc, -1.0, 0.0))
+    vf = sign * volume
+    return _ema(vf, fast) - _ema(vf, slow)
 
 
 # ---------------------------------------------------------------------------
@@ -371,5 +555,131 @@ def compute_stationary_features(
     with np.errstate(divide='ignore', invalid='ignore'):
         features['zscore_20'] = np.where(
             close_std20 != 0, (close - close_sma20) / close_std20, 0.0)
+
+    # ---------------------------------------------------------------
+    # LIQUIDITY-HUNTER features (Ticket 09)
+    #
+    # All feature families below are stationary (ratio-based or
+    # naturally bounded) and do not leak raw price.
+    # ---------------------------------------------------------------
+
+    # VWAP-derived: rolling 20-bar VWAP — distance to VWAP as ratio.
+    if _JESSE_AVAILABLE:
+        try:
+            vwap20 = ta.vwap(candles, 20) if hasattr(ta, 'vwap') \
+                else _rolling_vwap(high, low, close, volume, 20)
+        except Exception:
+            vwap20 = _rolling_vwap(high, low, close, volume, 20)
+    else:
+        vwap20 = _rolling_vwap(high, low, close, volume, 20)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        vwap_dist = np.where(vwap20 > 0, (close - vwap20) / vwap20, 0.0)
+    features['vwap_dist'] = np.nan_to_num(vwap_dist, nan=0.0,
+                                          posinf=0.0, neginf=0.0)
+
+    # AD line slope vs its EMA(20) — direction of accumulation pressure.
+    ad_line = _ad_line(high, low, close, volume)
+    ad_ema = _ema(ad_line, 20)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        ad_slope = np.where(np.abs(ad_ema) > 1e-12,
+                            (ad_line - ad_ema) / np.abs(ad_ema), 0.0)
+    features['ad_slope'] = np.nan_to_num(ad_slope, nan=0.0,
+                                         posinf=0.0, neginf=0.0)
+
+    # Chaikin A/D Oscillator — short vs long pressure imbalance.
+    # Normalize by rolling std of |adosc| to keep stationary.
+    adosc = _ad_oscillator(high, low, close, volume, 3, 10)
+    abs_adosc = np.abs(adosc)
+    norm_window = 50
+    adosc_norm = np.zeros_like(adosc)
+    for i in range(norm_window, n):
+        s = float(np.std(abs_adosc[i - norm_window: i + 1]))
+        if s > 1e-12:
+            adosc_norm[i] = float(np.clip(adosc[i] / s, -10.0, 10.0))
+    features['adosc_norm'] = np.nan_to_num(adosc_norm, nan=0.0)
+
+    # MarketFI ratio — effort vs displacement, normalized by close
+    # so it is scale-invariant.  marketfi has units of [price/volume]
+    # so we multiply by close to keep dimensionally consistent then
+    # divide by a rolling reference of itself.
+    mfi_arr = _market_facilitation_index(high, low, volume)
+    mfi_arr = np.where(close > 0,
+                       mfi_arr * close, 0.0)  # → unitless × price/price
+    mfi_arr = np.nan_to_num(mfi_arr, nan=0.0)
+    mfi_ema = _ema(mfi_arr, 20)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        marketfi_ratio = np.where(np.abs(mfi_ema) > 1e-12,
+                                  (mfi_arr - mfi_ema) / np.abs(mfi_ema),
+                                  0.0)
+    features['marketfi_ratio'] = np.nan_to_num(marketfi_ratio, nan=0.0,
+                                               posinf=0.0, neginf=0.0)
+
+    # Balance Of Power — bar-level rejection signal, [-1, +1].
+    features['bop'] = _balance_of_power(open_, high, low, close)
+
+    # Support / Resistance with breaks — 20-bar rolling high / low.
+    sr_window = 20
+    rolling_high = np.full(n, np.nan)
+    rolling_low = np.full(n, np.nan)
+    for i in range(sr_window, n):
+        # EXCLUSIVE of current bar so a "break" can be detected at i.
+        rolling_high[i] = float(np.max(high[i - sr_window: i]))
+        rolling_low[i] = float(np.min(low[i - sr_window: i]))
+    sr_dist_high = np.zeros(n)
+    sr_dist_low = np.zeros(n)
+    sr_break_up = np.zeros(n)
+    sr_break_dn = np.zeros(n)
+    for i in range(sr_window, n):
+        if close[i] > 0 and not np.isnan(rolling_high[i]):
+            sr_dist_high[i] = (close[i] - rolling_high[i]) / close[i]
+            sr_dist_low[i] = (close[i] - rolling_low[i]) / close[i]
+            # Break up: close > rolling_high (close above the prior 20
+            # bars' high) → 1 ; same down.
+            if close[i] > rolling_high[i]:
+                sr_break_up[i] = 1.0
+            if close[i] < rolling_low[i]:
+                sr_break_dn[i] = 1.0
+    # Clip sr_dist_high to ≤ 0 (definition: distance to overhead supply
+    # — breaks above are signaled by sr_break_up, not by positive dist).
+    features['sr_dist_high_20'] = np.minimum(sr_dist_high, 0.0)
+    features['sr_dist_low_20'] = np.maximum(sr_dist_low, 0.0)
+    features['sr_break_up_20'] = sr_break_up
+    features['sr_break_dn_20'] = sr_break_dn
+
+    # Choppiness Index — compression vs expansion, normalized [0, 1].
+    chop = _choppiness_index(high, low, close, 14)
+    features['chop_norm'] = np.nan_to_num(chop, nan=50.0) / 100.0
+
+    # ---------------------------------------------------------------
+    # Secondary liquidity features (Ticket 09)
+    # ---------------------------------------------------------------
+
+    # KVO — Klinger Volume Oscillator, normalized by rolling std.
+    kvo = _klinger_volume_oscillator(high, low, close, volume, 34, 55)
+    abs_kvo = np.abs(kvo)
+    kvo_norm = np.zeros_like(kvo)
+    for i in range(norm_window, n):
+        s = float(np.std(abs_kvo[i - norm_window: i + 1]))
+        if s > 1e-12:
+            kvo_norm[i] = float(np.clip(kvo[i] / s, -10.0, 10.0))
+    features['kvo_norm'] = np.nan_to_num(kvo_norm, nan=0.0)
+
+    # VWMA distance — close vs volume-weighted moving average (20 bars).
+    vwma20 = _rolling_vwma(close, volume, 20)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        vwma_dist = np.where(vwma20 > 0, (close - vwma20) / vwma20, 0.0)
+    features['vwma_dist'] = np.nan_to_num(vwma_dist, nan=0.0,
+                                          posinf=0.0, neginf=0.0)
+
+    # Min/Max position 20-bar — structural-only ratio in [0, 1].
+    minmax_pos = np.full(n, 0.5)
+    for i in range(sr_window, n):
+        lo = float(np.min(low[i - sr_window: i + 1]))
+        hi = float(np.max(high[i - sr_window: i + 1]))
+        if hi - lo > 1e-12:
+            minmax_pos[i] = float(
+                np.clip((close[i] - lo) / (hi - lo), 0.0, 1.0)
+            )
+    features['minmax_pos_20'] = minmax_pos
 
     return features

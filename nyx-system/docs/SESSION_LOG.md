@@ -289,3 +289,61 @@ méthode.
 Continuer l'unification : wire Jesse FractalReports comme enrichissement
 de MetaGBM au runtime (agents.report() called in NYXEngine.run loop),
 ou bien attaquer ticket B (retraining sur FractalReports).
+
+---
+
+## 2026-04-16 — Ticket 09 (Liquidity-hunter feature family)
+
+### Problème
+Le ticket demande de sortir NYX du pure trend-following et d'ajouter
+des features Jesse-natives orientées liquidity hunting +
+microstructure.
+
+### Hypothèse testée
+13 nouvelles features stationnaires (10 primaires + 3 secondaires) :
+VWAP-distance, AD-line slope, Chaikin oscillator normalized,
+MarketFI ratio, BOP bounded, SR breaks + distances, Choppiness Index,
+KVO normalized, VWMA distance, minmax position. Toutes
+scale-invariantes (test ×10) + bornées par construction où
+applicable + non-correlated avec close raw.
+
+### Fichiers touchés
+- `src/ml/jesse_features.py` — +7 helpers numpy + section
+  liquidity dans `compute_stationary_features()` + docstring
+  module enrichi
+- `tests/test_jesse_liquidity_features.py` (nouveau) — 81 tests GREEN
+- `docs/CHANGELOG.md` — entrée Ticket 09
+
+### Tests
+- 81/81 GREEN sur le nouveau fichier (présence × 13, no-NaN × 13,
+  scale-invariance × 13, no-raw-leakage × 13, boundedness × 4,
+  SR semantics × 2, regression existing × 24)
+- Sweep : 181/181 GREEN (feature_buffer + mtf_feature_stack +
+  canonical + meta_gbm + edge_strategy + nyx_engine_uses_metagbm)
+- Heavy regression (nyx_pipeline + nyx_live_decider + equivalence) :
+  36/36 GREEN
+- Pre-existing fixture failures (test_eth_pipeline data size,
+  test_eth_training h4_* missing) confirmés indépendants du Ticket 09
+- Pyright : 0 errors
+
+### Impact architectural
+- Le feature engine reste UN seul module canonique
+  (`src/ml/jesse_features.py`)
+- Pas de "v2" parallèle — extension additive de
+  `compute_stationary_features` dans le bloc 'full'
+- L'ancien feature_set 'core' inchangé (rétrocompat)
+- MTFFeatureStack (qui utilise compute_stationary_features) hérite
+  automatiquement des nouvelles features → disponibles aussi en live
+
+### Risques restants
+- Les nouvelles features ne sont PAS encore vues par MetaGBM /
+  NYXEngine GBM (pas de retraining dans ce ticket — out of scope).
+  Elles sont DISPONIBLES dans la pipeline de features mais pas
+  consommées en runtime.
+- Option B (retraining sur ces features liquidity) reste un ticket
+  futur dédié.
+
+### Next smallest step possible
+Ticket 10 potentiel : retraining controlled (Option B) sur
+ETH/SOL avec les nouvelles features liquidity intégrées au vecteur
+84-features. OOS equivalence pour mesurer le delta d'edge.

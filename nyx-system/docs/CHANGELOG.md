@@ -2,6 +2,94 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 09 — Liquidity-hunter feature family for Jesse (2026-04-16)
+
+Move NYX away from the pure trend-following bias. Add 13 new
+stationary feature families to `compute_stationary_features()`
+oriented toward liquidity hunting, microstructure pressure, and
+structural-zone interaction.
+
+Primary families (10) :
+
+- `vwap_dist`        — (close − VWAP_20) / VWAP_20
+- `ad_slope`         — (AD line − EMA20(AD)) / |EMA20(AD)|
+- `adosc_norm`       — Chaikin AD oscillator EMA(3) − EMA(10) of AD,
+                       normalized by 50-bar rolling std of |adosc|,
+                       clipped to [-10, +10]
+- `marketfi_ratio`   — (MarketFI × close) deviation from EMA20
+- `bop`              — (close − open) / (high − low) ∈ [-1, +1]
+- `sr_dist_high_20`  — (close − max(high[i-20:i])) / close, ≤ 0
+- `sr_dist_low_20`   — (close − min(low[i-20:i])) / close, ≥ 0
+- `sr_break_up_20`   — binary {0, 1}, close pierces 20-bar high
+- `sr_break_dn_20`   — binary {0, 1}, close pierces 20-bar low
+- `chop_norm`        — Choppiness Index(14) / 100 ∈ [0, 1]
+
+Secondary families (3) :
+
+- `kvo_norm`         — Klinger Volume Oscillator EMA(34) − EMA(55)
+                       of signed-volume, normalized
+- `vwma_dist`        — (close − VWMA_20) / VWMA_20
+- `minmax_pos_20`    — (close − min20) / (max20 − min20) ∈ [0, 1]
+
+Implementation :
+
+- 7 new pure-numpy helpers in `src/ml/jesse_features.py` (Jesse
+  fallback path) : `_rolling_vwap`, `_rolling_vwma`, `_ad_line`,
+  `_ad_oscillator`, `_market_facilitation_index`,
+  `_balance_of_power`, `_choppiness_index`,
+  `_klinger_volume_oscillator`. Jesse `ta.vwap` used opportunistically
+  if available.
+- All features added to `compute_stationary_features(...,
+  feature_set='full')`. Module docstring updated with a dedicated
+  "Liquidity-hunter / microstructure (Ticket 09)" section explaining
+  each family's intent (sweeps, reclaims, pressure imbalance,
+  volume-weighted displacement, compression/expansion, structural
+  rejection).
+
+TDD : `tests/test_jesse_liquidity_features.py` — 81 GREEN
+parametrised assertions :
+
+- TestNewFeaturesPresent : every new feature key emitted
+- TestNoNaNPostWarmup : finite values past the 100-bar warmup
+- TestScaleInvariance : multiply OHLC ×10 → feature values unchanged
+  within 1e-6 (proves no raw price leakage at the unit level)
+- TestNoRawPriceLeakage : |corr(feature, close)| < 0.95 on a
+  bullish trending dataset (statistical no-leakage guard)
+- TestBoundedness : `bop` ∈ [-1, +1], `chop_norm` ∈ [0, 1],
+  `minmax_pos_20` ∈ [0, 1], `sr_break_*` ∈ {0, 1}
+- TestSupportResistanceSemantics : sr_dist_high ≤ 0, sr_dist_low ≥ 0
+  by construction
+- TestRegressionExistingFeatures : 24 PRE-Ticket-09 features still
+  present (no breakage)
+
+Regression sweep : 181 GREEN on feature_buffer + mtf_feature_stack
++ canonical contracts + entrypoint + meta_gbm + edge_strategy
+integration + nyx_engine_uses_metagbm. Heavy regression
+(test_nyx_pipeline + test_nyx_live_decider +
+test_nyx_equivalence_replay_vs_live) : 36/36 GREEN. Pre-existing
+data-fixture failures in `test_eth_pipeline::test_eth_data_loaded`
+(35809 < 40000 expected rows) and `test_eth_training` (h4_* block
+missing in fixture) are unrelated to Ticket 09 — verified by
+re-running on git stashed working tree.
+
+Pyright : 0 errors on `src/ml/jesse_features.py`.
+
+Acceptance criteria (from ticket) all met :
+
+- ☑ New liquidity-hunter features exist (10 primary + 3 secondary)
+- ☑ Features are stationary (scale-invariance proven by test ×10)
+  or safely normalized (Chaikin/Klinger oscillators clipped after
+  rolling-std normalization)
+- ☑ Features are tested (81 GREEN parametrised assertions)
+- ☑ Feature documentation explains why each family exists (module
+  docstring "Liquidity-hunter" section + per-family intent table
+  in this CHANGELOG entry)
+
+Out of scope (per ticket) :
+
+- Model retraining (Option B) — future ticket
+- Meta-GBM final calibration
+
 ### Ticket 08 — Integrate edge_strategy into canonical runtime (2026-04-16)
 
 Move `edge_strategy` from standalone-offline into `NYXEngine` as the
