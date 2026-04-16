@@ -1,0 +1,49 @@
+{
+  "ticket": "Ticket 13 — Wire Jesse FractalReports into NYXEngine + retrain BTC",
+  "date": "2026-04-16",
+  "symbol": "BTCUSDT",
+  "experiment": {
+    "wiring": "4 per-file Jesse agents (ContextAgent, RegimeAgent, SetupAgent, EntryAgent) instantiated on NYXEngine.__init__; called via .report() per candidate bar in _generate_candidates; 13 rep_* features merged alongside rule_* proxies",
+    "scope": "BTC only (2019-09 -> 2022-12 train, 2023 OOS)",
+    "rule_proxies_kept": true,
+    "rep_features_added": 13
+  },
+  "baseline_ticket11": {
+    "n_features": 173,
+    "in_sample_accuracy": 0.9022,
+    "oos_2023": {
+      "n_trades": 54,
+      "sharpe": 9.96,
+      "total_pnl_dollars": 2171.18,
+      "max_drawdown_pct": 0.0037,
+      "bear_dial_activation_rate": 0.466
+    }
+  },
+  "ticket13_retrain": {
+    "n_features": 186,
+    "in_sample_accuracy": 0.9022,
+    "oos_2023": {
+      "n_trades": 49,
+      "sharpe": 8.04,
+      "total_pnl_dollars": 1828.31,
+      "max_drawdown_pct": 0.0057,
+      "bear_dial_activation_rate": 0.466
+    }
+  },
+  "delta": {
+    "n_trades_pct":          -9.3,
+    "sharpe_pct":           -19.3,
+    "pnl_pct":              -15.8,
+    "max_drawdown_pct":     +54.3,
+    "bear_activation_pct":    0.0
+  },
+  "decision": "REVERT_ARTEFACT_KEEP_WIRING",
+  "decision_rationale": [
+    "Per-file Jesse agents are rule-based (ContextAgent SMA fallback) or HSMM-dependent (RegimeAgent, SetupAgent) with HSMM not pre-trained -> neutral-default rep_* values dominate, carrying no predictive signal on BTC 2023.",
+    "The GBM with 186 features fits the in-sample perfectly (90.22% accuracy, same as 173-feature baseline) but OOS degrades (Sharpe 9.96 -> 8.04) -- classic noise-feature overfit.",
+    "Ticket 13 is explicitly a 'point de vérité': the honest finding is that the current agents do NOT add edge on BTC. Reverting the artefact preserves the validated Ticket 11 edge.",
+    "The wiring (NYXEngine._ctx/_reg/_stp/_ent_agent + _build_fractal_report_features) is KEPT because the architectural unification is real: a future ticket can swap in properly trained ML agents (mono-file JesseContextAgent etc. with HSMM pre-training for RegimeAgent / SetupAgent) without touching NYXEngine again.",
+    "Persisted artefact = baseline (Ticket 11 values restored via baseline_*.pkl copy-back). reports/BTCUSDT_oos_report.json left as Ticket 13 run for audit; baseline snapshot archived under reports/BTCUSDT_oos_report_baseline_ticket11.json."
+  ],
+  "next_step_suggestion": "Ticket 14 -- pre-train HSMM for RegimeAgent + SetupAgent on BTC 2019 Q1-Q3 slice, OR swap to mono-file JesseContextAgent/etc. (ML-based RandomForest) with proper pre-training slice, then re-run this comparison."
+}

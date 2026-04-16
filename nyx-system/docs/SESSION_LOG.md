@@ -485,3 +485,90 @@ automatiquement (compute_stationary_features 'full').
   NYXEngine.run() runtime path (agent.report() per candidate bar)
   + retrain pour que le GBM VOIE les report.score vs les proxies
   hand-crafted.
+
+---
+
+## 2026-04-16 — Ticket 13 (Jesse FractalReports wirés dans NYXEngine + retrain BTC)
+
+### Problème
+Les 4 Jesse agents émettaient des FractalReport depuis Ticket 05 mais
+RIEN dans le runtime ne les appelait. Le GBM s'entraînait sur des
+proxies rule_* hand-crafted (rule_context / rule_regime / rule_setup)
+au lieu des vrais outputs d'agents.
+
+### Hypothèse testée
+Instancier 4 per-file agents (ContextAgent, RegimeAgent, SetupAgent,
+EntryAgent) dans NYXEngine.__init__. Helper
+_build_fractal_report_features(ts, mtf_data) appelle .report() sur
+chaque agent avec une slice TF-appropriée, flattens en 13 rep_*
+features, merged dans candidate['features'] à côté des rule_* existants
+(garde-fou ticket : NE PAS supprimer rule_*). Retrain BTC et compare
+vs baseline Ticket 11.
+
+### Fichiers touchés
+- `src/core/nyx_engine.py` — 4 agents en __init__ + helper +
+  signature _generate_candidates accepte mtf_data + merge dans
+  candidate features
+- `tests/test_fractal_reports_wired.py` (nouveau) — 22 tests GREEN
+- `reports/BTCUSDT_ticket13_comparison.json` (nouveau) — comparaison
+  structurée + décision justifiée
+- `reports/BTCUSDT_oos_report_baseline_ticket11.json` (nouveau) —
+  snapshot baseline pour audit
+- `models/BTCUSDT/baseline_*.pkl|json` (nouveau) — backup explicite
+- `docs/CHANGELOG.md` — entrée Ticket 13
+- `docs/SESSION_LOG.md` — ce log
+
+### Tests
+- 22/22 GREEN sur test_fractal_reports_wired
+- 8/8 GREEN sur test_nyx_engine_uses_metagbm (4'28" runtime)
+- 15/15 GREEN sur test_train_btc_model (post-revert artefact)
+- Pyright : 0 errors
+
+### Numbers obtenus (point de vérité honnête)
+
+| Metric | Baseline T11 | T13 rep_* | Delta |
+|---|---:|---:|---|
+| n_features | 173 | 186 | +13 |
+| In-sample acc | 90.22% | 90.22% | = |
+| OOS n_trades | 54 | 49 | -9% |
+| OOS Sharpe | 9.96 | 8.04 | -19% |
+| OOS PnL | $2,171 | $1,828 | -16% |
+| OOS Max DD | 0.37% | 0.57% | +54% |
+
+Le rep_* wiring DEGRADE l'edge BTC sur 2023. Décision :
+REVERT_ARTEFACT_KEEP_WIRING.
+
+### Root cause
+Per-file agents ne sont pas tous fonctionnels :
+- ContextAgent : OK (SMA fallback, pas besoin HSMM)
+- RegimeAgent : HSMM requis, pas pré-entraîné → neutral defaults
+- SetupAgent : HSMM + SMC requis, pas pré-entraîné → neutral defaults
+- EntryAgent : OK (rule-based momentum check)
+
+2 agents sur 4 émettent du bruit → 13 rep_* features dominés par du
+bruit → GBM overfit in-sample (90.22% identique) mais OOS degrade.
+Classic noise-feature overfit.
+
+### Décision — REVERT_ARTEFACT_KEEP_WIRING
+1. models/BTCUSDT/ml_filter_v1.pkl restauré depuis baseline_*.pkl
+   (Ticket 11 values, Sharpe 9.96 préservé)
+2. reports/BTCUSDT_oos_report.json restauré à la baseline T11
+3. Le WIRING dans NYXEngine RESTE committed — un futur ticket peut :
+   - pré-entraîner HSMM pour RegimeAgent/SetupAgent
+   - OU swap vers mono-file Jesse*Agent (RandomForest) avec slice
+     pré-training
+   - OU combinaison
+   sans toucher NYXEngine (plumbing done)
+
+### Risques restants
+- Le wiring rend NYXEngine.run() plus lent (~2 min overhead sur
+  200 candidates ETH H1 2023, ~5 min sur 1800 candidates BTC full).
+  Acceptable tant que ce n'est pas en production live.
+- Si un futur ticket réactive le rep_* training SANS régler le
+  problème HSMM, le même overfit se reproduira — le comparison
+  JSON sert de référence pour détecter.
+
+### Next smallest step possible
+- Ticket 14 : pré-entraîner HSMM pour RegimeAgent + SetupAgent sur
+  BTC 2019 Q1-Q3 (slice pre-training). Re-run la même comparaison.
+  OU swap aux mono-file Jesse*Agent ML-based avec training slice.

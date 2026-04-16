@@ -1,0 +1,21 @@
+{
+  "symbol": "BTCUSDT",
+  "ticket": "Ticket 11 \u2014 Train Meta-GBM on canonical BTC pipeline",
+  "training": {
+    "symbol": "BTCUSDT",
+    "train_end": "2022-12-31",
+    "n_train_candidates": 1248,
+    "n_features": 173,
+    "in_sample_accuracy": 0.9022435897435898,
+    "positive_class_rate": 0.43669871794871795
+  },
+  "oos_2023": {
+    "n_candidates": 571,
+    "n_trades": 54,
+    "sharpe": 9.964990754048605,
+    "total_pnl_dollars": 2171.1763006467627,
+    "max_drawdown_pct": 0.0037492886985758525,
+    "execution_reject_rate": 0,
+    "bear_dial_activation_rate": 0.4658493870402802
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "symbol": "BTCUSDT",
+  "train_end": "2022-12-31",
+  "n_train_candidates": 1248,
+  "n_features": 173,
+  "in_sample_accuracy": 0.9022435897435898,
+  "positive_class_rate": 0.43669871794871795
+}

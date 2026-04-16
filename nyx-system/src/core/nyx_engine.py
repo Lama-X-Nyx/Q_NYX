@@ -95,6 +95,22 @@ class NYXEngine:
             vol_min=self.vol_min,
         )
 
+        # Ticket 13 — 4 Jesse fractal reporters wired into the runtime.
+        # Instantiated once at engine construction; called per candidate
+        # bar in `_build_fractal_report_features`. Per-file (rule-based)
+        # agents are used for zero-setup runtime call. If an agent path
+        # needs HSMM (RegimeAgent / SetupAgent) we catch the exception
+        # and fall back to neutral defaults — honesty over silent
+        # failure, surfaced in the `rep_*` feature values.
+        from src.agents.context_agent import ContextAgent
+        from src.agents.regime_agent import RegimeAgent
+        from src.agents.setup_agent import SetupAgent
+        from src.agents.entry_agent import EntryAgent
+        self._ctx_agent = ContextAgent({})
+        self._reg_agent = RegimeAgent({})
+        self._stp_agent = SetupAgent({})
+        self._ent_agent = EntryAgent({})
+
     @staticmethod
     def _symbol_hint(mtf_data: Dict[str, pd.DataFrame]) -> str:
         """Derive a best-effort symbol label for MetaDecision.asset
@@ -136,11 +152,13 @@ class NYXEngine:
         train_cands = self._generate_candidates(
             df_15m.loc[:train_end], mtf_features['15m'].loc[:train_end],
             ctx_1d, ctx_1h,
-            feat_1h=feat_1h, feat_4h=feat_4h, feat_1d=feat_1d)
+            feat_1h=feat_1h, feat_4h=feat_4h, feat_1d=feat_1d,
+            mtf_data=mtf_data)
         test_cands = self._generate_candidates(
             df_15m.loc[test_start:te], mtf_features['15m'].loc[test_start:te],
             ctx_1d, ctx_1h,
-            feat_1h=feat_1h, feat_4h=feat_4h, feat_1d=feat_1d)
+            feat_1h=feat_1h, feat_4h=feat_4h, feat_1d=feat_1d,
+            mtf_data=mtf_data)
 
         if len(train_cands) < 30 or len(test_cands) == 0:
             return self._empty_result()
@@ -422,6 +440,119 @@ class NYXEngine:
     # ------------------------------------------------------------------
     # Candidate generation with MTF
     # ------------------------------------------------------------------
+    # Ticket 13 — fractal report features per candidate bar
+    # ------------------------------------------------------------------
+    _REP_KEYS = (
+        'rep_ctx_score', 'rep_ctx_passed',
+        'rep_regime_score', 'rep_regime_passed', 'rep_regime_trend',
+        'rep_setup_score', 'rep_setup_passed',
+        'rep_entry_score', 'rep_entry_passed', 'rep_entry_direction',
+        'rep_agreement_mean', 'rep_agreement_std', 'rep_disagreement',
+    )
+
+    _REP_NEUTRAL_DEFAULTS: Dict[str, float] = {
+        'rep_ctx_score':        0.5,
+        'rep_ctx_passed':       0.0,
+        'rep_regime_score':     0.5,
+        'rep_regime_passed':    0.0,
+        'rep_regime_trend':     0.0,
+        'rep_setup_score':      0.5,
+        'rep_setup_passed':     0.0,
+        'rep_entry_score':      0.5,
+        'rep_entry_passed':     0.0,
+        'rep_entry_direction':  0.0,
+        'rep_agreement_mean':   0.5,
+        'rep_agreement_std':    0.0,
+        'rep_disagreement':     1.0,
+    }
+
+    def _build_fractal_report_features(
+        self,
+        ts: pd.Timestamp,
+        mtf_data: Dict[str, pd.DataFrame],
+    ) -> Dict[str, float]:
+        """Call the 4 Jesse fractal reporters with a TF-appropriate
+        slice of `mtf_data` up to `ts` and flatten the results into a
+        stable `rep_*` feature block.
+
+        Agents that raise (HSMM not trained, insufficient bars, any
+        other error) fall back to NEUTRAL defaults — encoded in
+        `rep_*_passed = 0` + `rep_*_score = 0.5`. This keeps training
+        honest : features that never carry real signal will simply be
+        ignored by the GBM's feature-importance filter.
+        """
+        out: Dict[str, float] = dict(self._REP_NEUTRAL_DEFAULTS)
+
+        # Context (1D) — mostly works via SMA fallback.
+        try:
+            df_1d = mtf_data['1d'].loc[:ts]
+            if len(df_1d) >= 20:
+                ctx_rep = self._ctx_agent.report(
+                    df_1d, asset='NYX', timestamp=ts.isoformat(),
+                )
+                out['rep_ctx_score'] = float(ctx_rep.score)
+                out['rep_ctx_passed'] = 1.0 if ctx_rep.passed else 0.0
+        except Exception:
+            pass
+
+        # Regime (4H) — HSMM-based; likely falls back to neutral if
+        # HSMM is not pre-trained.
+        try:
+            df_4h = mtf_data['4h'].loc[:ts]
+            if len(df_4h) >= 100:
+                reg_rep = self._reg_agent.report(
+                    df_4h, asset='NYX', timestamp=ts.isoformat(),
+                )
+                out['rep_regime_score'] = float(reg_rep.score)
+                out['rep_regime_passed'] = 1.0 if reg_rep.passed else 0.0
+                out['rep_regime_trend'] = 1.0 if 'trend' in reg_rep.state.lower() else 0.0
+        except Exception:
+            pass
+
+        # Setup (1H) — SMC + HSMM alignment; neutral if HSMM fails.
+        try:
+            df_1h = mtf_data['1h'].loc[:ts]
+            if len(df_1h) >= 100:
+                stp_rep = self._stp_agent.report(
+                    df_1h, asset='NYX', timestamp=ts.isoformat(),
+                )
+                out['rep_setup_score'] = float(stp_rep.score)
+                out['rep_setup_passed'] = 1.0 if stp_rep.passed else 0.0
+        except Exception:
+            pass
+
+        # Entry (15M) — pure rule-based momentum check, always available.
+        try:
+            df_15m = mtf_data['15m'].loc[:ts]
+            if len(df_15m) >= 50:
+                ent_rep = self._ent_agent.report(
+                    df_15m, asset='NYX', timestamp=ts.isoformat(),
+                )
+                out['rep_entry_score'] = float(ent_rep.score)
+                out['rep_entry_passed'] = 1.0 if ent_rep.passed else 0.0
+                state = ent_rep.state.lower()
+                if 'long' in state:
+                    out['rep_entry_direction'] = 1.0
+                elif 'short' in state:
+                    out['rep_entry_direction'] = -1.0
+        except Exception:
+            pass
+
+        # Cross-agent features — computed from the values we just set.
+        scores = [
+            out['rep_ctx_score'], out['rep_regime_score'],
+            out['rep_setup_score'], out['rep_entry_score'],
+        ]
+        out['rep_agreement_mean'] = float(np.mean(scores))
+        out['rep_agreement_std'] = float(np.std(scores))
+        n_passed = (
+            out['rep_ctx_passed']
+            + out['rep_regime_passed']
+            + out['rep_setup_passed']
+            + out['rep_entry_passed']
+        )
+        out['rep_disagreement'] = float(1.0 - n_passed / 4.0)
+        return out
 
     def _generate_candidates(
         self,
@@ -432,6 +563,7 @@ class NYXEngine:
         feat_1h: Optional[pd.DataFrame] = None,
         feat_1d: Optional[pd.DataFrame] = None,
         feat_4h: Optional[pd.DataFrame] = None,
+        mtf_data: Optional[Dict[str, pd.DataFrame]] = None,
     ) -> List[Dict]:
         """Generate edge candidates with full MTF features.
 
@@ -589,6 +721,19 @@ class NYXEngine:
             features['trend_strength'] = float(np.clip(abs(ema9[i] - ema50[i]) / max(ema50[i], 1e-8) * 50, 0, 10))
             features['direction'] = float(direction)
             features['hour_norm'] = float(hour / 24.0)
+
+            # Ticket 13 — 4 Jesse fractal reports wired as features.
+            # `mtf_data` is passed from `.run()` when available; when
+            # `_generate_candidates` is called directly without it
+            # (early-returning tests, legacy callers) we fall back to
+            # neutral rep_* defaults so the contract stays stable.
+            if mtf_data is not None:
+                rep_features = self._build_fractal_report_features(
+                    pd.Timestamp(df_15m.index[i]), mtf_data,
+                )
+                features.update(rep_features)
+            else:
+                features.update(self._REP_NEUTRAL_DEFAULTS)
 
             candidates.append({
                 'bar_idx': i, 'timestamp': df_15m.index[i],
