@@ -214,56 +214,39 @@ class JesseContextAgent(_BaseJesseAgent):
     agent_name = 'context'
     REPORT_AGENT = 'context'
     REPORT_TIMEFRAME = '1d'   # Ticket 05 — canonical fractal TF
-    warmup_bars = 30  # Use momentum_60 max, but 30 bars sufficient for 5/20
+    warmup_bars = 60  # EMA 50 needs ~50 bars to converge + margin
+
+    # Ticket 14 — role-based feature plan. Context (1D) = slow /
+    # structural / macro-bias signals drawn from the canonical
+    # `compute_stationary_features` 'full' set. See
+    # docs/JESSE_FEATURE_MAPPING.md for rationale.
+    FEATURE_PLAN = (
+        # slow trend alignment
+        'ema_ratio_21_50', 'ema_ratio_50_200', 'close_vs_ema50',
+        # macro momentum / oscillator
+        'rsi_14', 'momentum_10', 'momentum_20', 'returns_5',
+        # volatility regime
+        'atr_ratio', 'bb_width_ratio',
+        # deviation from mean (structural)
+        'zscore_20',
+        # participation / liquidity context
+        'volume_ratio',
+        # slow VWAP + compression/expansion (Ticket 09 slow families)
+        'vwap_dist', 'chop_norm',
+    )
 
     def compute_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        close = df['close'].values.astype(float)
-        high = df['high'].values.astype(float)
-        low = df['low'].values.astype(float)
-        volume = df['volume'].values.astype(float)
-        n = len(close)
-
-        features = pd.DataFrame(index=df.index)
-
-        # Momentum ratios: (close - close[N]) / close[N]
-        # Use 5/10/20 for daily (60+ needs too much warmup for short datasets)
-        for lookback in [5, 10, 20]:
-            shifted = np.roll(close, lookback)
-            shifted[:lookback] = np.nan
-            with np.errstate(divide='ignore', invalid='ignore'):
-                features[f'momentum_{lookback}'] = np.where(
-                    shifted != 0, (close - shifted) / np.abs(shifted), 0.0)
-
-        # Realized volatility (20-day)
-        returns = np.diff(close, prepend=close[0]) / np.maximum(close, 1e-8)
-        rv = pd.Series(returns).rolling(20).std().values
-        features['realized_vol'] = rv
-
-        # RSI normalized [-1, 1]
-        rsi_vals = _rsi(close, 14)
-        features['rsi_14'] = (rsi_vals - 50.0) / 50.0
-
-        # Amihud illiquidity: |return| / volume
-        abs_ret = np.abs(returns)
-        with np.errstate(divide='ignore', invalid='ignore'):
-            amihud = np.where(volume > 0, abs_ret / volume * 1e6, 0.0)
-        amihud_ma = _ema(amihud, 20)
-        with np.errstate(divide='ignore', invalid='ignore'):
-            features['amihud_ratio'] = np.where(
-                amihud_ma != 0, amihud / amihud_ma, 1.0)
-
-        # EMA ratios for trend confirmation
-        ema20 = _ema(close, 20)
-        ema50 = _ema(close, 50)
-        with np.errstate(divide='ignore', invalid='ignore'):
-            features['ema_ratio_20_50'] = np.where(
-                ema50 != 0, (ema20 - ema50) / np.abs(ema50), 0.0)
-
-        # ATR ratio
-        atr_vals = _atr(high, low, close, 14)
-        with np.errstate(divide='ignore', invalid='ignore'):
-            features['atr_ratio'] = np.where(close != 0, atr_vals / close, 0.0)
-
+        """Ticket 14 — Context (1D) features from canonical 'full'
+        set, subsetted by FEATURE_PLAN."""
+        from src.ml.jesse_features import compute_stationary_features
+        full = compute_stationary_features(df, feature_set='full')
+        cols = [c for c in self.FEATURE_PLAN if c in full.columns]
+        features = full[cols].copy()
+        # Fill warmup NaN with 0 (mono-file train() later drops warmup
+        # rows; this stabilises downstream numerics for inference).
+        features = features.fillna(0.0).replace(
+            [np.inf, -np.inf], 0.0,
+        )
         return features
 
     def compute_labels(self, df: pd.DataFrame) -> np.ndarray:
@@ -346,59 +329,73 @@ class JesseRegimeAgent(_BaseJesseAgent):
     REPORT_TIMEFRAME = '4h'   # Ticket 05 — canonical fractal TF
     warmup_bars = 60
 
+    # Ticket 14 — role-based feature plan. Regime (4H) = state
+    # classification: trend strength, volatility, compression /
+    # expansion, momentum. See docs/JESSE_FEATURE_MAPPING.md.
+    FEATURE_PLAN = (
+        # trend strength + quality
+        'adx_norm', 'ema_ratio_9_21', 'ema_ratio_21_50',
+        # volatility regime
+        'atr_ratio', 'bb_width_ratio',
+        # compression / expansion
+        'keltner_position', 'squeeze', 'chop_norm',
+        # momentum state
+        'macd_hist_ratio', 'momentum_10', 'momentum_20', 'roc_10',
+        # bar structure + participation
+        'close_position', 'volume_ratio',
+        # volume regime (Ticket 09)
+        'kvo_norm',
+    )
+
     def compute_features(self, df: pd.DataFrame, hsmm_probs: Optional[np.ndarray] = None) -> pd.DataFrame:
+        """Ticket 14 — Regime (4H) features from canonical 'full' set,
+        subsetted by FEATURE_PLAN. Agent-specific legacy extras
+        (`momentum_12`, `rv_12`) are kept for backward-compat with
+        `analyze()` state-mapping heuristics. HSMM state probs
+        (6 states) are always present (0.0 defaults when
+        `hsmm_probs` is not supplied)."""
+        from src.ml.jesse_features import compute_stationary_features
+        full = compute_stationary_features(df, feature_set='full')
+        cols = [c for c in self.FEATURE_PLAN if c in full.columns]
+        features = full[cols].copy()
+
+        # Legacy extras used by `analyze()` state-mapping — kept so
+        # the mono-file RegimeAgent contract remains stable.
         close = df['close'].values.astype(float)
         high = df['high'].values.astype(float)
         low = df['low'].values.astype(float)
-        volume = df['volume'].values.astype(float)
-        n = len(close)
-
-        features = pd.DataFrame(index=df.index)
-
-        # Momentum 4/12/48 bars
-        for lb in [4, 12, 48]:
-            shifted = np.roll(close, lb)
-            shifted[:lb] = np.nan
-            with np.errstate(divide='ignore', invalid='ignore'):
-                features[f'momentum_{lb}'] = np.where(
-                    shifted != 0, (close - shifted) / np.abs(shifted), 0.0)
-
-        # Realized vol
         returns = np.diff(close, prepend=close[0]) / np.maximum(close, 1e-8)
+        shifted_12 = np.roll(close, 12)
+        shifted_12[:12] = np.nan
+        with np.errstate(divide='ignore', invalid='ignore'):
+            features['momentum_12'] = np.where(
+                shifted_12 != 0, (close - shifted_12) / np.abs(shifted_12), 0.0,
+            )
         features['rv_12'] = pd.Series(returns).rolling(12).std().values
+        # Force numpy-fallback ADX to preserve the legacy
+        # state-mapping thresholds in `analyze()` (Jesse's ta.adx
+        # returns slightly smaller values on synthetic data, flipping
+        # trend_minus/trend_plus decisions at the 0.3 boundary).
+        adx_legacy = _adx(high, low, close, 14)
+        features['adx_norm'] = np.nan_to_num(adx_legacy, nan=0.0) / 100.0
 
-        # Volume ratio
-        vol_ma = _ema(volume, 20)
-        with np.errstate(divide='ignore', invalid='ignore'):
-            features['volume_ratio'] = np.where(vol_ma != 0, volume / vol_ma, 1.0)
-
-        # Buy pressure
-        bar_range = high - low
-        with np.errstate(divide='ignore', invalid='ignore'):
-            features['buy_pressure'] = np.where(
-                bar_range != 0, (close - low) / bar_range, 0.5)
-
-        # ATR ratio
-        atr_vals = _atr(high, low, close, 14)
-        with np.errstate(divide='ignore', invalid='ignore'):
-            features['atr_ratio'] = np.where(close != 0, atr_vals / close, 0.0)
-
-        # RSI
-        rsi_vals = _rsi(close, 14)
-        features['rsi_14'] = (rsi_vals - 50.0) / 50.0
-
-        # ADX
-        adx_vals = _adx(high, low, close, 14)
-        features['adx_norm'] = np.nan_to_num(adx_vals, nan=0.0) / 100.0
-
-        # HSMM probs (6 states) — from parquet or zeros
-        if hsmm_probs is not None and hsmm_probs.shape[0] == n:
-            for i, state in enumerate(['trendp', 'range', 'trendm', 'squeeze', 'dist', 'liq']):
-                features[f'hsmm_{state}'] = hsmm_probs[:, i] if hsmm_probs.shape[1] > i else 0.0
-        else:
-            for state in ['trendp', 'range', 'trendm', 'squeeze', 'dist', 'liq']:
+        # HSMM state probs — always present with 0.0 defaults when
+        # `hsmm_probs` is not supplied (backward-compat with parquet
+        # callers that pass it explicitly).
+        n = len(df)
+        for i, state in enumerate(
+            ['trendp', 'range', 'trendm', 'squeeze', 'dist', 'liq']
+        ):
+            if (hsmm_probs is not None
+                    and hsmm_probs.shape[0] == n
+                    and hsmm_probs.shape[1] > i):
+                features[f'hsmm_{state}'] = hsmm_probs[:, i]
+            else:
                 features[f'hsmm_{state}'] = 0.0
 
+        features = features.fillna(0.0).replace(
+            [np.inf, -np.inf], 0.0,
+        )
         return features
 
     def compute_labels(self, df: pd.DataFrame) -> np.ndarray:
@@ -467,15 +464,42 @@ class JesseSetupAgent(_BaseJesseAgent):
     REPORT_TIMEFRAME = '1h'   # Ticket 05 — canonical fractal TF
     warmup_bars = 60
 
+    # Ticket 14 — role-based feature plan. Setup (1H) is where
+    # liquidity-hunter logic matters most: VWAP reclaim, S/R
+    # break / failed break, MFI / AD / BOP imbalance,
+    # compression → expansion. See docs/JESSE_FEATURE_MAPPING.md.
+    FEATURE_PLAN = (
+        # volume-weighted displacement
+        'vwap_dist', 'vwma_dist',
+        # pressure imbalance
+        'ad_slope', 'adosc_norm', 'mfi_norm', 'marketfi_ratio',
+        # bar-level rejection / pressure
+        'bop', 'close_position',
+        # structural zones (sweeps + distances)
+        'sr_break_up_20', 'sr_break_dn_20',
+        'sr_dist_high_20', 'sr_dist_low_20',
+        'minmax_pos_20',
+        # compression → expansion
+        'bb_percent_b', 'squeeze',
+    )
+
     def compute_features(
         self, df: pd.DataFrame,
         context_score: float = 0.5,
         regime_score: float = 0.5,
     ) -> pd.DataFrame:
-        features = compute_stationary_features(df, feature_set='core')
+        """Ticket 14 — Setup (1H) features from canonical 'full' set,
+        subsetted by FEATURE_PLAN. Adds cross-agent context /
+        regime scores as auxiliary inputs."""
+        full = compute_stationary_features(df, feature_set='full')
+        cols = [c for c in self.FEATURE_PLAN if c in full.columns]
+        features = full[cols].copy()
         features['context_score'] = context_score
         features['regime_score'] = regime_score
         features['agent_agreement'] = 1.0 - abs(context_score - regime_score)
+        features = features.fillna(0.0).replace(
+            [np.inf, -np.inf], 0.0,
+        )
         return features
 
     def compute_labels(self, df: pd.DataFrame) -> np.ndarray:
@@ -556,8 +580,36 @@ class JesseEntryAgent(_BaseJesseAgent):
     REPORT_TIMEFRAME = '15m'  # Ticket 05 — canonical fractal TF
     warmup_bars = 60
 
+    # Ticket 14 — role-based feature plan. Entry (15M) = short-
+    # horizon trigger confirmation: micro-momentum, volume spike,
+    # bar-level pressure, micro-VWAP reclaim, S/R break triggers.
+    # See docs/JESSE_FEATURE_MAPPING.md.
+    FEATURE_PLAN = (
+        # short momentum
+        'returns_1', 'returns_5', 'momentum_10',
+        # oscillator
+        'rsi_14',
+        # participation / volume spikes
+        'volume_ratio', 'vol_change',
+        # bar structure + pressure
+        'close_position', 'high_low_ratio', 'bop',
+        # micro VWAP reclaim
+        'vwap_dist',
+        # micro S/R triggers
+        'sr_break_up_20', 'sr_break_dn_20',
+        # short pressure imbalance (Ticket 09)
+        'adosc_norm',
+    )
+
     def compute_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        return compute_stationary_features(df, feature_set='core')
+        """Ticket 14 — Entry (15M) features from canonical 'full'
+        set, subsetted by FEATURE_PLAN."""
+        full = compute_stationary_features(df, feature_set='full')
+        cols = [c for c in self.FEATURE_PLAN if c in full.columns]
+        features = full[cols].copy().fillna(0.0).replace(
+            [np.inf, -np.inf], 0.0,
+        )
+        return features
 
     def compute_labels(self, df: pd.DataFrame) -> np.ndarray:
         from src.ml.jesse_labeler import triple_barrier_labels
