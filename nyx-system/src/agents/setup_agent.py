@@ -16,14 +16,20 @@ class SetupAgent:
     """
     Setup Agent - SMC Pattern Detection
 
-    Timeframe: 15M
+    Timeframe: 1H (canonical fractal TF for the setup reporter)
     Role: Detect SMC patterns (OB, FVG) and validate alignment via HSMM
 
     Answers: "Is there a valid SMC setup?"
 
+    Ticket 05 — fractal reporter. See `.report()`.
+
     Alignment score = P(Trend+) if bullish context, P(Trend-) if bearish context,
     computed by running HSMM Forward-Backward on the 15M DataFrame.
     """
+
+    # Canonical identity used by .report() (Ticket 05).
+    REPORT_AGENT = 'setup'
+    REPORT_TIMEFRAME = '1h'
 
     def __init__(self, config: Dict):
         """
@@ -458,6 +464,24 @@ class SetupAgent:
             blocked_by_readiness=False,
             reason=reason,
             metadata=meta
+        )
+
+    # ------------------------------------------------------------------
+    # Ticket 05 — Fractal reporter API
+    # ------------------------------------------------------------------
+    def report(
+        self,
+        df: pd.DataFrame,
+        asset: str,
+        timestamp: "str | None" = None,
+        **analyze_kwargs,
+    ):
+        """Emit a canonical `FractalReport` (see ContextAgent.report)."""
+        result = self.analyze(df, **analyze_kwargs)
+        return result.to_fractal_report(
+            asset=asset,
+            timeframe=self.REPORT_TIMEFRAME,
+            timestamp=timestamp,
         )
 
 

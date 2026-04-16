@@ -22,7 +22,16 @@ class ContextAgent:
           distribution k steps forward.
 
     Answers: "What's the strategic Intent for today?"
+
+    Ticket 05 — fractal reporter. `.report(df, asset, timestamp=None,
+    **analyze_kwargs) -> FractalReport` emits the canonical cross-layer
+    report consumed by the Meta-GBM input layer.
     """
+
+    # Canonical identity used by .report() (independent of the
+    # config-driven self.timeframe that governs .analyze() internals).
+    REPORT_AGENT = 'context'
+    REPORT_TIMEFRAME = '1d'
 
     def __init__(self, config: Dict):
         """
@@ -293,6 +302,30 @@ class ContextAgent:
             blocked_by_readiness=False,
             reason=reason,
             metadata=meta
+        )
+
+    # ------------------------------------------------------------------
+    # Ticket 05 — Fractal reporter API
+    # ------------------------------------------------------------------
+    def report(
+        self,
+        df: pd.DataFrame,
+        asset: str,
+        timestamp: "str | None" = None,
+        **analyze_kwargs,
+    ):
+        """Emit a canonical `FractalReport` for the Meta-GBM.
+
+        Thin wrapper on `self.analyze(df, **kwargs)` using the existing
+        `AgentResult.to_fractal_report()` adapter. Sets the canonical
+        agent name + timeframe per NYX fractal architecture
+        (ARCHITECTURE_CANONIQUE.md).
+        """
+        result = self.analyze(df, **analyze_kwargs)
+        return result.to_fractal_report(
+            asset=asset,
+            timeframe=self.REPORT_TIMEFRAME,
+            timestamp=timestamp,
         )
 
 

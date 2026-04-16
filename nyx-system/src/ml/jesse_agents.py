@@ -44,6 +44,12 @@ class _BaseJesseAgent:
     agent_name: str = ''
     warmup_bars: int = 50
 
+    # Canonical identity used by .report() (Ticket 05). Subclasses
+    # override these to declare the canonical agent name and fractal
+    # timeframe for the FractalReport schema.
+    REPORT_AGENT: str = ''
+    REPORT_TIMEFRAME: str = ''
+
     def __init__(self):
         self._model: Optional[RandomForestClassifier] = None
         self._scaler: Optional[StandardScaler] = None
@@ -115,6 +121,33 @@ class _BaseJesseAgent:
         """Analyze current state. Override in subclass."""
         raise NotImplementedError
 
+    # ------------------------------------------------------------------
+    # Ticket 05 — Fractal reporter API
+    # ------------------------------------------------------------------
+    def report(
+        self,
+        df: pd.DataFrame,
+        asset: str,
+        timestamp: Optional[str] = None,
+        **analyze_kwargs: Any,
+    ):
+        """Emit a canonical `FractalReport` for the Meta-GBM input layer.
+
+        Thin wrapper around `self.analyze(df, **kwargs)` + the existing
+        `AgentResult.to_fractal_report()` adapter. Subclass declares
+        `REPORT_AGENT` and `REPORT_TIMEFRAME`.
+        """
+        assert self.REPORT_TIMEFRAME, (
+            f'{type(self).__name__} must declare REPORT_TIMEFRAME '
+            '(Ticket 05)'
+        )
+        result = self.analyze(df, **analyze_kwargs)
+        return result.to_fractal_report(
+            asset=asset,
+            timeframe=self.REPORT_TIMEFRAME,
+            timestamp=timestamp,
+        )
+
     def backtest(self, df: pd.DataFrame, train_ratio: float = 0.75) -> Dict[str, Any]:
         """Standalone backtest: train on first portion, evaluate on rest."""
         split = int(len(df) * train_ratio)
@@ -179,6 +212,8 @@ class JesseContextAgent(_BaseJesseAgent):
     """
 
     agent_name = 'context'
+    REPORT_AGENT = 'context'
+    REPORT_TIMEFRAME = '1d'   # Ticket 05 — canonical fractal TF
     warmup_bars = 30  # Use momentum_60 max, but 30 bars sufficient for 5/20
 
     def compute_features(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -307,6 +342,8 @@ class JesseRegimeAgent(_BaseJesseAgent):
     """
 
     agent_name = 'regime'
+    REPORT_AGENT = 'regime'
+    REPORT_TIMEFRAME = '4h'   # Ticket 05 — canonical fractal TF
     warmup_bars = 60
 
     def compute_features(self, df: pd.DataFrame, hsmm_probs: Optional[np.ndarray] = None) -> pd.DataFrame:
@@ -426,6 +463,8 @@ class JesseSetupAgent(_BaseJesseAgent):
     """
 
     agent_name = 'setup'
+    REPORT_AGENT = 'setup'
+    REPORT_TIMEFRAME = '1h'   # Ticket 05 — canonical fractal TF
     warmup_bars = 60
 
     def compute_features(
@@ -513,6 +552,8 @@ class JesseEntryAgent(_BaseJesseAgent):
     """
 
     agent_name = 'entry'
+    REPORT_AGENT = 'entry'
+    REPORT_TIMEFRAME = '15m'  # Ticket 05 — canonical fractal TF
     warmup_bars = 60
 
     def compute_features(self, df: pd.DataFrame) -> pd.DataFrame:

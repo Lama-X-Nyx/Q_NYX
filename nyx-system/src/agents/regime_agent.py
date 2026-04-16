@@ -14,13 +14,20 @@ from src.core.hsmm import SemiMarkovHMM
 class RegimeAgent:
     """
     Regime Agent - Market Regime Detection
-    
-    Timeframe: 4H or 1H
+
+    Timeframe: 4H (canonical fractal TF for the regime reporter)
     Role: Detect regime (Trend+, Range, Trend-) with HSMM
-    
+
     Answers: "What's the current market regime?"
+
+    Ticket 05 — fractal reporter. See `.report()`.
     """
-    
+
+    # Canonical identity used by .report() (independent of the
+    # config-driven self.timeframe that governs .analyze() internals).
+    REPORT_AGENT = 'regime'
+    REPORT_TIMEFRAME = '4h'
+
     def __init__(self, config: Dict):
         """
         Initialize Regime Agent
@@ -348,6 +355,24 @@ class RegimeAgent:
             df_prepared['htf_pos'] = htf_pos.values
 
         return df_prepared
+
+    # ------------------------------------------------------------------
+    # Ticket 05 — Fractal reporter API
+    # ------------------------------------------------------------------
+    def report(
+        self,
+        df: pd.DataFrame,
+        asset: str,
+        timestamp: "str | None" = None,
+        **analyze_kwargs,
+    ):
+        """Emit a canonical `FractalReport` (see ContextAgent.report)."""
+        result = self.analyze(df, **analyze_kwargs)
+        return result.to_fractal_report(
+            asset=asset,
+            timeframe=self.REPORT_TIMEFRAME,
+            timestamp=timestamp,
+        )
 
 
 if __name__ == "__main__":

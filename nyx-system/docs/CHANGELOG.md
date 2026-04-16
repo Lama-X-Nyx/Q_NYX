@@ -2,6 +2,66 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 05 — Jesse agents as fractal reporters (2026-04-16)
+
+Reposition the 4 Jesse agents (Context / Regime / Setup / Entry) as
+**fractal reporters** that emit the canonical `FractalReport` (from
+Ticket 03) instead of acting like mini-strategies whose
+`AgentResult.passed` is treated as a hard gate. They now *report*,
+not decide.
+
+- **New method** on every Jesse agent (both implementations) :
+  `.report(df, asset, timestamp=None, **analyze_kwargs) -> FractalReport`.
+  Thin wrapper on `.analyze()` using the existing
+  `AgentResult.to_fractal_report()` adapter.
+- **New class constants** `REPORT_AGENT` and `REPORT_TIMEFRAME`
+  declaring canonical identity (independent of config-driven
+  `self.timeframe`). Matches the 4-TF fractal stack :
+
+  | Agent | `REPORT_AGENT` | `REPORT_TIMEFRAME` |
+  |---|---|---|
+  | Context | `'context'` | `'1d'` |
+  | Regime  | `'regime'`  | `'4h'` |
+  | Setup   | `'setup'`   | `'1h'` |
+  | Entry   | `'entry'`   | `'15m'` |
+
+- **TDD** : `tests/test_jesse_fractal_report.py` (60 GREEN, all
+  parametrised over 8 agent × implementation combinations) asserts :
+  - `.report()` method exists on every agent
+  - `REPORT_AGENT` / `REPORT_TIMEFRAME` class constants declared
+  - `.report()` returns `FractalReport` with canonical agent / TF
+  - score ∈ [0, 1], asset preserved across calls
+  - 4 reports together feed a `MetaDecision.fractal_reports` dict
+    without raising — **contract compatibility proof with the
+    Meta-GBM input layer** (ticket 05 acceptance §3).
+  - Regression guard : `.analyze()` still returns `AgentResult` for
+    both mono-file and per-file implementations.
+- **Backward-compatible** : `.analyze()` and `AgentResult` unchanged.
+  45 legacy Jesse tests + 207-test regression sweep stay GREEN.
+- **Symmetric change** : applied to both implementations
+  (`src/ml/jesse_agents.py` + `src/agents/*.py`) so behaviour is
+  consistent — mono-file adds `.report()` at `_BaseJesseAgent` level
+  + 4 constants per subclass ; per-file adds both constants and
+  `.report()` directly per class.
+- **Docs** :
+  - `docs/JESSE_AGENTS_STATUS.md` : new "Reporter API (Ticket 05)"
+    section with reporter mapping + scope-kept guard.
+  - `docs/ARCHITECTURE_CANONIQUE.md` : "Honest status" section
+    updated to mention `.report()` API + test count (45 → 105).
+- **No runtime wiring** : per ticket out-of-scope, `NYXEngine` still
+  consumes proxy scalars `rule_{context,regime,setup}` +
+  `disagreement`. The reporter is the interface ; the swap path
+  (replacing proxies with live agent calls) remains a future ticket.
+
+Acceptance criteria (from ticket) all met :
+
+- ☑ All 4 Jesse agents output the same report schema (FractalReport).
+- ☑ The 4 agents no longer define the final trade decision —
+  `FractalReport.passed` is an agent-local opinion ; the Meta-GBM
+  is free to override. The canonical decision type is `MetaDecision`.
+- ☑ Their outputs are consumable by the Meta-GBM layer
+  (`MetaDecision.fractal_reports: dict[str, FractalReport]`).
+
 ### Ticket 04 — NYXEngine = single canonical runtime entrypoint (2026-04-16)
 
 Unifies the runtime brain : rename `NYXPipeline` → `NYXEngine` and

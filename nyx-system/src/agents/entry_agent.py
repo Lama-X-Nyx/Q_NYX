@@ -13,13 +13,19 @@ from src.agents.contracts import AgentResult
 class EntryAgent:
     """
     Entry Agent - Entry Timing Validation
-    
-    Timeframe: 5M
+
+    Timeframe: 15M (canonical fractal TF for the entry reporter)
     Role: Validate entry timing and micro-structure
-    
+
     Answers: "Is timing ready for entry?"
+
+    Ticket 05 — fractal reporter. See `.report()`.
     """
     
+    # Canonical identity used by .report() (Ticket 05).
+    REPORT_AGENT = 'entry'
+    REPORT_TIMEFRAME = '15m'
+
     def __init__(self, config: Dict):
         """
         Initialize Entry Agent
@@ -131,6 +137,24 @@ class EntryAgent:
                 'price_near_ema': price_near_ema,
                 'timing_score': timing_score
             }
+        )
+
+    # ------------------------------------------------------------------
+    # Ticket 05 — Fractal reporter API
+    # ------------------------------------------------------------------
+    def report(
+        self,
+        df: pd.DataFrame,
+        asset: str,
+        timestamp: "str | None" = None,
+        **analyze_kwargs,
+    ):
+        """Emit a canonical `FractalReport` (see ContextAgent.report)."""
+        result = self.analyze(df, **analyze_kwargs)
+        return result.to_fractal_report(
+            asset=asset,
+            timeframe=self.REPORT_TIMEFRAME,
+            timestamp=timestamp,
         )
 
 

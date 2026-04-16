@@ -141,3 +141,55 @@ happened :
 Until then, **the status stays alternative** and this doc is the
 clear acknowledgement that both systems exist by design, not by
 accident.
+
+---
+
+## Reporter API (Ticket 05)
+
+Every Jesse fractal agent — both the mono-file implementation
+(`src/ml/jesse_agents.py`) and the per-file implementation
+(`src/agents/*.py`) — now exposes a canonical reporter :
+
+```python
+agent.report(df, asset, timestamp=None, **analyze_kwargs) -> FractalReport
+```
+
+This is a thin additive wrapper on the existing `.analyze() ->
+AgentResult` method, using the `AgentResult.to_fractal_report()`
+adapter introduced in Ticket 03. It sets the **canonical** agent
+name and fractal timeframe — independent of any config-driven
+`self.timeframe` used by `.analyze()`'s internal logic.
+
+| Class (mono / per-file) | `REPORT_AGENT` | `REPORT_TIMEFRAME` |
+|---|---|---|
+| `JesseContextAgent` / `ContextAgent` | `'context'` | `'1d'` |
+| `JesseRegimeAgent`  / `RegimeAgent`  | `'regime'`  | `'4h'` |
+| `JesseSetupAgent`   / `SetupAgent`   | `'setup'`   | `'1h'` |
+| `JesseEntryAgent`   / `EntryAgent`   | `'entry'`   | `'15m'` |
+
+Contract compatibility (proven by
+`tests/test_jesse_fractal_report.py::TestReportFeedsMetaDecision`) :
+the 4 reports together feed a `MetaDecision.fractal_reports` dict
+without raising, which is the canonical input schema for the
+Meta-GBM layer.
+
+**What Ticket 05 does NOT do** (scope-kept) :
+
+- It does NOT wire the Jesse reports into `NYXEngine` — the engine
+  still uses hand-crafted proxy scalars (`rule_context`,
+  `rule_regime`, `rule_setup`, `disagreement`). The swap path is
+  the same as before (see above), now with a clean `FractalReport`
+  contract on both sides.
+- It does NOT touch `.analyze()` or `AgentResult` — 207 existing
+  tests stay GREEN.
+- It does NOT unify the mono-file and per-file implementations.
+
+**What Ticket 05 does** :
+
+- Reposition the 4 Jesse agents as **fractal reporters** (not
+  deciders) by giving them a report-producing method with strict
+  schema validation via `FractalReport.__post_init__`.
+- Ensure both implementations expose the same `REPORT_AGENT` /
+  `REPORT_TIMEFRAME` constants and the same `.report()` signature.
+- Provide a typed, validated, cross-layer contract for later
+  tickets that may wire these reports into `NYXEngine`.

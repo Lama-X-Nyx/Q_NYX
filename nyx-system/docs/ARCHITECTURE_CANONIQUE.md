@@ -158,7 +158,20 @@ reality checks — Monte Carlo shuffle, block bootstrap,
 
 The 4 fractal reporters (`JesseContextAgent`, `JesseRegimeAgent`,
 `JesseSetupAgent`, `JesseEntryAgent`) are **implemented, tested (45
-GREEN tests), but NOT WIRED into the canonical runtime today.**
+GREEN tests + 60 new Ticket 05 tests = 105 GREEN), but NOT WIRED into
+the canonical runtime today.**
+
+Since Ticket 05, every Jesse agent (mono-file `src/ml/jesse_agents.py`
++ per-file `src/agents/*.py`) exposes the canonical reporter :
+
+```python
+agent.report(df, asset, timestamp, **analyze_kwargs) -> FractalReport
+```
+
+with class-level `REPORT_AGENT` and `REPORT_TIMEFRAME` constants
+(Context=1d, Regime=4h, Setup=1h, Entry=15m) enforcing the fractal
+timeframe stack. See `JESSE_AGENTS_STATUS.md` for the full reporter
+API contract and the test matrix.
 
 Instead, `NYXEngine._generate_candidates` computes **hand-crafted
 proxy scalars** with identical semantic roles :
