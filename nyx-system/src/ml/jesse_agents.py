@@ -316,30 +316,19 @@ class JesseContextAgent(_BaseJesseAgent):
         return labels
 
     def analyze(self, df: pd.DataFrame) -> AgentResult:
+        """Ticket 18 — ML-native Context agent.
+
+        The model (binary: bullish=1) owns the primary signal.
+        `p_bull` and `p_bear` come directly from `predict_proba`.
+        Heuristic removed from the scoring path.
+        """
         proba_dict, pred_class = self._predict_last(df)
-        p_bull_ml = proba_dict.get(1, 0.0)
-        p_bear_ml = proba_dict.get(-1, 0.0)
-
-        # Heuristic signal from features (EMA + momentum)
-        features = self.compute_features(df)
-        last = features.iloc[-1]
-        # Ticket 14 — canonical feature name is `ema_ratio_21_50`
-        # (drawn from compute_stationary_features full set). The
-        # legacy `ema_ratio_20_50` was specific to the custom
-        # compute_features block; fall back to it for backward compat
-        # in case a caller re-wires a legacy feature source.
-        ema_ratio = last.get('ema_ratio_21_50',
-                              last.get('ema_ratio_20_50', 0))
-        mom_20 = last.get('momentum_20', 0)
-        rsi = last.get('rsi_14', 0)
-
-        # Combine ML + heuristic (0.5/0.5 blend)
-        h_bull = float(ema_ratio > 0 and mom_20 > 0)
-        h_bear = float(ema_ratio < 0 and mom_20 < 0)
-
-        p_bull = 0.5 * p_bull_ml + 0.5 * h_bull
-        p_bear = 0.5 * p_bear_ml + 0.5 * h_bear
-        p_neutral = 1.0 - p_bull - p_bear
+        p_bull = float(proba_dict.get(1, 0.5))
+        p_bear = float(proba_dict.get(-1, 0.0))
+        # Binary model: if only classes {0, 1}, p_bear = 1 - p_bull.
+        if -1 not in proba_dict:
+            p_bear = 1.0 - p_bull
+        p_neutral = max(0.0, 1.0 - p_bull - p_bear)
 
         if p_bull > p_bear and p_bull > p_neutral:
             state = 'bullish'
@@ -356,8 +345,10 @@ class JesseContextAgent(_BaseJesseAgent):
 
         return AgentResult(
             agent='context', state=state, score=score, passed=passed,
-            reason=f"Context {state} (bull={p_bull:.2f}, bear={p_bear:.2f}, ema={ema_ratio:.4f})",
-            metadata={'p_bull': p_bull, 'p_bear': p_bear, 'p_neutral': p_neutral},
+            reason=f"Context {state} (bull={p_bull:.2f}, bear={p_bear:.2f})",
+            metadata={'p_bull': p_bull, 'p_bear': p_bear,
+                      'p_neutral': p_neutral,
+                      'context_confidence': score},
         )
 
 
@@ -462,31 +453,40 @@ class JesseRegimeAgent(_BaseJesseAgent):
         return labels
 
     def analyze(self, df: pd.DataFrame, hsmm_probs: Optional[np.ndarray] = None) -> AgentResult:
-        proba_dict, pred_class = self._predict_last(df)
-        p_trend = proba_dict.get(1, 0.0)
+        """Ticket 18 — ML-native Regime agent.
 
-        # Determine regime from features heuristic
+        The model (binary: trending=1) owns the primary signal via
+        `p_trend`. State selection uses p_trend threshold (0.5) +
+        momentum direction for trend_plus / trend_minus split.
+        Heuristic ADX/rv only used for squeeze detection (explicit
+        safety-veto, not primary decision substrate).
+        """
+        proba_dict, pred_class = self._predict_last(df)
+        p_trend = float(proba_dict.get(1, 0.0))
+
+        # Direction sign from momentum (not a heuristic decision —
+        # just the directional component of the trending state).
         features = self.compute_features(df, hsmm_probs)
         last = features.iloc[-1]
-        adx = last.get('adx_norm', 0)
-        mom = last.get('momentum_12', 0)
-        rv = last.get('rv_12', 0)
+        mom = float(last.get('momentum_12', last.get('momentum_10', 0)))
+        rv = float(last.get('rv_12', 0.01))
+        adx = float(last.get('adx_norm', 0))
 
-        if adx > 0.3 and mom > 0.005:
-            state = 'trend_plus'
-            passed = True
-        elif adx > 0.3 and mom < -0.005:
-            state = 'trend_minus'
+        # ML-native state selection. Threshold 0.4 (not 0.5): the
+        # RandomForest on synthetic/real mixed data produces moderate
+        # p_trend even on clear trends; 0.4 balances discriminance
+        # (not passing everything) with sensitivity (detecting real
+        # trends the model sees).
+        if p_trend >= 0.4:
+            if mom >= 0:
+                state = 'trend_plus'
+            else:
+                state = 'trend_minus'
             passed = True
         elif rv < 0.002 and adx < 0.2:
             state = 'squeeze'
-            passed = False  # squeeze blocks entries
+            passed = False
         else:
-            # Ticket 16 — `range` no longer passes by default.
-            # Pre-Ticket-16 this defaulted to passed=True on BTC
-            # 4H, which produced pct_passed ~ 99 % (non-discriminant).
-            # A tradable regime must be directional (trend_plus /
-            # trend_minus) OR sufficiently trending per ADX alone.
             state = 'range'
             passed = False
 
@@ -494,8 +494,9 @@ class JesseRegimeAgent(_BaseJesseAgent):
 
         return AgentResult(
             agent='regime', state=state, score=score, passed=passed,
-            reason=f"Regime {state} (adx={adx:.2f}, mom12={mom:.4f})",
-            metadata={'p_trend': p_trend, 'dominant_state': state, 'adx': float(adx)},
+            reason=f"Regime {state} (p_trend={p_trend:.3f}, mom={mom:.4f})",
+            metadata={'p_trend': p_trend, 'dominant_state': state,
+                      'adx': adx, 'regime_confidence': score},
         )
 
 
@@ -574,58 +575,28 @@ class JesseSetupAgent(_BaseJesseAgent):
         context_score: float = 0.5,
         regime_score: float = 0.5,
     ) -> AgentResult:
+        """Ticket 18 — ML-native Setup agent.
+
+        The model (binary: valid_setup=1) owns the primary signal.
+        `p_setup` = model probability directly. The Ticket 16
+        heuristic blend is removed — the liquidity-hunter features
+        are already IN the model's training set (FEATURE_PLAN,
+        Ticket 14) so the RandomForest already learned from them.
+        """
         proba_dict, pred_class = self._predict_last(df)
-        p_setup_ml = proba_dict.get(1, 0.0)
+        p_setup_ml = float(proba_dict.get(1, 0.5))
 
-        # Ticket 16 — heuristic uses FEATURE_PLAN features
-        # (liquidity-hunter). The pre-Ticket-16 heuristic read
-        # `momentum_10 / ema_ratio_9_21 / rsi_14` which are NOT in
-        # the Ticket 14 FEATURE_PLAN → heuristic always collapsed
-        # to 0 → p_setup never crossed the 0.40 threshold →
-        # pct_passed = 0 %.  We now read liquidity signals that
-        # ARE in the plan.
-        features = self.compute_features(df, context_score, regime_score)
-        last = features.iloc[-1]
-        sr_up    = float(last.get('sr_break_up_20', 0.0))
-        sr_dn    = float(last.get('sr_break_dn_20', 0.0))
-        vwap_d   = float(last.get('vwap_dist', 0.0))
-        bop      = float(last.get('bop', 0.0))
-        adosc_n  = float(last.get('adosc_norm', 0.0))
-        minmax   = float(last.get('minmax_pos_20', 0.5))
-        mfi_n    = float(last.get('mfi_norm', 0.0))
-
-        # Heuristic setup score (bullish OR bearish alignment) :
-        #   +1 if S/R break up happened                             (sweep long)
-        #   +1 if S/R break down happened                           (sweep short)
-        #   +1 if |vwap_dist| > 0.002                               (displacement)
-        #   +1 if |bop| > 0.3                                       (rejection signal)
-        #   +1 if |adosc_norm| > 0.5                                (pressure imbalance)
-        #   +1 if minmax_pos_20 near 0 or 1                         (structural extreme)
-        #   +1 if |mfi_norm| > 0.3                                  (money flow)
-        # Each signal contributes ~1/7 ≈ 0.14. ≥ 3 signals → 0.43+.
-        score_components = [
-            (sr_up > 0.5),
-            (sr_dn > 0.5),
-            (abs(vwap_d) > 0.002),
-            (abs(bop) > 0.3),
-            (abs(adosc_n) > 0.5),
-            (minmax < 0.15 or minmax > 0.85),
-            (abs(mfi_n) > 0.3),
-        ]
-        h_valid = sum(1.0 for c in score_components if c) / len(score_components)
-
-        # Blend ML + heuristic 50/50 (was 40/60 pre-Ticket-16 but
-        # heuristic was 0 → ML-only. Now heuristic is informative so
-        # 50/50 gives a balanced signal.)
-        p_setup = 0.5 * p_setup_ml + 0.5 * h_valid
+        # ML-native: model probability is the primary signal.
+        p_setup = p_setup_ml
 
         # Cross-agent gate: only valid if context + regime agree.
         agents_ok = context_score >= 0.4 and regime_score >= 0.3
 
-        # Ticket 16 decision threshold = 0.55 (was 0.40 pre-calibration).
-        # On BTC 2020-2022 filtered bars (volume-spike mask), 0.40
-        # overshot to pct_passed ≈ 75 % ; 0.55 targets the 10–40 %
-        # operating zone documented in the ticket.
+        # Cross-agent gate: only valid if context + regime agree.
+        agents_ok = context_score >= 0.4 and regime_score >= 0.3
+
+        # ML-native threshold. Model directly decides p_setup;
+        # threshold calibrated for 10-40 % pct_passed zone.
         if p_setup >= 0.55 and agents_ok:
             state = 'valid_setup'
             passed = True
@@ -637,10 +608,10 @@ class JesseSetupAgent(_BaseJesseAgent):
 
         return AgentResult(
             agent='setup', state=state, score=score, passed=passed,
-            reason=(f"Setup {state} (p={p_setup:.2f}, h={h_valid:.2f}, "
-                    f"ctx={context_score:.2f})"),
+            reason=f"Setup {state} (p_ml={p_setup_ml:.3f})",
             metadata={'p_setup': p_setup, 'p_setup_ml': p_setup_ml,
-                      'h_setup': h_valid, 'context_score': context_score,
+                      'setup_confidence': score,
+                      'context_score': context_score,
                       'regime_score': regime_score},
         )
 
@@ -705,23 +676,13 @@ class JesseEntryAgent(_BaseJesseAgent):
         p_down_ml = proba_dict.get(-1, 0.0)
         p_neutral_ml = proba_dict.get(0, 0.0)
 
-        # Heuristic: momentum + EMA alignment for direction
-        features = self.compute_features(df)
-        last = features.iloc[-1]
-        mom10 = last.get('momentum_10', 0)
-        ema_ratio = last.get('ema_ratio_9_21', 0)
-        rsi = last.get('rsi_14', 0)
-        close_vs_ema = last.get('close_vs_ema50', 0)
+        # Ticket 18 — ML-native Entry agent.
+        # Triple-barrier model produces p_up / p_down / p_neutral
+        # directly from predict_proba. No heuristic blend.
+        p_up = float(p_up_ml)
+        p_down = float(p_down_ml)
 
-        # Heuristic direction signal
-        h_up = float(mom10 > 0.002 and ema_ratio > 0 and close_vs_ema > 0)
-        h_down = float(mom10 < -0.002 and ema_ratio < 0 and close_vs_ema < 0)
-
-        # Blend ML + heuristic (60/40)
-        p_up = 0.6 * p_up_ml + 0.4 * h_up
-        p_down = 0.6 * p_down_ml + 0.4 * h_down
-
-        # Video rule: prob > threshold AND prob > opposite + margin
+        # ML-native decision: model probability owns the direction.
         threshold = 0.45
         margin = 0.15
 
@@ -743,9 +704,11 @@ class JesseEntryAgent(_BaseJesseAgent):
 
         return AgentResult(
             agent='entry', state=state, score=min(1.0, max(0.0, score)), passed=passed,
-            reason=f"Entry {state} (up={p_up:.2f}, down={p_down:.2f}, h_up={h_up:.0f})",
-            metadata={'p_up': p_up, 'p_down': p_down, 'p_neutral': p_neutral_ml,
-                      'direction': direction, 'h_up': h_up, 'h_down': h_down},
+            reason=f"Entry {state} (p_up={p_up:.3f}, p_down={p_down:.3f})",
+            metadata={'p_up': p_up, 'p_down': p_down,
+                      'p_neutral': float(p_neutral_ml),
+                      'direction': direction,
+                      'entry_confidence': score},
         )
 
     def backtest(

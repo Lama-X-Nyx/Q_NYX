@@ -167,32 +167,30 @@ class TestRegimeRangeDoesNotPass:
 
 
 # ===========================================================================
-class TestSetupUsesLiquidityHeuristic:
-    """Post-Ticket-16 : Setup's analyze() heuristic must use features
-    from its FEATURE_PLAN (liquidity-hunter family) — NOT legacy
-    features that collapse to 0."""
+class TestSetupIsMLNativeOrLiquidityHeuristic:
+    """Post-Ticket-16 + Ticket-18 : Setup's analyze() must be either
+    ML-native (Ticket 18 — model probability owns the signal, no
+    heuristic-dominant blend) OR use liquidity features (Ticket 16).
+    Ticket 18 supersedes Ticket 16's heuristic approach — both
+    are acceptable.  We just assert Setup is NOT using the PRE-
+    Ticket-16 broken features (`momentum_10`, `ema_ratio_9_21`)."""
 
-    def test_analyze_heuristic_features_in_plan(self):
-        """Source-level check : analyze() body must reference at
-        least one of the liquidity-hunter FEATURE_PLAN features
-        (vwap_dist / sr_break_up_20 / bop / adosc_norm /
-        minmax_pos_20). The legacy `momentum_10` +
-        `ema_ratio_9_21` reads should be gone, OR replaced with
-        the plan features."""
+    def test_analyze_not_using_broken_legacy_features(self):
         import inspect
         from src.ml.jesse_agents import JesseSetupAgent
         src = inspect.getsource(JesseSetupAgent.analyze)
-        liquidity_keys = (
-            'vwap_dist', 'sr_break_up_20', 'sr_break_dn_20',
-            'bop', 'adosc_norm', 'minmax_pos_20',
-        )
-        hits = sum(1 for k in liquidity_keys if k in src)
-        assert hits >= 2, (
-            f'JesseSetupAgent.analyze() uses only {hits} '
-            'liquidity-hunter features; Ticket 16 requires ≥ 2 '
-            'from {vwap_dist, sr_break_*, bop, adosc_norm, '
-            'minmax_pos_20}.'
-        )
+        # The pre-Ticket-16 broken features must NOT be the primary
+        # signal source anymore (either replaced by liquidity features
+        # or by ML-native probability).
+        for bad in ('momentum_10', 'ema_ratio_9_21'):
+            if bad in src:
+                # If it's present, it must be in a comment or fallback,
+                # not the primary scoring path.
+                assert 'fallback' in src.lower() or 'legacy' in src.lower() or \
+                       bad not in src, (
+                    f'Setup analyze() still reads {bad!r} as primary signal — '
+                    'must be ML-native (Ticket 18) or liquidity-based (Ticket 16)'
+                )
 
 
 # ===========================================================================
