@@ -1,0 +1,47 @@
+{
+  "ticket": "Ticket 17 — Jesse Runtime Integration & Edge Validation",
+  "date": "2026-04-16",
+  "symbol": "BTCUSDT",
+  "experiment": {
+    "phase_a": "4 per-file Jesse agents called per candidate bar in NYXEngine._build_fractal_report_features. 21 rep_* features (enriched from Ticket 13's 13) merged alongside rule_* proxies + Ticket 09 liquidity-hunter features.",
+    "phase_b": "OOS 2023 comparison vs Ticket 11 baseline",
+    "agents_calibrated": "Ticket 16 — Setup pct_passed 0->35.4%, Regime 99.2->51.6%",
+    "scope": "BTC only (2019-09 -> 2022-12 train, 2023 OOS)"
+  },
+  "baseline_ticket11": {
+    "n_features": 173,
+    "oos_2023": {"n_trades": 54, "sharpe": 9.96, "total_pnl_dollars": 2171.18, "max_drawdown_pct": 0.0037, "bear_dial_activation_rate": 0.466}
+  },
+  "ticket13_uncalibrated": {
+    "n_features": 186,
+    "oos_2023": {"n_trades": 49, "sharpe": 8.04, "total_pnl_dollars": 1828.31, "max_drawdown_pct": 0.0057, "bear_dial_activation_rate": 0.466}
+  },
+  "ticket17_calibrated": {
+    "n_features": 194,
+    "oos_2023": {"n_trades": 48, "sharpe": 8.73, "total_pnl_dollars": 1924.74, "max_drawdown_pct": 0.0057, "bear_dial_activation_rate": 0.466}
+  },
+  "delta_t13_to_t17": {
+    "sharpe_pct": "+8.6% (calibration helped)",
+    "pnl_pct": "+5.3%",
+    "note": "Ticket 16 calibration objectively improved agent quality (T13→T17)"
+  },
+  "delta_baseline_to_t17": {
+    "sharpe_pct": "-12.3% (still below baseline)",
+    "pnl_pct": "-11.3%",
+    "max_drawdown_pct": "+54.1%",
+    "note": "21 extra rep_* features still degrade OOS edge vs 173-feature baseline"
+  },
+  "decision": "REJECT",
+  "decision_rationale": [
+    "Per ticket decision rules: Sharpe ↓ (-12.3%) + drawdown ↑ (+54%) = REJECT.",
+    "Calibration (T16) DID improve the signal: T13 Sharpe 8.04 → T17 Sharpe 8.73 (+8.6%). The direction is positive. But absolute delta from baseline (9.96) is still -12.3%.",
+    "Root cause hypothesis: the per-file Jesse agents are rule-based (Context SMA fallback, Regime ADX heuristic, Setup liquidity-hunter heuristic blend, Entry momentum threshold). They produce ~0.0/0.5/1.0 binary-ish rep_* values on each bar. The GBM trained on 173 technical features already captures the same information (via rule_context/rule_regime/rule_setup proxies + ATR/EMA/RSI/ADX features). The rep_* features are REDUNDANT — they add noise without adding new orthogonal signal.",
+    "The per-file agents' .report() values are NOT ML-probability-based — they're heuristic scores (0.0 or 1.0 for passed, 0.5 for score default). A future experiment could swap to the mono-file ML-based JesseContextAgent/etc. (RandomForest trained on BTC) whose .report() would emit calibrated probabilities. That would test whether ML-derived probabilities (vs heuristic scores) add genuine orthogonal signal to the 173-feature GBM.",
+    "Artefact REVERTED to Ticket 11 baseline (Sharpe 9.96 preserved). Wiring KEPT committed for future experiments."
+  ],
+  "next_step_suggestions": [
+    "HYBRID: analyze GBM feature_importances_ from the Ticket 17 model to see if ANY rep_* feature had non-zero importance. If yes, keep only those; if no, the signal is genuinely absent.",
+    "Swap to mono-file ML-based Jesse*Agent (RandomForest, trained on BTC pre-training slice). Their .report() would emit calibrated ML probabilities instead of heuristic 0/1/0.5 values.",
+    "Structural-only: keep Jesse agents for MetaGBM disagr/quality_bucket/risk_hint enrichment (Ticket 06/07 path) without feeding their scores into the GBM features. The agents remain an OBSERVABILITY layer, not a signal layer."
+  ]
+}

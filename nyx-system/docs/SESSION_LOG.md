@@ -709,3 +709,42 @@ restent les vraies gates.
   fractal_report_features passe d'un stub à des vrais appels
   agent.report() sur les 4 agents retrainés). Comparer edge BTC
   2023 OOS vs Ticket 11 baseline (Sharpe 9.96).
+
+---
+
+## 2026-04-16 — Ticket 17 (Jesse Runtime Integration & Edge Validation)
+
+### Question testée
+Les 4 Jesse agents calibrés (Ticket 16) améliorent-ils l'edge BTC
+quand leurs rep_* enrichis (21 features, dont p_bull/p_bear/
+trend_plus/trend_minus/p_up/p_down) sont injectés dans le GBM ?
+
+### Réponse : NON. REJECT.
+
+| Metric | Baseline T11 | T13 (no calib) | T17 (calibrated) |
+|---|---:|---:|---:|
+| n_features | 173 | 186 | 194 |
+| Sharpe | 9.96 | 8.04 | 8.73 |
+| PnL | $2,171 | $1,828 | $1,925 |
+| Max DD | 0.37% | 0.57% | 0.57% |
+
+### Impact de la calibration Ticket 16
+T13 → T17 : Sharpe +8.6 %, PnL +5.3 %. La calibration A AIDÉ mais
+pas assez pour rattraper le baseline.
+
+### Root cause
+Les per-file agents sont rule-based (heuristic 0/0.5/1). Leurs
+rep_* features sont REDONDANTES avec les features techniques
+existantes (rule_context/regime/setup proxies + EMA/ATR/RSI/ADX).
+Le GBM ne bénéficie pas d'info orthogonale supplémentaire.
+
+### Décision
+- Artefact REVERTED au baseline T11 (Sharpe 9.96 préservé).
+- Wiring CONSERVÉ dans NYXEngine (plumbing intact).
+- Comparison JSON archivé : reports/BTCUSDT_ticket17_comparison.json
+
+### Options documentées pour la suite
+1. HYBRID : feature_importances_ analysis (quels rep_* ont > 0 ?)
+2. Swap mono-file ML-based Jesse*Agent (RandomForest probas calibrées)
+3. Structural-only : agents comme enrichissement MetaGBM
+   (quality/risk/disagr) sans injection dans le feature vector GBM

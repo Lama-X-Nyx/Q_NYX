@@ -443,24 +443,34 @@ class NYXEngine:
     # Ticket 13 — fractal report features per candidate bar
     # ------------------------------------------------------------------
     _REP_KEYS = (
-        'rep_ctx_score', 'rep_ctx_passed',
+        'rep_ctx_score', 'rep_ctx_passed', 'rep_ctx_p_bull', 'rep_ctx_p_bear',
         'rep_regime_score', 'rep_regime_passed', 'rep_regime_trend',
-        'rep_setup_score', 'rep_setup_passed',
+        'rep_regime_trend_plus', 'rep_regime_trend_minus', 'rep_regime_range',
+        'rep_setup_score', 'rep_setup_passed', 'rep_setup_prob',
         'rep_entry_score', 'rep_entry_passed', 'rep_entry_direction',
+        'rep_entry_p_up', 'rep_entry_p_down',
         'rep_agreement_mean', 'rep_agreement_std', 'rep_disagreement',
     )
 
     _REP_NEUTRAL_DEFAULTS: Dict[str, float] = {
         'rep_ctx_score':        0.5,
         'rep_ctx_passed':       0.0,
+        'rep_ctx_p_bull':       0.5,
+        'rep_ctx_p_bear':       0.5,
         'rep_regime_score':     0.5,
         'rep_regime_passed':    0.0,
         'rep_regime_trend':     0.0,
+        'rep_regime_trend_plus': 0.0,
+        'rep_regime_trend_minus': 0.0,
+        'rep_regime_range':     1.0,
         'rep_setup_score':      0.5,
         'rep_setup_passed':     0.0,
+        'rep_setup_prob':       0.5,
         'rep_entry_score':      0.5,
         'rep_entry_passed':     0.0,
         'rep_entry_direction':  0.0,
+        'rep_entry_p_up':       0.5,
+        'rep_entry_p_down':     0.5,
         'rep_agreement_mean':   0.5,
         'rep_agreement_std':    0.0,
         'rep_disagreement':     1.0,
@@ -492,6 +502,9 @@ class NYXEngine:
                 )
                 out['rep_ctx_score'] = float(ctx_rep.score)
                 out['rep_ctx_passed'] = 1.0 if ctx_rep.passed else 0.0
+                m = ctx_rep.metadata
+                out['rep_ctx_p_bull'] = float(m.get('p_bull', m.get('p_bull_ml', 0.5)))
+                out['rep_ctx_p_bear'] = float(m.get('p_bear', m.get('p_bear_ml', 0.5)))
         except Exception:
             pass
 
@@ -505,7 +518,11 @@ class NYXEngine:
                 )
                 out['rep_regime_score'] = float(reg_rep.score)
                 out['rep_regime_passed'] = 1.0 if reg_rep.passed else 0.0
-                out['rep_regime_trend'] = 1.0 if 'trend' in reg_rep.state.lower() else 0.0
+                st = reg_rep.state.lower()
+                out['rep_regime_trend'] = 1.0 if 'trend' in st else 0.0
+                out['rep_regime_trend_plus'] = 1.0 if st == 'trend_plus' else 0.0
+                out['rep_regime_trend_minus'] = 1.0 if st == 'trend_minus' else 0.0
+                out['rep_regime_range'] = 1.0 if st == 'range' else 0.0
         except Exception:
             pass
 
@@ -518,6 +535,7 @@ class NYXEngine:
                 )
                 out['rep_setup_score'] = float(stp_rep.score)
                 out['rep_setup_passed'] = 1.0 if stp_rep.passed else 0.0
+                out['rep_setup_prob'] = float(stp_rep.metadata.get('p_setup', stp_rep.score))
         except Exception:
             pass
 
@@ -535,6 +553,9 @@ class NYXEngine:
                     out['rep_entry_direction'] = 1.0
                 elif 'short' in state:
                     out['rep_entry_direction'] = -1.0
+                m = ent_rep.metadata
+                out['rep_entry_p_up'] = float(m.get('p_up', 0.5))
+                out['rep_entry_p_down'] = float(m.get('p_down', 0.5))
         except Exception:
             pass
 

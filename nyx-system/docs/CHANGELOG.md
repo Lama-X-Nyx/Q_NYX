@@ -2,6 +2,63 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 17 — Jesse Runtime Integration & Edge Validation (2026-04-16)
+
+Inject retrained + calibrated Jesse agent rep_* features into the
+BTC GBM training pipeline and measure edge vs baseline.
+
+**Result : REJECT.** Sharpe 9.96 → 8.73 (-12.3 %), drawdown
+0.37 → 0.57 % (+54 %). Artefact REVERTED to Ticket 11 baseline.
+
+Progression across experiments :
+
+| Experiment | Agents | n_feat | Sharpe | PnL | DD |
+|---|---|---:|---:|---:|---:|
+| **T11 baseline** | none | 173 | **9.96** | **$2,171** | **0.37 %** |
+| T13 uncalibrated | per-file, no calib | 186 | 8.04 | $1,828 | 0.57 % |
+| **T17 calibrated** | per-file, T16 calib | **194** | **8.73** | **$1,925** | 0.57 % |
+
+Calibration DID improve (T13 → T17 = +8.6 % Sharpe). But the
+per-file rule-based agents emit heuristic 0/1/0.5 values that are
+redundant with the existing technical features. No orthogonal
+signal added → edge degradation.
+
+- **Phase A (wiring)** : enriched rep_* from 13 → 21 features
+  (`rep_ctx_p_bull / p_bear`, `rep_regime_trend_plus /
+  trend_minus / range`, `rep_setup_prob`, `rep_entry_p_up /
+  p_down`). All extracted from agent metadata in
+  `_build_fractal_report_features`.
+- **Phase B (validation)** : BTC retrain (n_features=194) + OOS
+  2023 via canonical `NYXEngine.run()`. Comparison
+  `reports/BTCUSDT_ticket17_comparison.json`.
+- **Decision** : per ticket rules, Sharpe ↓ + drawdown ↑ =
+  **REJECT**. Artefact reverted to T11 baseline. Wiring kept.
+- **Root cause** : per-file agents are rule-based (heuristic
+  scores 0/0.5/1), not ML-probability-based. The GBM already
+  captures the same information via existing technical features.
+  Rep_* features are REDUNDANT, not orthogonal.
+- **Next steps documented in comparison JSON** :
+  - HYBRID : feature-importance analysis
+  - Swap to mono-file ML-based agents (RandomForest, calibrated
+    ML probabilities)
+  - Structural-only : keep agents for MetaGBM enrichment
+    (quality_bucket/risk_hint/disagreement) without feeding rep_*
+    into GBM features
+
+Acceptance criteria met :
+- ☑ baseline vs new comparison exists
+- ☑ OOS executed (2023 full year)
+- ☑ decision explicit (REJECT)
+- ☑ docs updated
+
+Failure conditions avoided :
+- ✓ OOS executed (not skipped)
+- ✓ comparison honest (JSON with full progression table)
+- ✓ no hidden heuristic mismatch (enriched rep_* read real
+  metadata)
+- ✓ Jesse wired AND outputs used (21 rep_* in feature vector)
+- ✓ no second engine
+
 ### Ticket 16 — Setup + Regime calibration before runtime integration (2026-04-16)
 
 Fix Setup degeneracy (`pct_passed = 0 %`) and Regime over-
