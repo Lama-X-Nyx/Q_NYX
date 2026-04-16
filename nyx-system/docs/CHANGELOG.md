@@ -2,6 +2,96 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 16 — Setup + Regime calibration before runtime integration (2026-04-16)
+
+Fix Setup degeneracy (`pct_passed = 0 %`) and Regime over-
+permissiveness (`pct_passed = 99.2 %`) before any Ticket 17 runtime
+wiring. This is a **quality-gate** ticket : answer the hard question
+*"do Setup and Regime deserve to exist as runtime-grade fractal
+agents?"*
+
+**Answer after Ticket 16 : yes.** Both agents now sit inside
+their operating zones.
+
+Before / after (BTC 2020-2022 via `scripts/retrain_jesse_agents.py`) :
+
+| Agent | Metric | Pre-Ticket-16 | Post-Ticket-16 | Target |
+|---|---|---:|---:|---|
+| Setup  | pct_passed | **0.0 %** (degenerate) | **35.4 %** | 10 – 40 % |
+| Setup  | accuracy   | 0.188 (collapse) | 0.500 | ≥ 0.30 |
+| Regime | pct_passed | **99.2 %** (non-discriminant) | **51.6 %** | 30 – 80 % |
+| Regime | accuracy   | 0.571 | 0.571 | — |
+
+Root causes + fixes :
+
+- **Setup (degenerate)**
+  `analyze()` heuristic read `momentum_10 / ema_ratio_9_21 /
+  rsi_14` — none of which are in the Ticket 14 `FEATURE_PLAN`
+  (liquidity-hunter). `last.get(feature, 0)` returned 0 →
+  heuristic always 0 → `p_setup = 0.5 * p_ml + 0.5 * 0 < 0.55`
+  almost always → `pct_passed = 0`.
+  **Fix** : rewrite heuristic on 7 liquidity-hunter signals that
+  ARE in the plan (`sr_break_up_20`, `sr_break_dn_20`,
+  `vwap_dist`, `bop`, `adosc_norm`, `minmax_pos_20`, `mfi_norm`).
+  Each signal contributes 1/7 ≈ 0.14. Raise `p_setup` threshold
+  0.40 → 0.55 so 2-3 active signals no longer auto-pass.
+- **Regime (over-permissive)**
+  `range` state defaulted to `passed=True`. On BTC 4H most bars
+  are `range` → pct_passed ~ 99 %.
+  **Fix** : `range` default `passed=False` — only `trend_plus` /
+  `trend_minus` pass. Squeeze still blocks.
+
+TDD : `tests/test_jesse_calibration_ticket16.py` — 9 GREEN tests :
+
+- Setup non-degenerate : `pct_passed ∈ [5 %, 60 %]` (target 10-40 %),
+  accuracy ≥ 0.30.
+- Regime discriminant : `pct_passed < 95 %` + `> 15 %`.
+- Regime `range` state on flat synthetic data → `passed=False`
+  (behavioural check).
+- Setup analyze source references ≥ 2 liquidity-hunter features
+  (source-level guard against regression to the legacy heuristic).
+- Report schemas preserved (Ticket 05 FractalReport contract).
+
+Regression sweep : 168 GREEN on full Jesse suite (Context / Regime /
+Setup / Entry + orchestrator + fractal_report + agents_status +
+retrained + dataset_policy + calibration_ticket16).
+
+Docs :
+- `JESSE_FEATURE_MAPPING.md` §3 updated with Ticket 16 before /
+  after table + root-cause + honest note on Entry
+  (out-of-scope but `pct_passed = 99.9 %` explained).
+- `CHANGELOG.md` : this entry.
+
+Acceptance criteria (Ticket 16) all met :
+
+- ☑ Setup no longer degenerate (pct_passed 0 → 35.4 %)
+- ☑ Setup not all-pass either (35.4 % ∈ operating zone)
+- ☑ Setup score distribution has variance (ML blend + 7 heuristic
+  signals varies continuously)
+- ☑ Setup accuracy materially above collapse (0.188 → 0.500)
+- ☑ Regime no longer near-100 % pass-through (99.2 → 51.6 %)
+- ☑ Regime `pct_passed` in sane range (51.6 % ∈ [30, 80])
+- ☑ Both agents retain FractalReport schema (9 GREEN)
+- ☑ Tests fail for pathological behavior (asserted)
+- ☑ Before / after documented honestly
+
+Failure conditions (Ticket 16) all AVOIDED :
+
+- ✓ Setup `pct_passed = 0 %` → now 35.4 %
+- ✓ Regime near-100 % → now 51.6 %
+- ✓ Thresholds changed WITH tests (9 GREEN assert the operating zone)
+- ✓ Class / label imbalance documented (the volume-spike filter
+  skew is called out in JESSE_FEATURE_MAPPING §3)
+- ✓ Docs reflect real outcome + root causes + honest Entry note
+- ✓ No runtime integration done (Ticket 17 remains pending)
+
+Out of scope (per ticket) :
+
+- Runtime wiring (Ticket 17 now eligible)
+- MetaGBM retraining
+- ETH/SOL
+- Entry (stays at pct_passed 99.9 %, documented honestly)
+
 ### Tickets 14 + 15 — Jesse retrain on canonical feature stack + dataset policy (2026-04-16)
 
 Ticket 14 — all 4 Jesse agents now share the canonical runtime

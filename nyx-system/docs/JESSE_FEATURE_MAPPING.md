@@ -160,27 +160,57 @@ deterministic given the same input.
 
 ## 3. Retrain metrics (BTC 2020-2022)
 
-Run `python scripts/retrain_jesse_agents.py`. Results :
+Run `python scripts/retrain_jesse_agents.py`. Results post-Ticket-16
+calibration :
 
 | Agent | Old n_features | New n_features | Accuracy | pct_passed | Elapsed |
 |---|---:|---:|---:|---:|---:|
-| Context | 8 | 13 | 0.500 | 100.0 % | 23 s |
-| Regime  | 15 | 23 | 0.571 | 99.2 % | 354 s |
-| Setup   | 16 | 18 | 0.188 | 0.0 %  | 567 s |
-| Entry   | 13 | 13 | 0.560 | 99.9 % | 3.8 s |
+| Context | 8 | 13 | 0.440 | 44.4 % | 27 s |
+| Regime  | 15 | 23 | 0.571 | **51.6 %** ✓ | 382 s |
+| Setup   | 16 | 18 | 0.500 | **35.4 %** ✓ | 584 s |
+| Entry   | 13 | 13 | 0.560 | 99.9 % | 3.9 s |
 
-Entry dropped from "never finishes" to 3.8 s thanks to the dataset
-mask + batch-predict override.
+Entry dropped from "never finishes" to < 4 s thanks to the
+Ticket 15 dataset mask + batch-predict override.
 
-**Caveat on Setup accuracy 0.188** : the volume-spike filter keeps
-bars where potential setups are MORE LIKELY, which skews the label
-distribution toward `valid_setup`. The model's `no_setup` bias
-(pct_passed = 0 %) means it predicts `no_setup` everywhere → low
-accuracy on a dataset dominated by `valid_setup`. This is a DATASET
-BALANCE SIGNAL, not a training failure — a future ticket can
-rebalance with class_weight or an additional downsample of the
-positive class. The retrain itself completed successfully and the
-agent exposes the canonical report schema.
+### Ticket 16 before/after (Setup + Regime calibration)
+
+| Agent | Metric | Pre-Ticket-16 | Post-Ticket-16 | Target zone |
+|---|---|---:|---:|---|
+| Setup | `pct_passed` | **0.0 %** (degenerate) | **35.4 %** | 10 – 40 % |
+| Setup | `accuracy`   | 0.188 (collapse) | 0.500 | ≥ 0.30 |
+| Regime | `pct_passed`| **99.2 %** (non-discriminant) | **51.6 %** | 30 – 80 % |
+| Regime | `accuracy`  | 0.571 | 0.571 | — |
+
+Both agents now sit inside the Ticket 16 operating zone. Ticket 17
+(runtime integration) is eligible.
+
+### Ticket 16 root causes
+
+**Setup (degenerate)** : `analyze()` heuristic read
+`momentum_10 / ema_ratio_9_21 / rsi_14` — none of which are in the
+Ticket 14 `FEATURE_PLAN` (liquidity-hunter focused). The
+`last.get(feature, 0)` fallback always returned 0 → heuristic
+collapsed to 0 → `p_setup = 0.5 * p_ml + 0.5 * 0 < 0.55` almost
+always → `pct_passed = 0 %`. Fix : rewrite heuristic on 7 liquidity-
+hunter signals from the plan (`sr_break_up_20`, `sr_break_dn_20`,
+`vwap_dist`, `bop`, `adosc_norm`, `minmax_pos_20`, `mfi_norm`),
+raise `p_setup` threshold from 0.40 to 0.55 for the 10-40 % zone.
+
+**Regime (over-permissive)** : `range` state defaulted to
+`passed=True`. On BTC 4H most bars fall into `range` → pct_passed
+~ 99 %. Fix : `range` default `passed=False` — only `trend_plus` /
+`trend_minus` pass. Squeeze still blocks.
+
+### Honest note on Entry
+
+Entry stays at `pct_passed = 99.9 %` because its `.analyze()` uses
+a different decision policy (ML proba-based threshold) and the
+dataset mask (candidate-proximity) already keeps only bars where
+an entry decision is relevant. The 99.9 % means "among candidate-
+proximity bars, the ML model says trade 99.9 % of the time" —
+which is why candidate generation + cooldown + bear dial must
+remain the outer gate. Entry is NOT in Ticket 16 scope.
 
 ---
 

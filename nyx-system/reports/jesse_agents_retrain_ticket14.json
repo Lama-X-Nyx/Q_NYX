@@ -23,11 +23,11 @@
       "dataset_kept": 1096,
       "dataset_ratio": 1.0,
       "ticket14_backtest": {
-        "accuracy": 0.5,
+        "accuracy": 0.4398999846578235,
         "n_bars": 214,
-        "pct_passed": 1.0,
-        "avg_score": 0.5,
-        "elapsed_s": 23.1
+        "pct_passed": 0.4439252336448598,
+        "avg_score": 0.4398999846578235,
+        "elapsed_s": 26.87
       }
     },
     "JesseRegimeAgent": {
@@ -45,11 +45,11 @@
       "dataset_kept": 6576,
       "dataset_ratio": 1.0,
       "ticket14_backtest": {
-        "accuracy": 0.5708340579040089,
+        "accuracy": 0.5708340579040088,
         "n_bars": 1584,
-        "pct_passed": 0.9917929292929293,
-        "avg_score": 0.5708340579040089,
-        "elapsed_s": 354.2
+        "pct_passed": 0.5157828282828283,
+        "avg_score": 0.5708340579040088,
+        "elapsed_s": 381.8
       }
     },
     "JesseSetupAgent": {
@@ -67,11 +67,11 @@
       "dataset_kept": 3651,
       "dataset_ratio": 0.139,
       "ticket14_backtest": {
-        "accuracy": 0.18807269234583462,
+        "accuracy": 0.4996356470755205,
         "n_bars": 965,
-        "pct_passed": 0.0,
-        "avg_score": 0.18807269234583462,
-        "elapsed_s": 567.05
+        "pct_passed": 0.3544041450777202,
+        "avg_score": 0.4996356470755205,
+        "elapsed_s": 584.4
       }
     },
     "JesseEntryAgent": {
@@ -93,7 +93,7 @@
         "n_bars": 1138,
         "pct_passed": 0.9991212653778558,
         "avg_score": 0.5958554310398945,
-        "elapsed_s": 3.81
+        "elapsed_s": 3.89
       }
     }
   }

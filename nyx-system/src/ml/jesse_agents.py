@@ -482,8 +482,13 @@ class JesseRegimeAgent(_BaseJesseAgent):
             state = 'squeeze'
             passed = False  # squeeze blocks entries
         else:
+            # Ticket 16 — `range` no longer passes by default.
+            # Pre-Ticket-16 this defaulted to passed=True on BTC
+            # 4H, which produced pct_passed ~ 99 % (non-discriminant).
+            # A tradable regime must be directional (trend_plus /
+            # trend_minus) OR sufficiently trending per ADX alone.
             state = 'range'
-            passed = True
+            passed = False
 
         score = min(1.0, max(0.0, p_trend))
 
@@ -572,29 +577,56 @@ class JesseSetupAgent(_BaseJesseAgent):
         proba_dict, pred_class = self._predict_last(df)
         p_setup_ml = proba_dict.get(1, 0.0)
 
-        # Heuristic: momentum + EMA alignment + cross-agent agreement
+        # Ticket 16 — heuristic uses FEATURE_PLAN features
+        # (liquidity-hunter). The pre-Ticket-16 heuristic read
+        # `momentum_10 / ema_ratio_9_21 / rsi_14` which are NOT in
+        # the Ticket 14 FEATURE_PLAN → heuristic always collapsed
+        # to 0 → p_setup never crossed the 0.40 threshold →
+        # pct_passed = 0 %.  We now read liquidity signals that
+        # ARE in the plan.
         features = self.compute_features(df, context_score, regime_score)
         last = features.iloc[-1]
-        mom10 = last.get('momentum_10', 0)
-        ema_ratio = last.get('ema_ratio_9_21', 0)
-        rsi = last.get('rsi_14', 0)
+        sr_up    = float(last.get('sr_break_up_20', 0.0))
+        sr_dn    = float(last.get('sr_break_dn_20', 0.0))
+        vwap_d   = float(last.get('vwap_dist', 0.0))
+        bop      = float(last.get('bop', 0.0))
+        adosc_n  = float(last.get('adosc_norm', 0.0))
+        minmax   = float(last.get('minmax_pos_20', 0.5))
+        mfi_n    = float(last.get('mfi_norm', 0.0))
 
-        # Heuristic setup score: trend alignment
-        h_valid = 0.0
-        if mom10 > 0.002 and ema_ratio > 0 and rsi > -0.3:
-            h_valid = 0.7  # bullish alignment
-        elif mom10 < -0.002 and ema_ratio < 0 and rsi < 0.3:
-            h_valid = 0.7  # bearish alignment
-        elif abs(mom10) > 0.001:
-            h_valid = 0.4  # weak alignment
+        # Heuristic setup score (bullish OR bearish alignment) :
+        #   +1 if S/R break up happened                             (sweep long)
+        #   +1 if S/R break down happened                           (sweep short)
+        #   +1 if |vwap_dist| > 0.002                               (displacement)
+        #   +1 if |bop| > 0.3                                       (rejection signal)
+        #   +1 if |adosc_norm| > 0.5                                (pressure imbalance)
+        #   +1 if minmax_pos_20 near 0 or 1                         (structural extreme)
+        #   +1 if |mfi_norm| > 0.3                                  (money flow)
+        # Each signal contributes ~1/7 ≈ 0.14. ≥ 3 signals → 0.43+.
+        score_components = [
+            (sr_up > 0.5),
+            (sr_dn > 0.5),
+            (abs(vwap_d) > 0.002),
+            (abs(bop) > 0.3),
+            (abs(adosc_n) > 0.5),
+            (minmax < 0.15 or minmax > 0.85),
+            (abs(mfi_n) > 0.3),
+        ]
+        h_valid = sum(1.0 for c in score_components if c) / len(score_components)
 
-        # Blend ML + heuristic (40/60 — heuristic-heavy since ML is unreliable here)
-        p_setup = 0.4 * p_setup_ml + 0.6 * h_valid
+        # Blend ML + heuristic 50/50 (was 40/60 pre-Ticket-16 but
+        # heuristic was 0 → ML-only. Now heuristic is informative so
+        # 50/50 gives a balanced signal.)
+        p_setup = 0.5 * p_setup_ml + 0.5 * h_valid
 
-        # Cross-agent gate: only valid if context + regime agree
+        # Cross-agent gate: only valid if context + regime agree.
         agents_ok = context_score >= 0.4 and regime_score >= 0.3
 
-        if p_setup >= 0.40 and agents_ok:
+        # Ticket 16 decision threshold = 0.55 (was 0.40 pre-calibration).
+        # On BTC 2020-2022 filtered bars (volume-spike mask), 0.40
+        # overshot to pct_passed ≈ 75 % ; 0.55 targets the 10–40 %
+        # operating zone documented in the ticket.
+        if p_setup >= 0.55 and agents_ok:
             state = 'valid_setup'
             passed = True
             score = min(1.0, p_setup)
@@ -605,7 +637,8 @@ class JesseSetupAgent(_BaseJesseAgent):
 
         return AgentResult(
             agent='setup', state=state, score=score, passed=passed,
-            reason=f"Setup {state} (p={p_setup:.2f}, h={h_valid:.2f}, ctx={context_score:.2f})",
+            reason=(f"Setup {state} (p={p_setup:.2f}, h={h_valid:.2f}, "
+                    f"ctx={context_score:.2f})"),
             metadata={'p_setup': p_setup, 'p_setup_ml': p_setup_ml,
                       'h_setup': h_valid, 'context_score': context_score,
                       'regime_score': regime_score},

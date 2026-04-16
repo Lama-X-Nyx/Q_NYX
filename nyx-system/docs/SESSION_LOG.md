@@ -649,3 +649,63 @@ Entry : de NEVER-FINISH à 3.8s. Ticket 15 mission accomplie.
   pour obtenir pct_passed équilibré
 - OU Ticket 17 : wire agents en runtime pour vraiment tester
   l'impact edge-à-edge (mesurer Sharpe delta vs Ticket 11 baseline)
+
+---
+
+## 2026-04-16 — Ticket 16 (Setup + Regime calibration quality-gate)
+
+### Problème
+Après Tickets 14+15 :
+- Setup : pct_passed 0% (dégénéré) + acc 0.188
+- Regime : pct_passed 99.2% (non-discriminant)
+
+Ces 2 agents ne méritent pas d'être wirés en runtime tels quels.
+
+### Hypothèse testée (Ticket 16)
+1. Setup root cause : `analyze()` lit `momentum_10`, `ema_ratio_9_21`,
+   `rsi_14` — aucun dans FEATURE_PLAN (liquidity-hunter). Heuristic
+   collapse à 0 → p_setup = 0.4×p_ml < 0.40 → pct_passed=0.
+2. Regime root cause : `range` state → passed=True par défaut. Sur
+   BTC 4H la majorité des bars sont `range` → 99% passent.
+
+### Fichiers touchés
+- `src/ml/jesse_agents.py` :
+  - JesseSetupAgent.analyze → nouvelle heuristic sur 7 signals
+    liquidity-hunter (sr_break_*, vwap_dist, bop, adosc_norm,
+    minmax_pos_20, mfi_norm) + threshold 0.40→0.55
+  - JesseRegimeAgent.analyze → `range` default passed=False
+- `tests/test_jesse_calibration_ticket16.py` (nouveau) — 9 tests GREEN
+- `scripts/retrain_jesse_agents.py` (run re-utilisé, pas modifié)
+- `reports/jesse_agents_retrain_ticket14.json` — MAJ numbers
+- `docs/JESSE_FEATURE_MAPPING.md` §3 — before/after + root causes
+- `docs/CHANGELOG.md` + ce log
+
+### Tests
+- 9/9 GREEN Ticket 16 (operating zones + behavioural + report schema)
+- 168/168 GREEN Jesse sweep complet
+
+### Numbers retrain BTC 2020-2022 post-Ticket-16
+
+| Agent | Acc | pct_passed pre→post | Zone cible | Verdict |
+|---|---:|---:|---|---|
+| Context | 0.440 | 100%→44.4% | libre | ✓ |
+| Regime | 0.571 | 99.2%→51.6% | 30-80% | ✓ FIXED |
+| Setup | 0.500 | 0%→35.4% | 10-40% | ✓ FIXED |
+| Entry | 0.560 | 99.9% | (hors scope) | N/A |
+
+### Décision
+**Ticket 17 est maintenant éligible.** Les 2 agents Setup + Regime
+sont calibrés, discriminants, reproducibles. Le wiring en runtime
+peut commencer.
+
+Caveat Entry 99.9% : hors scope Ticket 16, documenté dans
+JESSE_FEATURE_MAPPING §3 — Entry est déjà filtré par le candidate-
+proximity mask, donc sa "décision" finale ne devrait pas être un
+gate supplémentaire — candidate gen + cooldown + bear dial
+restent les vraies gates.
+
+### Next smallest step possible
+- Ticket 17 : wire les 4 Jesse agents en runtime (NYXEngine._build_
+  fractal_report_features passe d'un stub à des vrais appels
+  agent.report() sur les 4 agents retrainés). Comparer edge BTC
+  2023 OOS vs Ticket 11 baseline (Sharpe 9.96).
