@@ -2,6 +2,60 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 10 — Freeze the Meta-GBM I/O contract (2026-04-16)
+
+Freeze the exact API of the Meta-GBM so training, inference, risk,
+and execution all agree without ad-hoc translation.
+
+- **`MetaGBM.INPUT_SCHEMA`** : new class-level constant documenting
+  every key `.decide()` accepts. 6 required + 3 optional helpers :
+  - required : `fractal_reports`, `features`, `asset`, `timestamp`,
+    `timeframe`, `hint_direction`
+  - optional batch / live helpers : `precomputed_proba` (Ticket 07
+    NYXEngine path), `feature_vector` + `already_scaled` (Ticket 07
+    NYXLiveDecider path)
+- **`MetaGBM.OUTPUT_SCHEMA`** : 6 canonical output names :
+  `trade_decision`, `direction`, `confidence`, `expected_edge`,
+  `trade_quality_bucket`, `risk_hint`.
+- **`MetaDecision` Ticket-10 properties** (additive — no internal
+  field renamed; backward-compat preserved) :
+  - `trade_decision: 'BUY' | 'SELL' | 'WAIT'` derived from
+    `(passed, direction)`
+  - `confidence` aliases `probability`
+  - `expected_edge` aliases `expected_edge_net`
+  - `trade_quality_bucket` aliases `quality_bucket`
+- **TDD** : `tests/test_meta_gbm_io_contract.py` — 30 GREEN tests :
+  - `INPUT_SCHEMA` is a Mapping with the required + optional keys
+  - `OUTPUT_SCHEMA` documents the 6 canonical outputs
+  - `MetaDecision.trade_decision` returns BUY/SELL/WAIT correctly
+    on the 4 (direction × passed) combinations
+  - 4 alias properties match the underlying internal field exactly
+  - `TradePlan(asset=dec.asset, direction=dec.direction, ...,
+    source=dec)` and `ExecutionInstruction(side=dec.trade_decision
+    .lower(), source=plan)` constructible without translation
+  - `MetaGBM.decide()` end-to-end emits all 6 canonical fields
+- **Regression sweep** : 200+ GREEN across canonical /
+  contracts / Jesse fractal_report / engine_uses_metagbm /
+  edge_strategy_integration / liquidity_features.
+- **Pyright** : 0 errors on `src/core/meta_gbm.py` +
+  `src/agents/contracts.py`.
+- **Docs** :
+  - `ARCHITECTURE_CANONIQUE.md` : new "Ticket 10 — frozen I/O
+    schema" subsection with the canonical output ↔ internal field
+    table.
+  - `CHANGELOG.md` : this entry.
+
+Acceptance criteria (from ticket) all met :
+- ☑ Meta-GBM input schema is frozen (`INPUT_SCHEMA`)
+- ☑ Meta-GBM output schema is frozen (`OUTPUT_SCHEMA`)
+- ☑ Risk / execution layer consumes outputs without ad-hoc
+  translation (TradePlan + ExecutionInstruction tests prove
+  direct field access works)
+
+Out of scope (per ticket) :
+- Final training run
+- Full runtime rollout
+
 ### Ticket 09 — Liquidity-hunter feature family for Jesse (2026-04-16)
 
 Move NYX away from the pure trend-following bias. Add 13 new

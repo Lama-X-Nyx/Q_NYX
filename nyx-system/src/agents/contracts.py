@@ -372,6 +372,40 @@ class MetaDecision:
     def is_actionable(self) -> bool:
         return self.passed and self.direction != 0
 
+    # ------------------------------------------------------------------
+    # Ticket 10 — frozen output contract aliases
+    # ------------------------------------------------------------------
+    @property
+    def trade_decision(self) -> str:
+        """Canonical strategy semantic — 'BUY' / 'SELL' / 'WAIT'.
+
+        Mapping:
+          passed=True, direction=+1 → 'BUY'
+          passed=True, direction=-1 → 'SELL'
+          else                       → 'WAIT'
+        """
+        if self.passed and self.direction == 1:
+            return 'BUY'
+        if self.passed and self.direction == -1:
+            return 'SELL'
+        return 'WAIT'
+
+    @property
+    def confidence(self) -> float:
+        """Ticket 10 alias for `probability` ∈ [0, 1]."""
+        return float(self.probability)
+
+    @property
+    def expected_edge(self) -> float:
+        """Ticket 10 alias for `expected_edge_net` (bps proxy)."""
+        return float(self.expected_edge_net)
+
+    @property
+    def trade_quality_bucket(self) -> Optional[str]:
+        """Ticket 10 alias for `quality_bucket`
+        ∈ {'high', 'medium', 'low'} or None."""
+        return self.quality_bucket
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             'asset':             self.asset,

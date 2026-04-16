@@ -57,7 +57,71 @@ class MetaGBM:
 
     Interprets 4 fractal reports (context / regime / setup / entry)
     plus market features to emit a canonical `MetaDecision`.
+
+    **Ticket 10 — frozen I/O contract.** `INPUT_SCHEMA` and
+    `OUTPUT_SCHEMA` declare every key the `.decide()` method accepts
+    and emits. Risk / execution layers consume the outputs by name
+    (`MetaDecision.trade_decision`, `.confidence`, `.expected_edge`,
+    `.trade_quality_bucket`, `.risk_hint`, `.direction`) without
+    ad-hoc translation.
     """
+
+    # ------------------------------------------------------------------
+    # Ticket 10 — FROZEN I/O CONTRACT
+    # ------------------------------------------------------------------
+    #
+    # INPUT schema — every key `.decide()` accepts. Mutating this dict
+    # in code is forbidden (it is enforced as the canonical contract
+    # between candidate generation, fractal reporters, and the meta
+    # brain).
+    INPUT_SCHEMA: Dict[str, str] = {
+        # 4 Jesse fractal reports keyed by agent name
+        # ({'context','regime','setup','entry'}). Empty dict accepted
+        # while live agents are not yet wired into the runtime.
+        'fractal_reports':   'Mapping[str, FractalReport]',
+        # candidate-generation edge features + market state features
+        # merged. Floats only; non-numeric values are silently dropped.
+        'features':          'Dict[str, float]',
+        # MetaDecision identity fields
+        'asset':             'str',
+        'timestamp':         'str  (ISO8601)',
+        'timeframe':         'str  in CANONICAL_TIMEFRAMES',
+        # External directional hint from candidate generation hard gate
+        'hint_direction':    'int  in {-1, 0, +1}',
+        # Optional batch helper — caller pre-computed proba via the
+        # encapsulated GBM (Ticket 07 NYXEngine path).
+        'precomputed_proba': 'Optional[float]  in [0, 1]',
+        # Optional live helper — raw feature vector to be auto-scored
+        # via the encapsulated trained GBM (Ticket 07 NYXLiveDecider
+        # path).
+        'feature_vector':    'Optional[Sequence[float] | np.ndarray]',
+        # Whether `feature_vector` is already scaled (skip
+        # scaler.transform). Default False.
+        'already_scaled':    'bool',
+    }
+
+    # OUTPUT schema — every canonical field exposed on the returned
+    # `MetaDecision`. Aliases (Ticket 10) are properties that reuse
+    # internal field names so older callers keep working unchanged.
+    OUTPUT_SCHEMA: Dict[str, str] = {
+        # Meta-strategy semantic — derived from `passed` + `direction`.
+        # 'BUY' | 'SELL' | 'WAIT'. Risk + execution layers route on
+        # this string.
+        'trade_decision':       "str  in {'BUY', 'SELL', 'WAIT'}",
+        # Position direction.
+        'direction':            'int  in {-1, 0, +1}',
+        # Strategy-brain confidence in the decision.
+        # Alias for `MetaDecision.probability` ∈ [0, 1].
+        'confidence':           'float  in [0, 1]',
+        # Expected edge net of fees (bps proxy). Alias for
+        # `MetaDecision.expected_edge_net`.
+        'expected_edge':        'float  (bps proxy, may be negative)',
+        # Quality bucket from aggregate fractal-report score. Alias
+        # for `MetaDecision.quality_bucket`.
+        'trade_quality_bucket': "Optional[str]  in {'high', 'medium', 'low'}",
+        # Risk hint ∈ [0, 1] — high = confident, low = disagreement.
+        'risk_hint':            'Optional[float]  in [0, 1]',
+    }
 
     def __init__(
         self,

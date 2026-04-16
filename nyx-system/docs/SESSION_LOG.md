@@ -347,3 +347,61 @@ applicable + non-correlated avec close raw.
 Ticket 10 potentiel : retraining controlled (Option B) sur
 ETH/SOL avec les nouvelles features liquidity intégrées au vecteur
 84-features. OOS equivalence pour mesurer le delta d'edge.
+
+---
+
+## 2026-04-16 — Ticket 10 (Meta-GBM I/O contract frozen)
+
+### Problème
+Le ticket demande de geler le schéma I/O de MetaGBM pour que
+training, inference, risk, execution s'accordent. Sans contrat
+strict, les couches dérivent et translatent à la main.
+
+### Hypothèse testée
+2 nouveaux constants class-level sur MetaGBM (INPUT_SCHEMA,
+OUTPUT_SCHEMA) + 4 propriétés alias sur MetaDecision
+(trade_decision, confidence, expected_edge, trade_quality_bucket).
+Pas de rename des champs internes — additif strict.
+
+### Fichiers touchés
+- `src/core/meta_gbm.py` — INPUT_SCHEMA (9 keys) + OUTPUT_SCHEMA
+  (6 keys) sur la classe MetaGBM
+- `src/agents/contracts.py` — 4 propriétés sur MetaDecision
+  (trade_decision dérivée de (passed, direction); confidence,
+  expected_edge, trade_quality_bucket = aliases)
+- `tests/test_meta_gbm_io_contract.py` (nouveau) — 30 tests GREEN
+- `docs/ARCHITECTURE_CANONIQUE.md` — section frozen schema avec
+  table canonical ↔ internal
+- `docs/CHANGELOG.md` — entrée Ticket 10
+- `docs/SESSION_LOG.md` — ce log
+
+### Tests
+- 30/30 GREEN sur le nouveau fichier
+- Sweep doc-contract : 200+ GREEN
+- Pyright : 0 errors
+- Pas de régression sur les 27 tests précédents de test_meta_gbm.py
+
+### Impact architectural
+- UN contrat I/O canonique pour MetaGBM, vivant DANS la classe
+  (INPUT_SCHEMA, OUTPUT_SCHEMA = single source of truth)
+- TradePlan / ExecutionInstruction consomment MetaDecision par
+  les noms canoniques (.trade_decision, .confidence, etc.) sans
+  ad-hoc translation
+- Backward-compat strict : tous les champs internes (probability,
+  expected_edge_net, quality_bucket) intacts ; les aliases sont
+  des @property pures
+
+### Risques restants
+- Le schéma documenté est un dict[str, str] (string types only).
+  Pas de validation runtime du type strict (pas de TypedDict). Si
+  un futur ticket veut l'enforcement, c'est une extension simple.
+- INPUT_SCHEMA / OUTPUT_SCHEMA sont des class attributes mutables
+  Python (pas frozen). On enforce le contrat par les tests, pas
+  par immutabilité dataclass-style.
+
+### Next smallest step possible
+- Ticket 11 : wire les 4 Jesse FractalReports en runtime
+  (NYXEngine.run() appelle agent.report() par candidate bar et
+  passe un dict non-vide à MetaGBM)
+- OU Ticket 12 : Option B — retraining avec le contract étendu
+  (84 + 13 nouvelles features liquidity-hunter)

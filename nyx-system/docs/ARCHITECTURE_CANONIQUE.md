@@ -216,13 +216,39 @@ the strategy decision probability.
 - **Label** : sign of `outcome_net` after TP/SL/TIME + maker fees +
   slippage
 
-### Canonical strategy-brain interface (Ticket 06)
+### Canonical strategy-brain interface (Ticket 06 → I/O frozen Ticket 10)
 
 `src/core/meta_gbm.py::MetaGBM` is the canonical **interface** that
 future tickets will wire into the runtime path in place of the
 vote-based orchestrators. It takes 4 `FractalReport` + a features
 dict and emits a canonical `MetaDecision` (contract from Ticket 03,
 extended in Ticket 06 with `quality_bucket` + `risk_hint`).
+
+**Ticket 10 — frozen I/O schema** :
+
+Every key is documented at the class level via `MetaGBM.INPUT_SCHEMA`
+(9 keys) and `MetaGBM.OUTPUT_SCHEMA` (6 canonical output names). The
+schema is stable and additive — risk / execution layers consume the
+output by name (`MetaDecision.trade_decision`, `.confidence`,
+`.expected_edge`, `.trade_quality_bucket`, `.risk_hint`,
+`.direction`) without ad-hoc translation.
+
+| Output (canonical) | Internal field | Ticket |
+|---|---|---|
+| `trade_decision` | derived from `passed` + `direction` | 10 |
+| `direction` | `direction` | 03 |
+| `confidence` | `probability` (alias) | 10 |
+| `expected_edge` | `expected_edge_net` (alias) | 10 |
+| `trade_quality_bucket` | `quality_bucket` (alias) | 10 |
+| `risk_hint` | `risk_hint` | 06 |
+
+Test enforcement : `tests/test_meta_gbm_io_contract.py` (30 GREEN)
+asserts `INPUT_SCHEMA` documents the 6 required + 3 optional keys,
+`OUTPUT_SCHEMA` documents the 6 canonical outputs, the 4 alias
+properties on `MetaDecision` mirror the underlying internal field,
+`trade_decision` maps `(passed, direction)` to BUY/SELL/WAIT, and
+`TradePlan` / `ExecutionInstruction` are constructible from the
+canonical names without translation.
 
 Key semantic — **disagreement is a feature, not an automatic
 failure** :
