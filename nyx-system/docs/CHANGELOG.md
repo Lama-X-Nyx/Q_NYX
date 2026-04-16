@@ -2,6 +2,79 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 08 — Integrate edge_strategy into canonical runtime (2026-04-16)
+
+Move `edge_strategy` from standalone-offline into `NYXEngine` as the
+canonical **candidate-generator component**. Pre-Ticket-08,
+`EdgeStrategy.backtest()` + `NYXEngine._generate_candidates()` had
+two identical copies of the hard-gate logic (EMA9/21/50 alignment +
+volume > vol_min × MA20 + hour ∈ [6, 20]). DRY violation fixed.
+
+- **New method** `EdgeStrategy.generate_candidate_bars(df,
+  hour_window=(6, 20), vol_min=None, max_bars_lookback=None) ->
+  List[int]` — pure bar-index emitter, stateless, canonical hard
+  gate. The `backtest()` / `walk_forward()` / `yearly_walk_forward()`
+  / `full_oos()` methods stay intact for OFFLINE research.
+- **NYXEngine refactor** :
+  - `self._edge = EdgeStrategy(tp_mult=..., sl_mult=..., max_bars=...,
+    vol_min=...)` instantiated in `__init__` (params mirrored from
+    the engine).
+  - `_generate_candidates()` replaces its inline for-loop hard gate
+    with `self._edge.generate_candidate_bars(df_15m,
+    hour_window=(6, 20), vol_min=self.vol_min,
+    max_bars_lookback=self.max_bars)`. Each returned bar index is
+    then wrapped with the existing MTF feature block + outcome
+    computation.
+- **Ticket 08 TDD** : `tests/test_edge_strategy_integration.py` —
+  8 GREEN tests :
+  - EdgeStrategy exposes `.generate_candidate_bars()`
+  - method returns `list[int]`
+  - respects EMA alignment / volume / hour_window filters
+  - NYXEngine holds `_edge` of type EdgeStrategy
+  - `_edge` params match engine params (tp_mult, sl_mult, max_bars,
+    vol_min)
+  - Engine candidate bar indices EXACTLY MATCH those
+    `EdgeStrategy.generate_candidate_bars()` would emit with the
+    same params (delegation invariant)
+- **Equivalence guard** : `tests/test_nyx_equivalence_replay_vs_live.py`
+  stays 4/4 GREEN — numbers preserved 1:1, same hard gate applied
+  to same data.
+- **Regression sweep** : 47 GREEN on nyx_equivalence +
+  nyx_pipeline + nyx_live_decider + nyx_engine_uses_metagbm +
+  edge_strategy_integration. Extended doc-contract sweep 187 GREEN
+  (architecture, operating_rules, canonical_entrypoint,
+  canonical_contracts, jesse_fractal_report, meta_gbm,
+  runner_inventory).
+- **Pyright** : 0 errors on `src/ml/edge_strategy.py` +
+  `src/core/nyx_engine.py`.
+- **Docs** :
+  - `ARCHITECTURE_CANONIQUE.md` : edge_strategy row moved from
+    "offline-only" to "runtime component (candidate generation)".
+    "What this doc forbids" section updated — edge_strategy is the
+    canonical candidate-generator component, NOT a standalone
+    runtime strategy.
+  - `RUNNER_INVENTORY.md` : edge_strategy tagged "canonical runtime
+    (candidate generator)".
+  - `tests/test_runner_inventory.py::test_edge_strategy_not_runtime`
+    renamed to `test_edge_strategy_not_standalone_strategy` with
+    relaxed assertion accepting "candidate generat" / "not a
+    standalone" wording (the test's SPIRIT was "not a standalone
+    strategy" — preserved).
+
+Acceptance criteria (from ticket) all met :
+
+- ☑ `edge_strategy` is no longer treated as a separate strategy
+  (it is a COMPONENT of NYXEngine's runtime path)
+- ☑ Runtime candidates come from the integrated edge layer
+  (`NYXEngine._edge.generate_candidate_bars()`)
+- ☑ Candidate generation is testable from the canonical runtime path
+  (8 new GREEN integration tests + the delegation invariant test)
+
+Out of scope (per ticket) :
+
+- No new edge hypothesis design
+- No new Jesse features
+
 ### Ticket 07 — Wire MetaGBM into NYXEngine (Option C wrapper ownership) (2026-04-16)
 
 Make `MetaGBM` the canonical decision owner in both `NYXEngine.run()`

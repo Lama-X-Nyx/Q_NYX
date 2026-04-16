@@ -224,3 +224,68 @@ Ticket 08 potentiel : Option B — retrain le GBM sur un feature
 set qui inclut les FractalReport scores comme features (au lieu
 des proxies `rule_context/regime/setup`). Nécessite OOS
 equivalence pour vérifier que l'edge est préservé/amélioré.
+
+---
+
+## 2026-04-16 — Ticket 08 (EdgeStrategy integrated as runtime candidate generator)
+
+### Problème
+Ticket 08 demande d'intégrer `edge_strategy` dans le runtime path
+canonique. Mais `edge_strategy.py` était tagué offline-only depuis
+Ticket 01/02. De plus, `NYXEngine._generate_candidates()` contenait
+déjà une COPIE du hard gate (EMA alignment + vol > 3× MA + hour
+∈ [6, 20]) identique à la logique dans `EdgeStrategy.backtest()`.
+DRY violation à résoudre tout en respectant l'acceptance ticket
+08.
+
+### Hypothèse testée
+Promouvoir `edge_strategy` comme COMPONENT du runtime (candidate
+generator), PAS comme standalone strategy. Nouvelle méthode
+`EdgeStrategy.generate_candidate_bars(df, hour_window, vol_min,
+max_bars_lookback) -> List[int]` — pure bar-index emitter.
+NYXEngine holds `self._edge` et délègue la hard gate à cette
+méthode.
+
+### Fichiers touchés
+- `src/ml/edge_strategy.py` — nouvelle méthode `generate_candidate_bars`
+- `src/core/nyx_engine.py` — `self._edge` en __init__ + delegation
+  dans `_generate_candidates`
+- `tests/test_edge_strategy_integration.py` (nouveau) — 8 tests
+  GREEN
+- `tests/test_runner_inventory.py` — test renommé
+  `test_edge_strategy_not_standalone_strategy` avec assertion
+  relâchée (accepte "candidate generat" en plus de legacy/offline)
+- `docs/ARCHITECTURE_CANONIQUE.md` — edge_strategy passe de
+  "offline-only" à "runtime component (candidate generator)"
+- `docs/RUNNER_INVENTORY.md` — même update
+- `docs/CHANGELOG.md` — entrée Ticket 08
+- `docs/SESSION_LOG.md` — ce log
+
+### Tests
+- Ticket 08 directs : 8/8 GREEN
+- Equivalence guard + core : 47/47 GREEN (nyx_equivalence +
+  nyx_pipeline + nyx_live_decider + nyx_engine_uses_metagbm +
+  edge_strategy_integration) — numbers preserved 1:1
+- Doc-contract sweep : 187/187 GREEN
+- Pyright : 0 errors
+
+### Impact architectural
+- UN seul endroit qui définit la hard gate : `EdgeStrategy.generate_candidate_bars`
+- DRY violation résolue — plus de duplication entre edge_strategy
+  et NYXEngine
+- `edge_strategy.backtest()` reste pour research offline
+- La règle "edge_strategy n'est pas standalone" est préservée
+  (c'est un COMPONENT maintenant, pas un standalone engine)
+
+### Risques restants
+- Paramétrage hour_window `(6, 20)` est hardcodé dans
+  `_generate_candidates` call — pas exposé sur NYXEngine. Ticket
+  futur si config'able par asset.
+- `EdgeStrategy.use_hours` / `good_hours` config reste utilisable
+  en backtest OFFLINE mais pas routée via `generate_candidate_bars`
+  (qui accepte seulement un `hour_window` tuple).
+
+### Next smallest step possible
+Continuer l'unification : wire Jesse FractalReports comme enrichissement
+de MetaGBM au runtime (agents.report() called in NYXEngine.run loop),
+ou bien attaquer ticket B (retraining sur FractalReports).

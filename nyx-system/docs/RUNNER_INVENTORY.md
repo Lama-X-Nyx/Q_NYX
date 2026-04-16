@@ -134,7 +134,7 @@ Post-Ticket-04, the canonical batch engine `NYXEngine` lives at
 | File | Role | Status |
 |---|---|---|
 | `src/ml/jesse_agents.py` | 5 Jesse agents (Context / Regime / Setup / Entry / Orchestrator) — alternative to monolithic `NYXEngine` | research/experimental — **not wired** (proxied by `rule_*` scalars; see `JESSE_AGENTS_STATUS.md`) |
-| `src/ml/edge_strategy.py` | Historical trend+volume edge validator (walk-forward 14/14 quarters) | legacy (not a standalone runtime strategy) |
+| `src/ml/edge_strategy.py` | **Canonical runtime candidate generator** (Ticket 08). `EdgeStrategy.generate_candidate_bars(df, hour_window, vol_min, max_bars_lookback)` emits the hard-gate bar indices. NYXEngine owns an `_edge` instance and delegates the candidate-generation hard gate to it. `.backtest()` / `.walk_forward()` / `.yearly_walk_forward()` / `.full_oos()` methods stay available for offline research (walk-forward 14/14 quarters baseline). NOT a standalone strategy — it is a COMPONENT of NYXEngine. | canonical runtime (candidate generator) |
 | `src/ml/ml_agents.py` | `MLContextAgent` / `MLRegimeAgent` / `MLSetupAgent` (LightGBM 4-agent fractal) | research/experimental |
 | `src/ml/ml_entry_agent.py` | `MLEntryAgent` (blend 0.7×LGB + 0.3×River) | research/experimental |
 | `src/ml/ml_orchestrator.py` | `MLOrchestrator` combining the 4 ML agents | research/experimental |

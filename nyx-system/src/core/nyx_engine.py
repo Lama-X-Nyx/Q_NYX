@@ -82,6 +82,19 @@ class NYXEngine:
         # after training; None before first run.
         self._meta: Optional[Any] = None
 
+        # Ticket 08 — canonical candidate-generator component. The
+        # hard-gate bar emission (EMA alignment + vol > vol_min × MA20
+        # + hour ∈ [6, 20]) is owned by EdgeStrategy, not inlined in
+        # the engine anymore. EdgeStrategy is NOT a standalone
+        # strategy; it is a COMPONENT used at runtime.
+        from src.ml.edge_strategy import EdgeStrategy
+        self._edge = EdgeStrategy(
+            tp_mult=self.tp_mult,
+            sl_mult=self.sl_mult,
+            max_bars=self.max_bars,
+            vol_min=self.vol_min,
+        )
+
     @staticmethod
     def _symbol_hint(mtf_data: Dict[str, pd.DataFrame]) -> str:
         """Derive a best-effort symbol label for MetaDecision.asset
@@ -485,24 +498,24 @@ class NYXEngine:
         for name, series in ctx_1h.items():
             ctx_1h_aligned[name] = series.reindex(df_15m.index, method='ffill').fillna(0).values
 
+        # Ticket 08 — delegate the canonical candidate-generation
+        # hard gate to EdgeStrategy. The bar indices emitted here
+        # match those `self._edge.generate_candidate_bars()` would
+        # produce standalone (invariant enforced by
+        # tests/test_edge_strategy_integration.py).
+        candidate_bars = self._edge.generate_candidate_bars(
+            df_15m,
+            hour_window=(6, 20),
+            vol_min=self.vol_min,
+            max_bars_lookback=self.max_bars,
+        )
+
         candidates = []
-        for i in range(60, n - self.max_bars):
-            if np.isnan(ema9[i]) or np.isnan(ema50[i]) or atr[i] <= 0:
-                continue
-            if np.isnan(vol_ma[i]) or vol_ma[i] <= 0:
-                continue
-
+        for i in candidate_bars:
+            # Determine direction from the edge-qualified bar.
             uptrend = ema9[i] > ema21[i] > ema50[i]
-            downtrend = ema9[i] < ema21[i] < ema50[i]
-            if not (uptrend or downtrend):
-                continue
-            if volume[i] / vol_ma[i] < self.vol_min:
-                continue
-            hour = df_15m.index[i].hour if hasattr(df_15m.index, 'hour') else 12
-            if hour < 6 or hour > 20:
-                continue
-
             direction = 1 if uptrend else -1
+            hour = df_15m.index[i].hour if hasattr(df_15m.index, 'hour') else 12
 
             # Vectorized outcome
             entry_price = close[i] * (1 + direction * self.slippage_rate)

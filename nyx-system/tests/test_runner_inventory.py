@@ -136,13 +136,26 @@ class TestLegacyAndOfflineExplicitlyMarked:
     """The historical modules must be called out as legacy or offline,
     not left ambiguous."""
 
-    def test_edge_strategy_not_runtime(self, inventory_text):
-        """edge_strategy.py must be tagged offline or legacy."""
+    def test_edge_strategy_not_standalone_strategy(self, inventory_text):
+        """edge_strategy.py must be explicitly tagged as NOT a
+        standalone strategy — whether it's labelled offline, legacy,
+        or (post-Ticket-08) a canonical CANDIDATE-GENERATION COMPONENT
+        of the runtime. What the test forbids is ambiguous wording
+        that could be read as 'standalone strategy'."""
         idx = inventory_text.lower().find('edge_strategy')
         assert idx >= 0
-        ctx = inventory_text.lower()[max(0, idx-50): idx+400]
-        assert 'offline' in ctx or 'legacy' in ctx, (
-            'edge_strategy.py must be tagged offline or legacy'
+        ctx = inventory_text.lower()[max(0, idx-50): idx+500]
+        # Post-Ticket-08 acceptable tags: offline / legacy (old
+        # reading) OR "candidate generat" (new reading — the canonical
+        # candidate generator is NOT a standalone strategy).
+        assert (
+            'offline' in ctx
+            or 'legacy' in ctx
+            or 'candidate gen' in ctx
+            or 'not a standalone' in ctx
+        ), (
+            'edge_strategy.py must be tagged as non-standalone '
+            '(offline / legacy / candidate-generator component)'
         )
 
     def test_threshold_optimizer_offline(self, inventory_text):

@@ -1,5 +1,5 @@
 """
-Edge Strategy — Walk-Forward Validated Trend Following
+Edge Strategy — Walk-Forward Validated Trend Following.
 
 Validated edges (14 quarters, 2020-2023):
   1. Trend alignment: EMA9 > EMA21 > EMA50 (long) or reverse (short)
@@ -8,10 +8,21 @@ Validated edges (14 quarters, 2020-2023):
   4. TP=1.5x ATR, SL=1.0x ATR
 
 Anti-overfit: parameters fixed before test data. Walk-forward rolling.
+
+Ticket 08 — `EdgeStrategy` is now the **canonical candidate-generator
+component** of the runtime engine. `NYXEngine` holds an `_edge`
+instance and delegates the hard-gate bar emission to
+`EdgeStrategy.generate_candidate_bars()`. EdgeStrategy is NOT a
+standalone strategy — it is a COMPONENT used by NYXEngine at runtime.
+
+The `backtest()` / `walk_forward()` / `yearly_walk_forward()` /
+`full_oos()` methods remain available for OFFLINE research (e.g.
+reproducing the 14/14-quarters walk-forward baseline). They are not
+the runtime decision path.
 """
 import numpy as np
 import pandas as pd
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 from src.ml.jesse_features import _ema, _atr
 
 
@@ -40,6 +51,71 @@ class EdgeStrategy:
         self.use_hours = use_hours
         self.good_hours = good_hours or {8, 9, 10, 14, 15, 16, 17, 18}
 
+    # ------------------------------------------------------------------
+    # Ticket 08 — canonical candidate-generator API.
+    # ------------------------------------------------------------------
+    def generate_candidate_bars(
+        self,
+        df: pd.DataFrame,
+        hour_window: Tuple[int, int] = (6, 20),
+        vol_min: Optional[float] = None,
+        max_bars_lookback: Optional[int] = None,
+    ) -> List[int]:
+        """Emit bar indices where the canonical hard gate passes.
+
+        The hard gate is: valid EMA9 / EMA21 / EMA50 + ATR[i] > 0 +
+        volume[i] / MA20(volume)[i] ≥ `vol_min` + hour ∈ `hour_window`
+        + EMA9 > EMA21 > EMA50 (long) OR EMA9 < EMA21 < EMA50 (short).
+
+        Args :
+          df                : 15m OHLCV DataFrame indexed by timestamp.
+          hour_window       : inclusive (lo, hi) UTC hours.
+          vol_min           : volume/MA20 threshold ; defaults to
+                              `self.vol_min`.
+          max_bars_lookback : if set, stop at `n - max_bars_lookback`
+                              (matching `NYXEngine._generate_candidates`
+                              behaviour).
+
+        Returns a list of integer bar indices (NOT bar timestamps).
+        """
+        close = df['close'].values.astype(float)
+        high = df['high'].values.astype(float)
+        low = df['low'].values.astype(float)
+        volume = df['volume'].values.astype(float)
+        n = len(close)
+
+        atr = np.nan_to_num(_atr(high, low, close, 14), nan=0.0)
+        ema9 = _ema(close, 9)
+        ema21 = _ema(close, 21)
+        ema50 = _ema(close, 50)
+        vol_ma = _ema(volume, 20)
+
+        vmin = float(vol_min) if vol_min is not None else float(self.vol_min)
+        hi_lo = int(hour_window[0])
+        hi_hi = int(hour_window[1])
+        upper = n - int(max_bars_lookback) if max_bars_lookback is not None else n
+
+        bars: List[int] = []
+        idx = df.index
+        has_hour = hasattr(idx, 'hour')
+        for i in range(60, upper):
+            if np.isnan(ema9[i]) or np.isnan(ema50[i]) or atr[i] <= 0:
+                continue
+            if np.isnan(vol_ma[i]) or vol_ma[i] <= 0:
+                continue
+            uptrend = bool(ema9[i] > ema21[i] > ema50[i])
+            downtrend = bool(ema9[i] < ema21[i] < ema50[i])
+            if not (uptrend or downtrend):
+                continue
+            if volume[i] / vol_ma[i] < vmin:
+                continue
+            hour = idx[i].hour if has_hour else 12
+            if hour < hi_lo or hour > hi_hi:
+                continue
+            bars.append(int(i))
+        return bars
+
+    # ------------------------------------------------------------------
     def backtest(self, df: pd.DataFrame) -> Dict[str, Any]:
         """Run backtest on a DataFrame slice. Returns results dict."""
         close = df['close'].values.astype(float)

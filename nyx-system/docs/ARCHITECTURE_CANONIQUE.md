@@ -145,7 +145,7 @@ reality checks — Monte Carlo shuffle, block bootstrap,
 | `PersistentDecisionLogger` | Append-only SQLite decisions | `src/paper_live/persistent_decisions.py` | runtime |
 | `StateManager` + `Heartbeat` | Atomic state + liveness | `src/paper_live/*` | runtime |
 | `feedback_loop` | Champion-challenger + outcome eval | `src/ml/feedback_loop.py` | runtime |
-| `edge_strategy` | Historical trend+volume edge validator (walk-forward only) | `src/ml/edge_strategy.py` | **offline-only** — not a standalone runtime strategy |
+| `edge_strategy` | **Canonical candidate generator** (Ticket 08) — NYXEngine holds `self._edge = EdgeStrategy(...)` and delegates the hard-gate bar emission (EMA9/21/50 alignment + volume > vol_min × MA20 + hour ∈ [6, 20]) to `EdgeStrategy.generate_candidate_bars()`. Historical `backtest()` / `walk_forward()` methods stay available for offline research. NOT a standalone strategy — it is a COMPONENT of NYXEngine. | `src/ml/edge_strategy.py` | **runtime component** (candidate generation) |
 | `threshold_optimizer` | CV threshold sweep | `src/ml/threshold_optimizer.py` | **offline-only** |
 | `ml_filter_v2` | Legacy GBM + CV threshold (consumed by `threshold_optimizer`) | `src/ml/ml_filter_v2.py` | **offline-only** (not imported at runtime) |
 | `realistic_backtest` | Legacy standalone backtester | `src/ml/realistic_backtest.py` | offline-only |
@@ -296,8 +296,12 @@ retraining is out of scope). Both coexist during the migration :
 
 ## What this doc forbids
 
-- Referring to `edge_strategy.py` as a runtime strategy. It is a
-  historical walk-forward validation helper. Not wired at runtime.
+- Referring to `edge_strategy.py` as a **standalone runtime
+  strategy**. It is the **canonical candidate-generator component**
+  of `NYXEngine` (Ticket 08) — i.e. a library callable that emits
+  bar indices; not a strategy that owns execution or decisions.
+  Its historical `backtest()` / `walk_forward()` methods remain
+  for offline research but are not the runtime path.
 - Referring to `threshold_optimizer.py` or `ml_filter_v2.py` as the
   live classifier. They are offline calibration. The live classifier
   is `NYXEngine`'s internal GBM / persisted `ml_filter_v1.pkl`.
