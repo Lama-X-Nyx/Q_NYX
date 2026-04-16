@@ -125,13 +125,18 @@ class TestContextDetection:
         return pd.concat([bull, bear, rng]).sort_index()
 
     def test_bullish_on_uptrend(self):
-        """Trained on mixed data, analyzing uptrend → must detect bullish."""
+        """Trained on mixed data, analyzing uptrend → must detect bullish.
+
+        Ticket 14 — Context FEATURE_PLAN now uses slow-horizon features
+        (ema_ratio_50_200, zscore_20, etc.) that need ≥ 200 warmup bars
+        to converge. Legacy 200-bar synthetic is the exact warmup
+        threshold — extended to 500 bars so the features have room to
+        settle before the model is queried."""
         from src.ml.jesse_agents import JesseContextAgent
         agent = JesseContextAgent()
         mixed = self._make_mixed_daily()
         agent.train(mixed)
-        # Analyze the tail of bull data
-        bull = make_daily_bull(200)
+        bull = make_daily_bull(500)
         result = agent.analyze(bull)
         assert result.state == 'bullish', f"Expected bullish, got {result.state}"
         assert result.passed is True
@@ -143,7 +148,7 @@ class TestContextDetection:
         agent = JesseContextAgent()
         mixed = self._make_mixed_daily()
         agent.train(mixed)
-        bear = make_daily_bear(200)
+        bear = make_daily_bear(500)
         result = agent.analyze(bear)
         assert result.state == 'bearish', f"Expected bearish, got {result.state}"
         assert result.passed is False  # bearish blocks longs
@@ -178,12 +183,17 @@ class TestContextFeatures:
                     f"Feature '{col}' value {valid.abs().max():.1f} — not stationary"
 
     def test_features_include_momentum_and_vol(self):
-        """Must include momentum 5/20/60/200 and vol features."""
+        """Post-Ticket-14 : Context FEATURE_PLAN is drawn from the
+        canonical `compute_stationary_features('full')` set. It
+        includes `momentum_10`, `momentum_20`, `rsi_14`, plus slow
+        structural + vol features (ema_ratio_*, atr_ratio,
+        bb_width_ratio, etc.). The legacy `momentum_5` was replaced
+        by the canonical `momentum_10` (see FEATURE_PLAN)."""
         from src.ml.jesse_agents import JesseContextAgent
         agent = JesseContextAgent()
         df = make_daily_bull(250)
         features = agent.compute_features(df)
-        required = ['momentum_5', 'momentum_20', 'rsi_14']
+        required = ['momentum_10', 'momentum_20', 'rsi_14']
         for feat in required:
             assert feat in features.columns, f"Missing feature: {feat}"
 
@@ -194,21 +204,24 @@ class TestContextFeatures:
 class TestContextBacktest:
 
     def test_standalone_backtest_on_bull(self):
-        """Trained on mixed, test on bull: should signal bullish most of the time."""
+        """Trained on mixed, test on bull: should signal bullish most
+        of the time. Ticket 14 slow-horizon FEATURE_PLAN needs ≥ 200
+        bars warmup; extended synthetic windows so the agent has
+        enough history to discriminate."""
         from src.ml.jesse_agents import JesseContextAgent
         agent = JesseContextAgent()
-        # Train on mixed data (all 3 regimes)
-        mixed = pd.concat([make_daily_bull(150), make_daily_bear(150),
-                           make_daily_range(150)]).sort_index()
+        mixed = pd.concat([make_daily_bull(400), make_daily_bear(400),
+                           make_daily_range(400)]).sort_index()
         agent.train(mixed)
-        # Test on pure bull
-        df_test = make_daily_bull(100)
+        df_test = make_daily_bull(400)
         bullish_count = 0
-        for i in range(1, len(df_test) + 1):
+        # Only measure past the ema_ratio_50_200 warmup (200 bars).
+        for i in range(220, len(df_test) + 1):
             result = agent.analyze(df_test.iloc[:i])
             if result.state == 'bullish':
                 bullish_count += 1
-        pct_bullish = bullish_count / len(df_test)
+        n_measured = len(df_test) - 220 + 1
+        pct_bullish = bullish_count / max(n_measured, 1)
         assert pct_bullish >= 0.35, \
             f"Only {pct_bullish:.0%} bullish on bull data — agent too conservative"
 
@@ -216,16 +229,18 @@ class TestContextBacktest:
         """Trained on mixed, test on bear: should block most of the time."""
         from src.ml.jesse_agents import JesseContextAgent
         agent = JesseContextAgent()
-        mixed = pd.concat([make_daily_bull(150), make_daily_bear(150),
-                           make_daily_range(150)]).sort_index()
+        mixed = pd.concat([make_daily_bull(400), make_daily_bear(400),
+                           make_daily_range(400)]).sort_index()
         agent.train(mixed)
-        df_test = make_daily_bear(100)
+        df_test = make_daily_bear(400)
         blocked_count = 0
-        for i in range(1, len(df_test) + 1):
+        # Only measure past the ema_ratio_50_200 warmup.
+        for i in range(220, len(df_test) + 1):
             result = agent.analyze(df_test.iloc[:i])
             if not result.passed:
                 blocked_count += 1
-        pct_blocked = blocked_count / len(df_test)
+        n_measured = len(df_test) - 220 + 1
+        pct_blocked = blocked_count / max(n_measured, 1)
         assert pct_blocked >= 0.4, \
             f"Only {pct_blocked:.0%} blocked on bear data — agent not cautious enough"
 

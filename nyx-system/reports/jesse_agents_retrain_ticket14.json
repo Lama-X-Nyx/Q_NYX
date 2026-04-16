@@ -1,0 +1,100 @@
+{
+  "ticket": "Ticket 14 + Ticket 15 \u2014 Jesse retrain with role-based feature plan + agent-specific dataset policy",
+  "data_source": "BTC 2020-01-01 to 2022-12-31",
+  "dataset_policy": {
+    "context": "full 1D history, no mask",
+    "regime": "contiguous 4H, max 3 years, no mask",
+    "setup": "contiguous 1H, mask = volume-spike (vol/MA20 >= 1.5)",
+    "entry": "rolling 12-month 15m, mask = candidate-proximity \u00b15 bars, max 20k rows, reproducible via random_state=42"
+  },
+  "agents": {
+    "JesseContextAgent": {
+      "old_n_features": 8,
+      "new_n_features": 13,
+      "feature_plan_sample": [
+        "ema_ratio_21_50",
+        "ema_ratio_50_200",
+        "close_vs_ema50",
+        "rsi_14",
+        "momentum_10",
+        "momentum_20"
+      ],
+      "dataset_bars": 1096,
+      "dataset_kept": 1096,
+      "dataset_ratio": 1.0,
+      "ticket14_backtest": {
+        "accuracy": 0.5,
+        "n_bars": 214,
+        "pct_passed": 1.0,
+        "avg_score": 0.5,
+        "elapsed_s": 23.1
+      }
+    },
+    "JesseRegimeAgent": {
+      "old_n_features": 15,
+      "new_n_features": 15,
+      "feature_plan_sample": [
+        "adx_norm",
+        "ema_ratio_9_21",
+        "ema_ratio_21_50",
+        "atr_ratio",
+        "bb_width_ratio",
+        "keltner_position"
+      ],
+      "dataset_bars": 6576,
+      "dataset_kept": 6576,
+      "dataset_ratio": 1.0,
+      "ticket14_backtest": {
+        "accuracy": 0.5708340579040089,
+        "n_bars": 1584,
+        "pct_passed": 0.9917929292929293,
+        "avg_score": 0.5708340579040089,
+        "elapsed_s": 354.2
+      }
+    },
+    "JesseSetupAgent": {
+      "old_n_features": 16,
+      "new_n_features": 15,
+      "feature_plan_sample": [
+        "vwap_dist",
+        "vwma_dist",
+        "ad_slope",
+        "adosc_norm",
+        "mfi_norm",
+        "marketfi_ratio"
+      ],
+      "dataset_bars": 26304,
+      "dataset_kept": 3651,
+      "dataset_ratio": 0.139,
+      "ticket14_backtest": {
+        "accuracy": 0.18807269234583462,
+        "n_bars": 965,
+        "pct_passed": 0.0,
+        "avg_score": 0.18807269234583462,
+        "elapsed_s": 567.05
+      }
+    },
+    "JesseEntryAgent": {
+      "old_n_features": 13,
+      "new_n_features": 13,
+      "feature_plan_sample": [
+        "returns_1",
+        "returns_5",
+        "momentum_10",
+        "rsi_14",
+        "volume_ratio",
+        "vol_change"
+      ],
+      "dataset_bars": 35041,
+      "dataset_kept": 3823,
+      "dataset_ratio": 0.109,
+      "ticket14_backtest": {
+        "accuracy": 0.5597539543057997,
+        "n_bars": 1138,
+        "pct_passed": 0.9991212653778558,
+        "avg_score": 0.5958554310398945,
+        "elapsed_s": 3.81
+      }
+    }
+  }
+}

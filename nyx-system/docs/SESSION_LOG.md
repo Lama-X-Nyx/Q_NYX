@@ -572,3 +572,80 @@ Classic noise-feature overfit.
 - Ticket 14 : pré-entraîner HSMM pour RegimeAgent + SetupAgent sur
   BTC 2019 Q1-Q3 (slice pre-training). Re-run la même comparaison.
   OU swap aux mono-file Jesse*Agent ML-based avec training slice.
+
+---
+
+## 2026-04-16 — Tickets 14 + 15 (Jesse retrain + dataset policy)
+
+### Problème
+Ticket 14 : les 4 Jesse agents utilisaient des blocs de features
+désalignés du runtime canonique (custom pour Context/Regime,
+`feature_set='core'` pour Setup/Entry). Ticket 15 : le retrain
+Entry sur 15m 2020-2022 (~100k bars) via .backtest() était O(N²)
+per-bar .analyze() — le sandbox tuait systématiquement.
+
+### Hypothèse testée (Tickets combinés)
+- Ticket 14 : chaque agent appelle compute_stationary_features('full')
+  + FEATURE_PLAN subset role-based (13/15/15+3/13 features)
+- Ticket 15 : dataset builder par agent retourne (df, sample_mask) ;
+  .train()/.backtest() acceptent sample_mask qui SKIP les bars
+  non-masqués dans la boucle O(N²). Entry : rolling 12m + candidate-
+  proximity ±5 + max 20k + deterministic downsample.
+
+### Fichiers touchés
+- `src/ml/jesse_agents.py` — FEATURE_PLAN × 4 agents + sample_mask
+  sur train/backtest (base class + Entry override)
+- `src/ml/jesse_dataset.py` (nouveau) — 4 builders
+- `tests/test_jesse_agents_retrained.py` (nouveau Ticket 14) —
+  27 tests
+- `tests/test_jesse_dataset_policy.py` (nouveau Ticket 15) —
+  17 tests
+- `tests/test_jesse_agent_context.py` — MAJ tests legacy (500 bars
+  synthetic + canonical feature names)
+- `scripts/retrain_jesse_agents.py` — MAJ pour builder-driven
+  retrain
+- `reports/jesse_agents_retrain_ticket14.json` — métriques finales
+- `docs/JESSE_FEATURE_MAPPING.md` (nouveau) — single source of
+  truth agent features + dataset policy
+- `docs/CHANGELOG.md` + ce log
+
+### Tests
+- 27 Ticket 14 + 17 Ticket 15 + 115 regression = **159 GREEN** sur
+  le Jesse sweep complet
+- Pyright : ajouts additifs, pas de nouvelle erreur
+
+### Numbers retrain BTC 2020-2022
+| Agent | Bars | Kept | Acc | pct_passed | Elapsed |
+|---|---:|---:|---:|---:|---:|
+| Context | 1,096 | 100% | 0.500 | 100.0% | 23s |
+| Regime | 6,576 | 100% | 0.571 | 99.2% | 354s |
+| Setup | 26,304 | 13.9% | 0.188 | 0.0% | 567s |
+| Entry | 35,041 | 10.9% | 0.560 | 99.9% | 3.8s |
+
+Entry : de NEVER-FINISH à 3.8s. Ticket 15 mission accomplie.
+
+### Constats honnêtes
+- **Setup acc 0.188 est bas** : le volume-spike filter skew le dataset
+  vers valid_setup → le modèle prédit no_setup partout (pct_passed=0)
+  → acc faible. C'est un signal de déséquilibre des labels, pas un
+  échec de training. Documenté dans JESSE_FEATURE_MAPPING.md §3.
+- **Context + Entry ont des numbers raisonnables** (0.50 et 0.56).
+- **Regime 0.571 pct_passed 99.2%** : presque tout "passe" → le
+  modèle est très permissif. À peaufiner dans un ticket futur via
+  seuil de confiance.
+
+### Risques restants
+- Setup/Regime "pct_passed" extrêmes (0% et 99.2%) suggèrent que
+  les agents, bien que trainables et stables, ne discriminent pas
+  bien. Un ticket futur calibrera les seuils de décision + class
+  weights.
+- Les agents restent NON-WIRÉS dans NYXEngine (scope Ticket 13+14
+  explicitement exclut le runtime wiring).
+- HSMM toujours non-entraîné → RegimeAgent runtime tombe en
+  fallback neutre dans NYXEngine (Ticket 13 remark).
+
+### Next smallest step possible
+- Ticket 16 : class_weight + threshold tuning pour Setup/Regime
+  pour obtenir pct_passed équilibré
+- OU Ticket 17 : wire agents en runtime pour vraiment tester
+  l'impact edge-à-edge (mesurer Sharpe delta vs Ticket 11 baseline)

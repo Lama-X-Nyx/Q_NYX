@@ -64,8 +64,19 @@ class _BaseJesseAgent:
         """Compute agent-specific labels. Override in subclass."""
         raise NotImplementedError
 
-    def train(self, df: pd.DataFrame) -> Dict[str, float]:
-        """Train agent on DataFrame."""
+    def train(
+        self,
+        df: pd.DataFrame,
+        sample_mask: Optional[np.ndarray] = None,
+    ) -> Dict[str, float]:
+        """Train agent on DataFrame.
+
+        Ticket 15 — `sample_mask` (optional) : boolean array of
+        length `len(df)`. When provided, only bars where mask is
+        True are kept as training samples (after warmup + NaN
+        filtering). Used by the agent-specific dataset policy
+        (see `src/ml/jesse_dataset.py`).
+        """
         features = self.compute_features(df)
         labels = self.compute_labels(df)
         self._feature_names = list(features.columns)
@@ -73,6 +84,13 @@ class _BaseJesseAgent:
         valid = np.ones(len(df), dtype=bool)
         valid[:self.warmup_bars] = False
         valid &= ~features.isna().any(axis=1).values
+        if sample_mask is not None:
+            m = np.asarray(sample_mask, dtype=bool)
+            if len(m) != len(df):
+                raise ValueError(
+                    f'sample_mask length {len(m)} != len(df) {len(df)}'
+                )
+            valid &= m
 
         X = features.values[valid]
         y = labels[valid]
@@ -148,21 +166,44 @@ class _BaseJesseAgent:
             timestamp=timestamp,
         )
 
-    def backtest(self, df: pd.DataFrame, train_ratio: float = 0.75) -> Dict[str, Any]:
-        """Standalone backtest: train on first portion, evaluate on rest."""
+    def backtest(
+        self,
+        df: pd.DataFrame,
+        train_ratio: float = 0.75,
+        sample_mask: Optional[np.ndarray] = None,
+    ) -> Dict[str, Any]:
+        """Standalone backtest: train on first portion, evaluate on rest.
+
+        Ticket 15 — `sample_mask` (optional) : boolean array of length
+        `len(df)`. When provided :
+          - `.train()` restricts training to masked bars
+          - the per-bar `.analyze()` eval loop SKIPS masked-out bars
+            (this is the O(N²) bottleneck on Setup / Entry dataframes
+            — skipping 70 %+ of bars cuts runtime quadratically).
+        """
         split = int(len(df) * train_ratio)
         df_train = df.iloc[:split]
         df_test = df.iloc[split:]
-        self.train(df_train)
+        train_mask = None
+        test_mask = None
+        if sample_mask is not None:
+            m = np.asarray(sample_mask, dtype=bool)
+            train_mask = m[:split]
+            test_mask = m[split:]
+        self.train(df_train, sample_mask=train_mask)
 
         # Try batch prediction first (fast path)
         try:
             predictions, proba, classes = self._predict_batch(df_test)
-            # Map predictions to states
+            # Map predictions to states — skip bars where test_mask is
+            # False to avoid the O(N²) per-bar analyze loop on noisy
+            # or irrelevant rows.
             states = []
             scores = []
             passed_list = []
             for i in range(self.warmup_bars, len(df_test)):
+                if test_mask is not None and not bool(test_mask[i]):
+                    continue
                 r = self.analyze(df_test.iloc[:i + 1])
                 states.append(r.state)
                 scores.append(r.score)
@@ -173,6 +214,9 @@ class _BaseJesseAgent:
             scores = []
             passed_list = []
             for i in range(1, len(df_test) + 1):
+                if test_mask is not None and i - 1 < len(test_mask) \
+                        and not bool(test_mask[i - 1]):
+                    continue
                 r = self.analyze(df_test.iloc[:i])
                 states.append(r.state)
                 scores.append(r.score)
@@ -279,7 +323,13 @@ class JesseContextAgent(_BaseJesseAgent):
         # Heuristic signal from features (EMA + momentum)
         features = self.compute_features(df)
         last = features.iloc[-1]
-        ema_ratio = last.get('ema_ratio_20_50', 0)
+        # Ticket 14 — canonical feature name is `ema_ratio_21_50`
+        # (drawn from compute_stationary_features full set). The
+        # legacy `ema_ratio_20_50` was specific to the custom
+        # compute_features block; fall back to it for backward compat
+        # in case a caller re-wires a legacy feature source.
+        ema_ratio = last.get('ema_ratio_21_50',
+                              last.get('ema_ratio_20_50', 0))
         mom_20 = last.get('momentum_20', 0)
         rsi = last.get('rsi_14', 0)
 
@@ -665,15 +715,44 @@ class JesseEntryAgent(_BaseJesseAgent):
                       'direction': direction, 'h_up': h_up, 'h_down': h_down},
         )
 
-    def backtest(self, df: pd.DataFrame, train_ratio: float = 0.75) -> Dict[str, Any]:
+    def backtest(
+        self,
+        df: pd.DataFrame,
+        train_ratio: float = 0.75,
+        sample_mask: Optional[np.ndarray] = None,
+    ) -> Dict[str, Any]:
+        """Entry backtest — batch predict, no per-bar .analyze() loop.
+
+        Ticket 15 — `sample_mask` (optional) restricts both training
+        (via extended `.train()`) and test-split evaluation to the
+        masked bars. No O(N²) analyze loop here, so the mask mostly
+        shapes training distribution + evaluation denominator.
+        """
         split = int(len(df) * train_ratio)
-        self.train(df.iloc[:split])
+        train_mask = None
+        test_mask = None
+        if sample_mask is not None:
+            m = np.asarray(sample_mask, dtype=bool)
+            train_mask = m[:split]
+            test_mask = m[split:]
+        self.train(df.iloc[:split], sample_mask=train_mask)
         preds, proba, classes = self._predict_batch(df.iloc[split:])
 
         from src.ml.jesse_labeler import triple_barrier_labels
         true_labels = triple_barrier_labels(df.iloc[split:])
         valid = np.arange(self.warmup_bars, len(preds))
+        if test_mask is not None:
+            valid = np.array(
+                [i for i in valid if i < len(test_mask) and bool(test_mask[i])]
+            )
         from sklearn.metrics import accuracy_score
+        if len(valid) == 0:
+            return {
+                'accuracy': 0.0, 'n_bars': 0, 'pct_bullish': 0.0,
+                'pct_bearish': 0.0, 'pct_neutral': 0.0,
+                'pct_passed': 0.0, 'avg_score': 0.0,
+                'state_distribution': {'ready': 0, 'not_ready': 0},
+            }
         acc = accuracy_score(true_labels[valid], preds[valid])
 
         return {
