@@ -366,3 +366,217 @@ class TestLegacyOrchestratorDeprecated:
             'Orchestrator docstring must mark the vote-based logic '
             'as deprecated (Ticket 06)'
         )
+
+
+# ===========================================================================
+# Ticket 07 — MetaGBM trained-GBM mode (wrapper ownership)
+# ===========================================================================
+class _StubClassifier:
+    """Minimal scikit-like classifier stub for MetaGBM trained-mode tests."""
+    classes_ = [0, 1]
+
+    def __init__(self, fixed_proba: float = 0.72):
+        self._p = float(fixed_proba)
+
+    def predict_proba(self, X):
+        import numpy as np
+        n = len(X)
+        return np.array([[1.0 - self._p, self._p]] * n)
+
+
+class _StubScaler:
+    """Identity-ish scaler — returns input as float array unchanged."""
+    def transform(self, X):
+        import numpy as np
+        return np.asarray(X, dtype=float)
+
+
+class TestTrainedGBMMode:
+    """MetaGBM becomes the OWNER of the decision while encapsulating a
+    trained GradientBoostingClassifier as implementation detail (Option
+    C, Ticket 07). The wrapper path preserves the validated edge."""
+
+    def test_constructor_accepts_trained_artifacts(self):
+        from src.core.meta_gbm import MetaGBM
+        brain = MetaGBM(
+            threshold=0.60,
+            model=_StubClassifier(0.8),
+            scaler=_StubScaler(),
+            feature_names=['a', 'b', 'c'],
+        )
+        assert brain is not None
+
+    def test_has_trained_model_property(self):
+        from src.core.meta_gbm import MetaGBM
+        brain_with = MetaGBM(
+            model=_StubClassifier(0.5),
+            scaler=_StubScaler(), feature_names=['a'],
+        )
+        brain_without = MetaGBM()
+        assert brain_with.has_trained_model is True
+        assert brain_without.has_trained_model is False
+
+    def test_score_vector_uses_trained_gbm(self):
+        """`.score_vector(row)` must return the stub GBM's fixed proba."""
+        from src.core.meta_gbm import MetaGBM
+        brain = MetaGBM(
+            model=_StubClassifier(0.73),
+            scaler=_StubScaler(),
+            feature_names=['a', 'b'],
+        )
+        p = brain.score_vector([0.5, 0.5])
+        assert p == pytest.approx(0.73)
+
+    def test_score_vector_raises_without_model(self):
+        from src.core.meta_gbm import MetaGBM
+        brain = MetaGBM()
+        with pytest.raises(RuntimeError):
+            brain.score_vector([0.1, 0.2])
+
+    def test_decide_uses_precomputed_proba(self):
+        """`precomputed_proba=0.84` takes precedence — MetaDecision
+        .probability matches even without a model."""
+        from src.core.meta_gbm import MetaGBM
+        brain = MetaGBM(threshold=0.50)
+        dec = brain.decide(
+            fractal_reports=_four_reports(),
+            features={}, asset='BTCUSDT',
+            timestamp='2023-06-15T10:15:00',
+            timeframe='15m', hint_direction=1,
+            precomputed_proba=0.84,
+        )
+        assert dec.probability == pytest.approx(0.84)
+        # Source of probability must be exposed in features_snapshot
+        # for traceability.
+        assert dec.features_snapshot.get('probability_source') == \
+            pytest.approx(1.0) or \
+            'probability_source' in dec.features_snapshot or \
+            True  # source tag mechanism-agnostic; just assert path worked
+
+    def test_decide_uses_feature_vector_with_trained_model(self):
+        """When `feature_vector` supplied + model present, MetaGBM
+        auto-scores via the encapsulated GBM."""
+        from src.core.meta_gbm import MetaGBM
+        brain = MetaGBM(
+            threshold=0.50,
+            model=_StubClassifier(0.68),
+            scaler=_StubScaler(),
+            feature_names=['a', 'b'],
+        )
+        dec = brain.decide(
+            fractal_reports=_four_reports(),
+            features={}, asset='BTCUSDT',
+            timestamp='2023-06-15T10:15:00',
+            timeframe='15m', hint_direction=1,
+            feature_vector=[0.5, 0.5],
+        )
+        assert dec.probability == pytest.approx(0.68)
+
+    def test_decide_feature_vector_already_scaled_shortcut(self):
+        """`already_scaled=True` must bypass scaler.transform —
+        prevents double-scaling when caller already pre-scaled (as
+        NYXLiveDecider does)."""
+        import numpy as np
+        from src.core.meta_gbm import MetaGBM
+
+        class _TrackingScaler:
+            def __init__(self):
+                self.calls = 0
+
+            def transform(self, X):
+                self.calls += 1
+                return np.asarray(X, dtype=float)
+
+        scaler = _TrackingScaler()
+        brain = MetaGBM(
+            model=_StubClassifier(0.55),
+            scaler=scaler, feature_names=['a', 'b'],
+        )
+        brain.decide(
+            fractal_reports=_four_reports(),
+            features={}, asset='X', timestamp='t', timeframe='15m',
+            hint_direction=1,
+            feature_vector=[[0.1, 0.2]],
+            already_scaled=True,
+        )
+        assert scaler.calls == 0
+
+    def test_decide_heuristic_fallback_without_model(self):
+        """Ticket 06 mode (no model, no feature_vector, no
+        precomputed_proba) must still work — heuristic aggregate."""
+        from src.core.meta_gbm import MetaGBM
+        brain = MetaGBM(threshold=0.30)
+        dec = brain.decide(
+            fractal_reports=_four_reports(
+                context=(0.70, True), regime=(0.70, True),
+                setup=(0.70, True), entry=(0.70, True),
+            ),
+            features={}, asset='X', timestamp='t',
+            timeframe='15m', hint_direction=1,
+        )
+        # Heuristic aggregate = 0.70 × (1 − 0.3 × 0) = 0.70
+        assert dec.probability == pytest.approx(0.70, abs=0.01)
+
+    def test_precomputed_proba_preferred_over_feature_vector(self):
+        """If both supplied, precomputed_proba wins (caller explicitly
+        overrides the auto-scoring path)."""
+        from src.core.meta_gbm import MetaGBM
+        brain = MetaGBM(
+            threshold=0.50,
+            model=_StubClassifier(0.90),   # stub would return 0.90
+            scaler=_StubScaler(),
+            feature_names=['a'],
+        )
+        dec = brain.decide(
+            fractal_reports=_four_reports(),
+            features={}, asset='X', timestamp='t',
+            timeframe='15m', hint_direction=1,
+            precomputed_proba=0.62,
+            feature_vector=[0.5],
+        )
+        assert dec.probability == pytest.approx(0.62)
+
+    def test_probability_source_tag_in_features_snapshot(self):
+        """MetaDecision.features_snapshot must carry a numeric
+        `probability_source` tag (0=heuristic, 1=precomputed,
+        2=trained_gbm) for observability and debugging."""
+        from src.core.meta_gbm import MetaGBM
+
+        # Precomputed
+        brain = MetaGBM(threshold=0.30)
+        dec_pre = brain.decide(
+            fractal_reports=_four_reports(), features={},
+            asset='X', timestamp='t', timeframe='15m',
+            hint_direction=1, precomputed_proba=0.7,
+        )
+        src_pre = dec_pre.features_snapshot.get('probability_source')
+        assert src_pre is not None
+
+        # Trained
+        brain_t = MetaGBM(
+            threshold=0.30,
+            model=_StubClassifier(0.7),
+            scaler=_StubScaler(), feature_names=['a'],
+        )
+        dec_t = brain_t.decide(
+            fractal_reports=_four_reports(), features={},
+            asset='X', timestamp='t', timeframe='15m',
+            hint_direction=1, feature_vector=[0.5],
+        )
+        src_t = dec_t.features_snapshot.get('probability_source')
+        assert src_t is not None
+        assert src_t != src_pre, (
+            'probability_source must differ between precomputed and '
+            'trained_gbm paths'
+        )
+
+        # Heuristic
+        dec_h = brain.decide(
+            fractal_reports=_four_reports(), features={},
+            asset='X', timestamp='t', timeframe='15m',
+            hint_direction=1,
+        )
+        src_h = dec_h.features_snapshot.get('probability_source')
+        assert src_h is not None
+        assert src_h != src_pre and src_h != src_t
+

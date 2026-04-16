@@ -155,3 +155,72 @@ Voir `docs/REALITY_CHECK.md` pour le détail.
 - [ ] Backtest en dollars nets avec equity curve (P1)
 - [ ] HSMM probs des parquets comme features ML (P2)
 - [ ] Paper trading live avec DecisionLogger (P2)
+
+---
+
+## 2026-04-16 — Ticket 07 (MetaGBM wired into NYXEngine)
+
+### Problème
+Le ticket demande de faire de MetaGBM la strategy brain propriétaire
+de NYXEngine, qui détenait jusqu'ici sa propre logique de scoring
+GBM. Risque majeur : détruire les numbers validés (A/B/C p5 Sharpe
+7.78, walk-forward CAGR 49.3%, ETH+SOL artefacts) si le MetaGBM
+heuristique remplace littéralement le GBM entraîné.
+
+### Hypothèse testée
+Option C (wrapper ownership) : MetaGBM encapsule le GBM entraîné
+existant comme implementation detail. Le scoring reste
+numériquement identique (même model + scaler + 84 features), seul
+le point d'entrée change (MetaGBM.decide → predict_proba). Les
+FractalReports peuvent être passés en dict vide initialement
+(wiring Jesse dans le runtime = ticket futur).
+
+### Fichiers touchés
+- `src/core/meta_gbm.py` (+60 lignes) — trained-GBM mode
+- `src/core/nyx_engine.py` — `_meta` instance + delegation dans
+  la candidate loop + `meta_decision` dans trade record
+- `src/ml/nyx_live_decider.py` — `_meta` + delegation dans
+  `on_15m_bar` via `feature_vector + already_scaled=True`
+- `tests/test_meta_gbm.py` (+200 lignes) — `TestTrainedGBMMode`,
+  10 tests GREEN
+- `tests/test_nyx_engine_uses_metagbm.py` (nouveau) — 8 tests GREEN
+- `docs/ARCHITECTURE_CANONIQUE.md` — status MetaGBM passe de
+  "Not yet wired" à "WIRED AS OWNER (Ticket 07)" + marqueur
+  TRANSITIONAL + note sur Option B
+- `docs/CHANGELOG.md` — entrée Ticket 07
+- `docs/PROJECT_TRUTH_MAP.md` — update NYXEngine + ajout MetaGBM
+- `docs/SESSION_LOG.md` — ce log
+
+### Tests
+- Ticket 07 directs : 18/18 GREEN (10 TestTrainedGBMMode + 8
+  TestNYXEngineDelegatesToMetaGBM et friends)
+- Equivalence guard `test_nyx_equivalence_replay_vs_live` : 4/4
+  GREEN (preserved batch vs live semantics)
+- `test_nyx_pipeline` : 17/17 GREEN
+- `test_nyx_live_decider` : 15/15 GREEN
+- Regression sweep broader (contracts, canonical, Jesse agents ×4,
+  orchestrators, rules, inventory, architecture) : 200+ GREEN
+- Pyright : 0 errors sur les 3 fichiers src/ touchés
+
+### Impact architectural
+- UN seul propriétaire canonique de la décision : `MetaGBM`
+- NYXEngine devient orchestrateur (data MTF → candidates →
+  MetaGBM → bear dial → cooldown → sizing → execution)
+- NYXLiveDecider : même pattern per-bar via feature_vector
+- Les FractalReports peuvent maintenant être consommés dès que
+  wirés ; MetaGBM gère le dict vide gracefully
+
+### Risques restants
+- **MetaGBM transitoire** : encapsule un GBM entraîné sur proxy
+  `rule_*` scalars, PAS sur les FractalReport scores réels. Le
+  "vrai" Meta-GBM entraîné (Option B) reste un ticket futur
+  nécessitant retraining + OOS complet.
+- **Jesse agents pas wirés dans le runtime** : MetaGBM accepte
+  `fractal_reports={}` — le plumbing agents → engine reste à
+  faire (autre ticket intégration).
+
+### Next smallest step possible
+Ticket 08 potentiel : Option B — retrain le GBM sur un feature
+set qui inclut les FractalReport scores comme features (au lieu
+des proxies `rule_context/regime/setup`). Nécessite OOS
+equivalence pour vérifier que l'edge est préservé/amélioré.

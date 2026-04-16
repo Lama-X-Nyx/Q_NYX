@@ -78,6 +78,16 @@ class NYXEngine:
         self.max_daily_trades = max_daily_trades
         self.use_conditional_dial = use_conditional_dial
         self.use_execution_filter = use_execution_filter
+        # Ticket 07 — MetaGBM ownership wrapper. Populated by .run()
+        # after training; None before first run.
+        self._meta: Optional[Any] = None
+
+    @staticmethod
+    def _symbol_hint(mtf_data: Dict[str, pd.DataFrame]) -> str:
+        """Derive a best-effort symbol label for MetaDecision.asset
+        from the test window (NYXEngine is agnostic to asset identity;
+        default to 'NYX' when nothing is available)."""
+        return 'NYX'
 
     def run(
         self,
@@ -148,6 +158,20 @@ class NYXEngine:
         p1_idx = classes.index(1) if 1 in classes else 0
         scores = proba[:, p1_idx]
 
+        # --- Ticket 07: MetaGBM ownership wrapper ---
+        # The trained GradientBoostingClassifier + scaler + feature
+        # contract are encapsulated BY MetaGBM — the canonical
+        # strategy brain. NYXEngine no longer "owns" the decision; it
+        # delegates to `self._meta`. The GBM keeps producing the same
+        # probabilities (edge preserved), but the per-candidate
+        # decision emission goes through MetaGBM.decide().
+        from src.core.meta_gbm import MetaGBM
+        self._meta = MetaGBM(
+            threshold=self.ml_threshold,
+            model=model, scaler=scaler,
+            feature_names=feature_names,
+        )
+
         # --- Step 5: Precompute conditional dial signals ---
         bear_dial_signals = None
         if self.use_conditional_dial:
@@ -173,6 +197,23 @@ class NYXEngine:
         total_fees = 0.0
 
         for i, (cand, score) in enumerate(zip(test_cands, scores)):
+            # Ticket 07 — delegate base decision to MetaGBM (owner).
+            # `precomputed_proba=score` keeps the same GBM probability
+            # as pre-Ticket-07 (numbers 1:1 preserved). Bear dial /
+            # cooldown / daily / sizing remain downstream controls
+            # that consume base_dec.probability.
+            base_dec = self._meta.decide(
+                fractal_reports={},   # Jesse agents not yet wired at
+                                      # runtime (future ticket). MetaGBM
+                                      # handles the empty dict path.
+                features=cand['features'],
+                asset=self._symbol_hint(mtf_data),
+                timestamp=str(cand['timestamp']),
+                timeframe='15m',
+                hint_direction=int(cand['direction']),
+                precomputed_proba=float(score),
+            )
+
             # Conditional bear dial check
             bear_active = False
             if self.use_conditional_dial and bear_dial_signals is not None:
@@ -187,9 +228,10 @@ class NYXEngine:
             if bear_active:
                 n_bear_active += 1
 
-            # ML filter — use bear threshold if dial active
+            # ML filter — use bear threshold if dial active. Reads
+            # `base_dec.probability` (= `score` via precomputed path).
             threshold = bear_params['ml_threshold'] if bear_active else self.ml_threshold
-            if score < threshold:
+            if base_dec.probability < threshold:
                 continue
 
             # Cooldown — use bear cooldown if dial active
@@ -260,6 +302,10 @@ class NYXEngine:
                 'size_factor': sf,
                 'disagreement': dis,
                 'reason': cand['reason'],
+                # Ticket 07 — canonical MetaDecision attached for
+                # traceability. `base_dec.probability` == `score`
+                # (precomputed path preserves numbers 1:1).
+                'meta_decision': base_dec,
             })
 
         # --- Metrics ---

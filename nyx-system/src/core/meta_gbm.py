@@ -28,7 +28,9 @@ runtime path in place of the vote-based orchestrators.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Mapping, Optional
+from typing import Any, Dict, Mapping, Optional, Sequence
+
+import numpy as np
 
 from src.agents.contracts import (
     CANONICAL_TIMEFRAMES,
@@ -41,6 +43,13 @@ DEFAULT_THRESHOLD = 0.60
 DEFAULT_DISAGREEMENT_WEIGHT = 0.3
 DEFAULT_QUALITY_HIGH_CUTOFF = 0.75
 DEFAULT_QUALITY_MEDIUM_CUTOFF = 0.60
+
+# Probability-source tags exposed in MetaDecision.features_snapshot
+# for traceability. Numeric (not string) so features_snapshot stays
+# Dict[str, float].
+PROBABILITY_SOURCE_HEURISTIC = 0.0
+PROBABILITY_SOURCE_PRECOMPUTED = 1.0
+PROBABILITY_SOURCE_TRAINED_GBM = 2.0
 
 
 class MetaGBM:
@@ -56,6 +65,9 @@ class MetaGBM:
         disagreement_weight: float = DEFAULT_DISAGREEMENT_WEIGHT,
         quality_high_cutoff: float = DEFAULT_QUALITY_HIGH_CUTOFF,
         quality_medium_cutoff: float = DEFAULT_QUALITY_MEDIUM_CUTOFF,
+        model: Optional[Any] = None,
+        scaler: Optional[Any] = None,
+        feature_names: Optional[Sequence[str]] = None,
     ) -> None:
         if not 0.0 <= threshold <= 1.0:
             raise ValueError(f"threshold={threshold} out of [0,1]")
@@ -68,6 +80,55 @@ class MetaGBM:
         self.quality_high_cutoff = float(quality_high_cutoff)
         self.quality_medium_cutoff = float(quality_medium_cutoff)
 
+        # Trained-model encapsulation (Ticket 07, Option C wrapper).
+        # When model + scaler are provided, MetaGBM owns the decision
+        # and encapsulates the trained GBM as implementation detail.
+        self._model = model
+        self._scaler = scaler
+        self._feature_names = (
+            list(feature_names) if feature_names is not None else None
+        )
+
+    # ------------------------------------------------------------------
+    @property
+    def has_trained_model(self) -> bool:
+        """True when MetaGBM encapsulates a trained GBM + scaler."""
+        return self._model is not None and self._scaler is not None
+
+    def score_vector(
+        self,
+        feature_row: Any,
+        already_scaled: bool = False,
+    ) -> float:
+        """Run the encapsulated trained GBM on a single row.
+
+        Returns the positive-class probability ∈ [0, 1].
+
+        Raises `RuntimeError` if no trained model is wired (use the
+        heuristic path via `.decide()` in that case).
+        """
+        if not self.has_trained_model:
+            raise RuntimeError(
+                'MetaGBM has no trained model — pass `model=` and '
+                '`scaler=` to the constructor, or use `.decide()` '
+                'without a feature_vector to fall back to the '
+                'heuristic aggregate path.'
+            )
+        # has_trained_model==True ⇒ model + scaler are not None.
+        model = self._model
+        scaler = self._scaler
+        assert model is not None and scaler is not None  # for pyright
+        row = np.asarray(feature_row, dtype=float)
+        if row.ndim == 1:
+            row = row.reshape(1, -1)
+        if not already_scaled:
+            row = scaler.transform(row)
+            row = np.nan_to_num(row, nan=0.0, posinf=3.0, neginf=-3.0)
+        proba = model.predict_proba(row)[0]
+        classes = list(model.classes_)
+        p1_idx = classes.index(1) if 1 in classes else 0
+        return float(proba[p1_idx])
+
     # ------------------------------------------------------------------
     def decide(
         self,
@@ -77,31 +138,35 @@ class MetaGBM:
         timestamp: str,
         timeframe: str = '15m',
         hint_direction: int = 0,
+        precomputed_proba: Optional[float] = None,
+        feature_vector: Any = None,
+        already_scaled: bool = False,
     ) -> MetaDecision:
-        """Emit a canonical `MetaDecision` from 4 fractal reports.
+        """Emit a canonical `MetaDecision` — strategy brain entry point.
+
+        Probability source precedence (Ticket 07) :
+          1. `precomputed_proba` (caller has batch-scored upstream)
+          2. `feature_vector` + trained GBM (auto-score)
+          3. heuristic aggregate of FractalReport scores (Ticket 06 fallback)
+
+        Fractal reports drive `disagreement`, `quality_bucket`,
+        `risk_hint`, and `candidate_quality` — regardless of which
+        probability source is used.
 
         Args :
           fractal_reports : dict keyed by agent name
-              ({'context', 'regime', 'setup', 'entry'}).
+              ({'context', 'regime', 'setup', 'entry'}); may be empty
+              when Jesse agents are not yet wired (the GBM path does
+              not need them).
           features        : market-state features (momentum, atr, vol,
-              etc.). Added to the decision's `features_snapshot` for
-              downstream traceability.
+              etc.); copied into the decision's `features_snapshot`.
           asset / timestamp / timeframe : MetaDecision identity.
           hint_direction  : external direction hint (-1 / 0 / +1). The
               MetaGBM does not derive direction from reports today —
-              it trusts the caller (hard gate / edge detector) to
-              propose a direction, then validates via score + threshold.
-
-        Returns a `MetaDecision` with :
-          passed           : True iff direction != 0 AND probability >=
-              threshold. NOT gated on "all reports passed=True".
-          probability      : aggregate score × (1 − disagreement_weight
-              × disagreement).
-          candidate_quality: aggregate score (pre-penalty).
-          quality_bucket   : high / medium / low from aggregate score.
-          risk_hint        : 1 − disagreement, ∈ [0, 1].
-          features_snapshot: caller features + injected
-              'disagreement' + 'n_passed_agents' + 'aggregate_score'.
+              it trusts the caller (hard gate / edge detector).
+          precomputed_proba : if supplied, used as probability.
+          feature_vector  : used to auto-score via trained GBM.
+          already_scaled  : if True, skip `scaler.transform()`.
         """
         if timeframe not in CANONICAL_TIMEFRAMES:
             raise ValueError(
@@ -123,9 +188,19 @@ class MetaGBM:
         n_passed = sum(1 for r in reports.values() if bool(r.passed))
         disagreement = 1.0 - (n_passed / n if n else 0.0)
 
-        # 3. Probability = aggregate penalised by disagreement
-        #    (but still not hard-blocked).
-        probability = aggregate * (1.0 - self.disagreement_weight * disagreement)
+        # 3. Resolve probability from one of 3 sources (Ticket 07).
+        if precomputed_proba is not None:
+            probability = float(precomputed_proba)
+            probability_source = PROBABILITY_SOURCE_PRECOMPUTED
+        elif feature_vector is not None and self.has_trained_model:
+            probability = self.score_vector(feature_vector, already_scaled)
+            probability_source = PROBABILITY_SOURCE_TRAINED_GBM
+        else:
+            # Heuristic path — aggregate penalised by disagreement.
+            probability = aggregate * (
+                1.0 - self.disagreement_weight * disagreement
+            )
+            probability_source = PROBABILITY_SOURCE_HEURISTIC
         probability = max(0.0, min(1.0, probability))
 
         # 4. Gate — direction AND probability ≥ threshold.
@@ -163,6 +238,7 @@ class MetaGBM:
         snapshot['disagreement'] = float(disagreement)
         snapshot['n_passed_agents'] = float(n_passed)
         snapshot['aggregate_score'] = float(aggregate)
+        snapshot['probability_source'] = float(probability_source)
 
         return MetaDecision(
             asset=asset,

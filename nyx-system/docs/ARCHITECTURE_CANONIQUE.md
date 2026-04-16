@@ -243,11 +243,37 @@ The legacy vote-based orchestrators (`JesseOrchestrator`,
 (enforced by `tests/test_meta_gbm.py::TestLegacyOrchestratorDeprecated`)
 but kept for backward-compat of their existing tests.
 
-**Not yet wired** — per Ticket 06 out-of-scope ("Full risk manager
-integration"), NYXEngine still consumes the `rule_*` proxy scalars
-through its internal GBM. `MetaGBM` is the public interface for
-when a future ticket plugs the real strategy brain into the runtime
-path.
+**Status (Ticket 07 — WIRED AS OWNER)** : as of Ticket 07, `MetaGBM`
+is the canonical decision owner in BOTH `NYXEngine.run()` (batch) and
+`NYXLiveDecider.on_15m_bar()` (live). The trained
+`GradientBoostingClassifier` + scaler + 84-feature contract are
+**encapsulated** by MetaGBM — no longer owned by the runtime engine.
+Both runtimes hold a `self._meta: MetaGBM` attribute after
+construction / run() ; per-bar or per-candidate decisions go through
+`self._meta.decide(precomputed_proba=...)` (batch) or
+`self._meta.decide(feature_vector=x, already_scaled=True)` (live).
+Every emitted trade record carries a `meta_decision: MetaDecision`
+for traceability.
+
+**Behavioural preservation** : Ticket 07 is a PURE ownership shift.
+The trained GBM, scaler, feature names, bear dial, cooldown, daily
+limit, and size-factor computations are byte-for-byte unchanged.
+`MetaDecision.probability == ml_score` (precomputed path) on every
+emitted trade — the canonical equivalence test
+`tests/test_nyx_equivalence_replay_vs_live.py` stays GREEN, as does
+the full `test_nyx_pipeline.py` suite. The validated edge
+(A/B/C p5 Sharpe 7.78, walk-forward CAGR 49.3%, ETH+SOL artefacts)
+is preserved 1:1.
+
+**TRANSITIONAL status** : Ticket 07 is an **ownership-unification
+step**, NOT the final Meta-GBM architecture. The decision probability
+still comes from the same internal GBM trained on proxy `rule_*`
+scalars. A future ticket (currently referred to as "Option B") will
+retrain the GBM on live `FractalReport` features. Until then,
+`fractal_reports={}` is passed by `NYXEngine` and `NYXLiveDecider` —
+MetaGBM handles the empty-dict path gracefully and emits the same
+numerical probability. The **interface** is canonical ; the
+**implementation** under the wrapper remains the validated GBM.
 
 ---
 

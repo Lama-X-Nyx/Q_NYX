@@ -91,6 +91,18 @@ class NYXLiveDecider:
         self._last_bear_active: bool = False
         self._last_effective_threshold: float = float(ml_threshold)
 
+        # Ticket 07 — MetaGBM ownership wrapper. The trained GBM +
+        # scaler + feature_names are encapsulated by MetaGBM, which
+        # is now the canonical strategy brain. The live decider
+        # delegates per-bar scoring to MetaGBM.decide().
+        from src.core.meta_gbm import MetaGBM
+        self._meta = MetaGBM(
+            threshold=self._ml_threshold,
+            model=self.model,
+            scaler=self.scaler,
+            feature_names=self.feature_names,
+        )
+
     # ------------------------------------------------------------------
     # Gate helpers (exposed for unit testing)
     # ------------------------------------------------------------------
@@ -345,16 +357,26 @@ class NYXLiveDecider:
         if direction == 0:
             return flat
 
-        # ML score — feature vector carries direction + hour so rule
-        # and extra scalars are built with the same values NYXPipeline
-        # would have used at training time.
+        # ML score via MetaGBM (Ticket 07) — the canonical strategy
+        # brain owns the decision. The underlying trained GBM is
+        # unchanged; we route the per-bar scoring through MetaGBM so
+        # NYXLiveDecider no longer owns the model-based decision path.
         x = self._build_feature_vector(direction=direction, bar_hour=int(ts.hour))
         if x is None:
             return flat
-        proba = self.model.predict_proba(x)
-        classes = list(self.model.classes_)
-        p1_idx = classes.index(1) if 1 in classes else 0
-        score = float(proba[0, p1_idx])
+        base_dec = self._meta.decide(
+            fractal_reports={},   # Jesse agents not yet wired in
+                                  # live path (future ticket).
+            features={},
+            asset=self.symbol,
+            timestamp=bar['timestamp'],
+            timeframe='15m',
+            hint_direction=int(direction),
+            feature_vector=x,
+            already_scaled=True,   # `x` is already scaler.transform()'d
+        )
+        score = base_dec.probability
+        self._last_meta_decision = base_dec
 
         # Bear-dial conditional: read regime/atr_ratio/trend_quality/
         # disagreement from the CURRENT buffer tail. If triggered, use

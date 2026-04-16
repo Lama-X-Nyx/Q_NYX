@@ -64,7 +64,8 @@ improves. If a test lands here, the system is safer.
 
 ### Decision engine
 
-- `src/core/nyx_engine.py` — `NYXEngine` batch engine (Ticket 04 rename of NYXPipeline). GBM threshold 0.60, 84 features, conditional bear dial, soft gate sizing, maker fees + slippage. Deprecation shim at `src/ml/nyx_pipeline.py` re-exports `NYXEngine as NYXPipeline` for pre-ticket-04 callers.
+- `src/core/nyx_engine.py` — `NYXEngine` batch engine (Ticket 04 rename of NYXPipeline). Since Ticket 07 it delegates scoring to `src/core/meta_gbm.py::MetaGBM`, which now owns the decision path and encapsulates the trained `GradientBoostingClassifier` + scaler + 84-feature contract. Bear dial, soft gate sizing, cooldown, maker fees + slippage all stay downstream and consume `MetaDecision.probability`. Deprecation shim at `src/ml/nyx_pipeline.py` re-exports `NYXEngine as NYXPipeline` for pre-ticket-04 callers.
+- `src/core/meta_gbm.py` — `MetaGBM` canonical strategy brain (Tickets 06 + 07). Wired as owner in NYXEngine.run() and NYXLiveDecider.on_15m_bar(). Emits `MetaDecision` per bar/candidate with 3 probability sources (precomputed, trained GBM via encapsulated artefact, heuristic aggregate). TRANSITIONAL status — encapsulates the validated GBM pending Option B retraining on FractalReports.
 - `src/ml/nyx_live_decider.py` — `NYXLiveDecider` per-bar equivalent. Parity guarded by `tests/test_nyx_equivalence_replay_vs_live.py`.
 
 ### Data & feature layer
