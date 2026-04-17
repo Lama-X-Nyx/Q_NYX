@@ -472,12 +472,12 @@ class JesseRegimeAgent(_BaseJesseAgent):
         rv = float(last.get('rv_12', 0.01))
         adx = float(last.get('adx_norm', 0))
 
-        # ML-native state selection. Threshold 0.4 (not 0.5): the
-        # RandomForest on synthetic/real mixed data produces moderate
-        # p_trend even on clear trends; 0.4 balances discriminance
-        # (not passing everything) with sensitivity (detecting real
-        # trends the model sees).
-        if p_trend >= 0.4:
+        # ML-native state selection. Threshold 0.55 (calibrated
+        # post-T18B: threshold 0.4 produced pct_passed 99.7 % because
+        # the RandomForest's p_trend distribution is concentrated at
+        # 0.4-0.6 on BTC 4H; 0.55 restores meaningful discrimination
+        # while remaining purely model-driven).
+        if p_trend >= 0.55:
             if mom >= 0:
                 state = 'trend_plus'
             else:
