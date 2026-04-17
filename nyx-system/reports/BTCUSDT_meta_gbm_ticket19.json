@@ -1,0 +1,51 @@
+{
+  "ticket": "Ticket 19 \u2014 Meta-GBM on ML fractal agents",
+  "meta_features": [
+    "meta_ctx_p_bull",
+    "meta_ctx_p_bear",
+    "meta_ctx_p_neutral",
+    "meta_ctx_conf",
+    "meta_reg_p_trend_plus",
+    "meta_reg_p_trend_minus",
+    "meta_reg_p_range",
+    "meta_reg_p_squeeze",
+    "meta_reg_conf",
+    "meta_setup_p_valid",
+    "meta_setup_quality",
+    "meta_setup_conf",
+    "meta_entry_p_up",
+    "meta_entry_p_down",
+    "meta_entry_p_neutral",
+    "meta_entry_conf",
+    "meta_agreement_mean",
+    "meta_agreement_std",
+    "meta_disagreement",
+    "meta_ctx_reg_alignment",
+    "meta_setup_entry_alignment",
+    "meta_regime_setup_alignment"
+  ],
+  "training": {
+    "symbol": "BTCUSDT",
+    "train_end": "2022-12-31",
+    "n_train_candidates": 1248,
+    "n_features": 22,
+    "in_sample_accuracy": 0.6995192307692307,
+    "positive_class_rate": 0.43669871794871795
+  },
+  "oos_2023": {
+    "n_trades": 11,
+    "win_rate": 0.6363636363636364,
+    "sharpe": 1.0981893274747179,
+    "total_pnl_dollars": 483.1065315794476,
+    "return_pct": 0.04831065315794476,
+    "max_drawdown_pct": 0.02211461266726909,
+    "profit_factor": 1.9759385731712804
+  },
+  "baseline_ticket11": {
+    "n_trades": 54,
+    "sharpe": 9.96,
+    "total_pnl_dollars": 2171.18,
+    "max_drawdown_pct": 0.0037
+  },
+  "decision": "REJECT"
+}

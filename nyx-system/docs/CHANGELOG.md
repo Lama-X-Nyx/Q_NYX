@@ -2,6 +2,50 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 19 — Meta-GBM on ML fractal agents — REJECT (2026-04-17)
+
+Built a DEDICATED Meta-GBM trained on ONLY the 22 meta_* features
+derived from the 4 ML-native Jesse agent reports (probabilities +
+confidences + 3 cross-agent alignment signals). This is
+architecturally different from Ticket 17 which injected rep_* INTO
+the existing 173-feature GBM.
+
+**Result : REJECT. Sharpe 1.10 vs baseline 9.96 (−89 %).**
+
+The agent-derived probabilities are lossy compressions of the
+underlying technical data. 4 stacked RandomForests discard too
+much information → the Meta-level GBM cannot recover the signal
+the direct 173-feature GBM preserves.
+
+| Metric | Baseline T11 (173 features) | Meta-GBM T19 (22 features) |
+|---|---:|---:|
+| n_trades | 54 | 11 |
+| Sharpe | 9.96 | 1.10 |
+| PnL | $2,171 | $483 |
+| Max DD | 0.37 % | 2.21 % |
+| In-sample accuracy | 90.2 % | 70.0 % |
+
+**Architectural conclusion** : the direct 173-feature GBM
+(Ticket 11 baseline) remains the best strategy brain. Jesse
+agents have value as OBSERVABILITY tools (MetaGBM quality_bucket /
+risk_hint / disagreement enrichment from Tickets 06/07) but NOT
+as the primary signal layer for decision-making.
+
+Three experiments now converge on the same conclusion :
+
+| Experiment | Approach | Sharpe | Verdict |
+|---|---|---:|---|
+| T11 baseline | 173 technical features → GBM | **9.96** | **KEEP** |
+| T17 augmented | 173 + 21 rep_* → same GBM | 8.73 | REJECT |
+| **T19 dedicated** | **22 meta_* only → new GBM** | **1.10** | **REJECT** |
+
+New artefacts (for audit, not production) :
+  `models/BTCUSDT/meta_gbm_model.pkl`
+  `models/BTCUSDT/meta_scaler.pkl`
+  `models/BTCUSDT/meta_feature_names.json`
+  `models/BTCUSDT/meta_training_metadata.json`
+  `reports/BTCUSDT_meta_gbm_ticket19.json`
+
 ### Ticket 18B — Retrain + validate ML-native Jesse agents (2026-04-17)
 
 Behavioral validation half of the ML-fractal transition (18A = code

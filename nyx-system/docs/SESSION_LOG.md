@@ -799,3 +799,46 @@ sur BTC 4H → seuil à 0.55 restaure la discrimination.
 - 18A = code ML-native ✓ (source-level verified)
 - 18B = behavior validated as ML-native ✓ (retrained + non-
   degenerate + documented)
+
+---
+
+## 2026-04-17 — Ticket 19 (Meta-GBM on ML fractal agents — REJECT)
+
+### Question testée
+Un Meta-GBM DÉDIÉ entraîné SEULEMENT sur les 22 features agent
+(probas ML-natives + alignements cross-agents) peut-il outperformer
+le GBM direct sur 173 features techniques ?
+
+### Réponse : NON. REJECT catégorique.
+Sharpe 1.10 vs baseline 9.96 = -89 %. PnL $483 vs $2,171 = -78 %.
+
+### Root cause
+Les 22 meta_* features sont des COMPRESSIONS LOSSY des données
+techniques sous-jacentes. Chaque agent RandomForest jette de l'info
+que le GBM direct sur 173 features préserve. Empiler 4 compressions
+ne récupère pas le signal perdu.
+
+### Convergence des 3 expériences
+| Expérience | Approche | Sharpe | Verdict |
+|---|---|---:|---|
+| T11 baseline | 173 tech → GBM | 9.96 | KEEP |
+| T17 augmented | 173 + 21 rep_* → même GBM | 8.73 | REJECT |
+| T19 dedicated | 22 meta_* seuls → new GBM | 1.10 | REJECT |
+
+### Conclusion architecturale
+Le GBM direct sur features techniques = meilleure strategy brain.
+Les Jesse agents = OBSERVABILITÉ (quality_bucket, risk_hint,
+disagreement pour MetaGBM enrichissement output, Tickets 06/07),
+PAS le signal primaire pour le trading.
+
+### Ce que ça signifie pour la suite
+1. Le baseline T11 reste canonique. Pas de swap.
+2. Les agents Jesse restent dans le code comme couche
+   d'enrichissement (reports pour MetaGBM output fields) — mais
+   NE PAS injecter leurs probas dans le modèle de trading.
+3. L'architecture "4 fractal reporters → Meta-GBM brain" est
+   élégante conceptuellement mais ne bat pas le GBM monolithique
+   sur ces données avec cette implémentation.
+4. Possible direction future : entraîner les 4 agents sur un
+   OBJECTIF DIFFÉRENT (pas le même label que le GBM) pour qu'ils
+   capturent un signal ORTHOGONAL au lieu de compresser le même.
