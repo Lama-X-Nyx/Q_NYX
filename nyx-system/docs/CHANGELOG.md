@@ -2,6 +2,29 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 31 — Advanced Risk Engine (VaR / CVaR) (2026-04-17)
+
+Extend RiskEngine with distribution-aware risk controls (NOT
+replace). VaR/CVaR computed from real trade PnL history via
+`RollingRiskMetrics`. Integrated into `validate_trade()` as
+ADDITIONAL gates after existing static rules.
+
+- `src/live/var_cvar.py` :
+  - `compute_var(pnl, percentile)` — percentile-based VaR
+  - `compute_cvar(pnl, percentile)` — mean of tail ≤ VaR
+  - `RollingRiskMetrics(window)` — rolling VaR 95/99 + CVaR 95/99
+    + `risk_scale_factor(max_cvar)` → [0, 1] linear scaling
+- `src/live/risk_engine.py` extended :
+  - New params : `max_var_95`, `max_cvar_95` (Optional)
+  - `validate_trade(..., rolling_risk=RollingRiskMetrics)` :
+    if VaR95 ≤ max_var_95 → BLOCK; if CVaR95 ≤ max_cvar_95 → BLOCK
+  - Existing static rules (T25) untouched — VaR/CVaR runs AFTER them
+
+TDD : 12 GREEN (VaR unit + CVaR unit + rolling + integration)
++ 12 GREEN T25 regression = 24 total.
+
+CLAUDE.md Rule 7 ✓. No impact on alpha layer.
+
 ### Ticket 29 — Control Plane (Operator Layer) (2026-04-17)
 
 Operator commands added directly ON `NYXRuntime` (natural owner per

@@ -41,6 +41,9 @@ class RiskEngine:
         max_daily_loss_pct: float = 1.0,           # % of capital
         max_weekly_loss_pct: float = 3.0,
         max_drawdown_pct: float = 5.0,             # % of peak equity
+        # Ticket 31 — VaR / CVaR thresholds (distribution-aware).
+        max_var_95: Optional[float] = None,        # max VaR (negative = loss)
+        max_cvar_95: Optional[float] = None,
     ) -> None:
         self.max_risk_per_trade_pct = float(max_risk_per_trade_pct)
         self.max_position_notional = float(max_position_notional)
@@ -49,6 +52,8 @@ class RiskEngine:
         self.max_daily_loss_pct = float(max_daily_loss_pct)
         self.max_weekly_loss_pct = float(max_weekly_loss_pct)
         self.max_drawdown_pct = float(max_drawdown_pct)
+        self.max_var_95 = float(max_var_95) if max_var_95 is not None else None
+        self.max_cvar_95 = float(max_cvar_95) if max_cvar_95 is not None else None
         self._kill_switch_active = False
         self._kill_switch_reason = ''
 
@@ -73,6 +78,7 @@ class RiskEngine:
         quantity: float,
         price: float,
         portfolio: Dict[str, Any],
+        rolling_risk: Any = None,  # Ticket 31 — RollingRiskMetrics
     ) -> Dict[str, Any]:
         """Validate a trade intent BEFORE it reaches OMS.
 
@@ -147,6 +153,21 @@ class RiskEngine:
                 f'drawdown: {dd * 100:.2f}% >= '
                 f'{self.max_drawdown_pct}%'
             )
+
+        # Ticket 31 — VaR / CVaR (distribution-aware, AFTER static rules).
+        if rolling_risk is not None:
+            var95 = getattr(rolling_risk, 'var_95', None)
+            if var95 is not None and self.max_var_95 is not None:
+                if var95 <= self.max_var_95:
+                    return self._block(
+                        f'var_95: {var95:.2f} <= limit {self.max_var_95:.2f}'
+                    )
+            cvar95 = getattr(rolling_risk, 'cvar_95', None)
+            if cvar95 is not None and self.max_cvar_95 is not None:
+                if cvar95 <= self.max_cvar_95:
+                    return self._block(
+                        f'cvar_95: {cvar95:.2f} <= limit {self.max_cvar_95:.2f}'
+                    )
 
         return {'allowed': True, 'reason': ''}
 

@@ -1108,3 +1108,17 @@ emergency_stop/cancel_all_orders/flatten_all. Guards dans on_bar()
 retournent SYSTEM_STOPPED/PAUSED si pas running/paused.
 
 ### Tests : 27/27 GREEN (8 control + 19 runtime)
+
+---
+
+## 2026-04-17 — Ticket 31 (VaR / CVaR — Advanced Risk)
+
+### Rule 7 ✓
+CLAUDE.md lu. Natural owner : RiskEngine (T25). Extension, pas
+remplacement. Alpha non touché.
+
+### Livré
+`src/live/var_cvar.py` : compute_var, compute_cvar, RollingRiskMetrics.
+RiskEngine.validate_trade() étendu avec max_var_95 / max_cvar_95.
+
+### Tests : 24/24 GREEN (12 VaR/CVaR + 12 T25 régression)
