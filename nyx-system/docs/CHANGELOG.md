@@ -2,6 +2,41 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 34 — Dynamic Inter-Asset Dependency Layer (2026-04-17)
+
+`src/live/inter_asset_dependency.py` — models how assets influence
+each other over time. Operates AFTER per-asset GBM + Jesse + Fractal
+Quality, BEFORE RiskEngine. Alpha untouched — only adjusts
+size_multiplier and can suppress trades under high contagion.
+
+- `compute_lagged_features(returns, A, B, lags)` → DataFrame with
+  ret_A_lagN, ret_B_lagN, vol_ratio, momentum_spread
+- `detect_lead_lag(returns, A, B, max_lag)` → leader_asset,
+  follower_asset, lag_bars, confidence via cross-correlation
+- `compute_dependency_score(confidence, correlation, regime,
+  contagion)` → [0,1] regime-conditioned score (trending amplifies,
+  ranging dampens)
+- `detect_contagion(returns, leader, follower)` → contagion_risk,
+  spillover_probability, shock_events_leader
+- `aggregate_dependency(lead_lag, contagion, regime, correlation)`
+  → dependency_strength, lag_alignment_score, divergence_score
+- `modulate_decision(symbol, direction, size_mult, dependency,
+  leader_direction)` → adjusted_size_multiplier, suppress_trade
+  - BTC (leader) not modulated
+  - Aligned with leader → boost up to 1.25×
+  - Misaligned → reduce down to 0.5×
+  - High contagion + misaligned → suppress trade entirely
+- `InterAssetDependencyLayer` — shared orchestrator across runtimes
+  (accumulates returns, evaluates dependency on demand)
+- `NYXRuntime.__init__` accepts optional `dependency_layer`
+- `NYXRuntime.on_bar()` calls layer between Fractal Quality and Risk
+  Engine (step 3b), can return SKIP_DEPENDENCY
+- `scripts/run_multi_asset.py` updated to wire shared layer
+
+TDD : 29 GREEN (4 lagged features + 4 lead/lag + 3 regime +
+3 contagion + 2 scoring + 6 modulation + 4 layer + 3 runtime
+integration). 14 T33 regression GREEN. CLAUDE.md Rule 7 ✓.
+
 ### Ticket 33 — Multi-Asset NYXRuntime Instances (2026-04-17)
 
 Extend NYX from single-asset (BTC) to multi-asset (BTC/ETH/SOL).

@@ -46,8 +46,10 @@ class NYXRuntime:
         models_dir: Optional[Path] = None,
         state_dir: Optional[Path] = None,
         initial_capital: float = 10_000.0,
+        dependency_layer: Optional[Any] = None,
     ) -> None:
         self.symbol = symbol
+        self.dependency_layer = dependency_layer
 
         # --- 0. MODELS (GBM + Jesse agents) ---
         from src.ml.nyx_live_decider import NYXLiveDecider
@@ -225,6 +227,34 @@ class NYXRuntime:
             return result
 
         size_multiplier = fq['size_multiplier']
+
+        # ---- 3b. INTER-ASSET DEPENDENCY (Ticket 34) ----
+        # Modulates size_multiplier based on cross-asset dynamics.
+        # Only active when a shared dependency_layer is provided.
+        if self.dependency_layer is not None:
+            dep_direction = 1 if signal.direction > 0 else -1
+            close_price = float(bar.get('close', 0))
+            prev_close = float(bar.get('open', close_price))
+            bar_ret = (close_price - prev_close) / max(prev_close, 1e-12)
+            self.dependency_layer.update_return(
+                self.symbol,
+                bar.get('timestamp', ''),
+                bar_ret,
+            )
+            dep_result = self.dependency_layer.evaluate(
+                symbol=self.symbol,
+                direction=dep_direction,
+                size_multiplier=size_multiplier,
+            )
+            result['layers']['dependency'] = dep_result
+            if dep_result.get('suppress_trade', False):
+                result['action'] = 'SKIP_DEPENDENCY'
+                self._periodic_persist()
+                self._update_monitoring(result)
+                return result
+            size_multiplier = dep_result.get(
+                'adjusted_size_multiplier', size_multiplier,
+            )
 
         # ---- 4. RISK ENGINE (sovereign — can block) ----
         mark_price = float(bar.get('close', 0))

@@ -1178,3 +1178,48 @@ run_multi_asset.py
 ```
 Each thread owns its runtime. No shared state. Kill switch on one
 does not affect others (proven by test).
+
+---
+
+## 2026-04-17 — Ticket 34 (Inter-Asset Dependency Layer)
+
+### Rule 7 ✓
+CLAUDE.md lu. Alpha (GBM/Jesse) non touché. Layer opère APRÈS
+Fractal Quality, AVANT RiskEngine. Direction jamais changée.
+
+### Problème
+Les 3 runtimes (T33) sont indépendantes. Aucune information ne
+circule entre elles. BTC peut crasher sans que ETH/SOL ne réagissent.
+
+### Hypothèse
+Un layer de dépendance inter-actifs partagé entre runtimes détecte
+les relations lead/lag, la contagion, et module le sizing en
+conséquence — sans toucher à l'alpha.
+
+### Livré
+1. `src/live/inter_asset_dependency.py` :
+   - Lagged feature matrix (returns, vol_ratio, momentum_spread)
+   - Lead/lag detection via cross-correlation
+   - Regime-conditioned dependency score (trending amplifie, ranging atténue)
+   - Contagion modeling (shock propagation, spillover probability)
+   - Decision modulation (aligned → boost 1.25×, misaligned → reduce 0.5×,
+     high contagion → suppress)
+   - InterAssetDependencyLayer orchestrator (shared across runtimes)
+2. NYXRuntime.on_bar() wired : step 3b between Fractal Quality and Risk Engine
+3. scripts/run_multi_asset.py updated : shared dependency layer
+
+### Tests : 29/29 GREEN + 14 T33 regression
+
+### Architecture
+```
+NYXRuntime(BTC).on_bar()  ─┐
+NYXRuntime(ETH).on_bar()  ─┤─→ shared InterAssetDependencyLayer
+NYXRuntime(SOL).on_bar()  ─┘     ├── update_return(symbol, ts, ret)
+                                  └── evaluate(symbol, dir, size_mult)
+                                       ├── detect_lead_lag()
+                                       ├── detect_contagion()
+                                       ├── aggregate_dependency()
+                                       └── modulate_decision()
+```
+BTC = leader (not modulated). ETH/SOL = followers (modulated by
+dependency with BTC).
