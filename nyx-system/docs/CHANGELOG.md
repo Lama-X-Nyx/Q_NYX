@@ -2,6 +2,30 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 37 — Unified Audit Trail (2026-04-17)
+
+`src/live/audit_trail.py` — structured, deterministic, replayable
+decision history for both per-asset and portfolio-level events.
+
+- `AssetAuditEvent` — per-bar decision chain (symbol, timestamp,
+  action, layers, event_id, cycle_id)
+- `PortfolioAuditEvent` — per-cycle allocation chain (cycle_id,
+  candidates, allocation_results, dependency_outputs)
+- `AuditStore` — append-only JSONL persistence, per-symbol files
+  + portfolio file, survives restart
+- `replay_asset_events()` — load + return events for analysis
+- `verify_audit_chain()` — integrity check
+- Event linkage: asset events carry cycle_id → portfolio events
+- NYXRuntime instrumented: every `on_bar()` emits AssetAuditEvent
+  via `_update_monitoring()` when audit_store is provided
+- CentralOrchestrator instrumented: every `run_cycle()` emits
+  PortfolioAuditEvent with cycle_id linkage
+- Backward compatible: without audit_store, no overhead
+
+TDD : 21 GREEN (5 asset schema + 3 portfolio schema + 5 store +
+2 linkage + 3 replay + 2 runtime + 1 orchestrator).
+88 regression GREEN (14+29+23+22). CLAUDE.md Rule 7 ✓.
+
 ### Ticket 36 — Central Synchronous Orchestrator (2026-04-17)
 
 Converts the system from asynchronous per-runtime allocation to

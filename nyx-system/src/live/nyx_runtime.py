@@ -49,11 +49,13 @@ class NYXRuntime:
         dependency_layer: Optional[Any] = None,
         portfolio_allocator: Optional[Any] = None,
         candidate_store: Optional[Any] = None,
+        audit_store: Optional[Any] = None,
     ) -> None:
         self.symbol = symbol
         self.dependency_layer = dependency_layer
         self.portfolio_allocator = portfolio_allocator
         self.candidate_store = candidate_store
+        self.audit_store = audit_store
 
         # --- 0. MODELS (GBM + Jesse agents) ---
         from src.ml.nyx_live_decider import NYXLiveDecider
@@ -605,6 +607,15 @@ class NYXRuntime:
         if alerts:
             for a in alerts:
                 log.warning('ALERT: %s', a)
+        if self.audit_store is not None:
+            from src.live.audit_trail import AssetAuditEvent
+            ev = AssetAuditEvent(
+                symbol=self.symbol,
+                timestamp=result.get('timestamp', ''),
+                action=result.get('action', ''),
+                layers=result.get('layers', {}),
+            )
+            self.audit_store.append_asset_event(ev)
 
     # ------------------------------------------------------------------
     def recover(self) -> None:

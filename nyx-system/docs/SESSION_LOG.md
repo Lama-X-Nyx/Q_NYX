@@ -1314,3 +1314,32 @@ Thread SOLUSDT → NYXRuntime(candidate_store) → CandidateDecision
                ├── PortfolioAllocator (FULL ranking)
                └── Approved trades dispatched
 ```
+
+---
+
+## 2026-04-17 — Ticket 37 (Unified Audit Trail)
+
+### Rule 7 ✓
+CLAUDE.md lu. Alpha non touché. Audit trail est observability pure —
+aucun impact sur les décisions.
+
+### Problème
+Aucune traçabilité structurée. Les décisions ne sont pas
+reconstructibles ou rejouables. Pas institutional-grade.
+
+### Solution
+- `AssetAuditEvent` (per-bar) : capture signal + jesse + fractal +
+  dependency + allocator + risk + OMS pour chaque barre
+- `PortfolioAuditEvent` (per-cycle) : capture candidates + allocation
+  results + dependency outputs pour chaque cycle
+- `AuditStore` : append-only JSONL, un fichier par symbole +
+  un fichier portfolio, survit au restart
+- Linkage : cycle_id relie asset events ↔ portfolio events
+- Replay : `replay_asset_events()` + `verify_audit_chain()`
+
+### Instrumentation
+- NYXRuntime._update_monitoring() → émet AssetAuditEvent
+- CentralOrchestrator.run_cycle() → émet PortfolioAuditEvent
+- Zero overhead quand audit_store=None
+
+### Tests : 21/21 GREEN + 88 regression (14+29+23+22)

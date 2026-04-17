@@ -107,9 +107,11 @@ class CentralOrchestrator:
         dependency_layer: Optional[Any] = None,
         portfolio_allocator: Optional[Any] = None,
         portfolio_ctx: Optional[Dict[str, Any]] = None,
+        audit_store: Optional[Any] = None,
     ) -> None:
         self.symbols = symbols
         self.dependency_layer = dependency_layer
+        self.audit_store = audit_store
 
         if portfolio_allocator is None:
             from src.live.portfolio_allocator import PortfolioAllocator
@@ -169,6 +171,18 @@ class CentralOrchestrator:
             })
 
         results = self.allocator.allocate(alloc_candidates, ctx)
+
+        cycle_id = f'cycle-{self._total_cycles + 1}'
+        if self.audit_store is not None:
+            from src.live.audit_trail import PortfolioAuditEvent
+            ts = candidates[0].timestamp if candidates else ''
+            ev = PortfolioAuditEvent(
+                cycle_id=cycle_id,
+                timestamp=ts,
+                candidates=[c.to_dict() for c in candidates],
+                allocation_results=results,
+            )
+            self.audit_store.append_portfolio_event(ev)
 
         self._total_cycles += 1
         self._last_cycle_results = results
