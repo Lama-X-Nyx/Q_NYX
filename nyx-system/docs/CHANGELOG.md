@@ -2,6 +2,22 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 32 — Execution Optimization (2026-04-17)
+
+`src/live/execution_optimizer.py` — fill probability + dynamic
+limit offset + maker/taker decision. Operates AFTER RiskEngine,
+BEFORE OMS. Alpha untouched. Deterministic.
+
+- `estimate_fill_probability(spread, vol, price_move, offset)` → [0,1]
+- `compute_dynamic_offset_bps(vol, spread, fill_prob)` → dynamic bps
+  (higher vol → wider offset, lower fill_prob → wider offset)
+- `should_use_taker(edge, taker_cost, fill_prob_maker)` → bool
+  (taker when edge > cost AND maker fill prob low)
+- `build_execution_plan(side, mark, vol, spread, edge)` → full plan
+  dict with limit_price + order_type + offset + fill_prob
+
+TDD : 12 GREEN. CLAUDE.md Rule 7 ✓.
+
 ### Ticket 31 — Advanced Risk Engine (VaR / CVaR) (2026-04-17)
 
 Extend RiskEngine with distribution-aware risk controls (NOT

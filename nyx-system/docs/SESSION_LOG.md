@@ -1122,3 +1122,19 @@ remplacement. Alpha non touché.
 RiskEngine.validate_trade() étendu avec max_var_95 / max_cvar_95.
 
 ### Tests : 24/24 GREEN (12 VaR/CVaR + 12 T25 régression)
+
+---
+
+## 2026-04-17 — Ticket 32 (Execution Optimization)
+
+### Rule 7 ✓
+CLAUDE.md lu. Alpha non touché. Execution-only layer AFTER Risk, BEFORE OMS.
+
+### Livré
+`src/live/execution_optimizer.py` : fill probability estimation,
+dynamic limit offset (replace static 0.1%), maker/taker decision
+logic, build_execution_plan(). Déterministe, reproductible.
+
+### Tests : 12/12 GREEN
+Fill prob range + monotonicity, offset widens with vol + low fill
+prob, maker/taker logic, execution plan structure + limit prices.
