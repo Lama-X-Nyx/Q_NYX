@@ -2,6 +2,34 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 20 — Jesse as post-decision modulators — NEUTRAL (2026-04-17)
+
+GBM (173 features) DECIDES. Agents MODULATE sizing post-decision.
+New module `src/core/fractal_quality.py::compute_fractal_quality`
+computes a multi-TF quality score from the 4 agent FractalReports
+(Context 1D + Regime 4H + Setup 1H + Entry 15M) and returns a
+`size_multiplier` (0.25×..1.25×) that scales the position size.
+Agents are called ONLY on GBM-approved candidates (post-threshold).
+
+**Result : NEUTRAL. Sharpe 9.64 vs baseline 9.96 (−3.2 %).**
+Drawdown 0.375 % vs 0.37 % (≈ identique). 1 trade skipped out of
+54 (fractal_quality < 0.25 → all 4 agents rejected).
+
+This is architecturally significant : for the first time, Jesse
+agents DO NOT DEGRADE the edge when wired into the runtime.
+
+| Experiment | Approach | Sharpe | Verdict |
+|---|---|---:|---|
+| T11 baseline | GBM only | 9.96 | Reference |
+| T17 inject | rep_* IN GBM | 8.73 | REJECT (−12 %) |
+| T19 replace | Meta-GBM on agents only | 1.10 | REJECT (−89 %) |
+| **T20 modulate** | **GBM decides + agents size** | **9.64** | **NEUTRAL (−3.2 %)** |
+
+Decision : **NEUTRAL** — agents as post-decision modulators are
+benign. They add observability (quality_bucket + risk_hint per
+trade) without destroying the edge. Keep for observability +
+future tuning of the skip/sizing thresholds.
+
 ### Ticket 19 — Meta-GBM on ML fractal agents — REJECT (2026-04-17)
 
 Built a DEDICATED Meta-GBM trained on ONLY the 22 meta_* features

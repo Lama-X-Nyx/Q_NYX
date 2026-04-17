@@ -153,12 +153,12 @@ class NYXEngine:
             df_15m.loc[:train_end], mtf_features['15m'].loc[:train_end],
             ctx_1d, ctx_1h,
             feat_1h=feat_1h, feat_4h=feat_4h, feat_1d=feat_1d,
-            mtf_data=mtf_data)
+            mtf_data=None)   # Ticket 20: GBM sees ONLY tech features (no rep_*)
         test_cands = self._generate_candidates(
             df_15m.loc[test_start:te], mtf_features['15m'].loc[test_start:te],
             ctx_1d, ctx_1h,
             feat_1h=feat_1h, feat_4h=feat_4h, feat_1d=feat_1d,
-            mtf_data=mtf_data)
+            mtf_data=None)   # Ticket 20: ditto — agents called post-GBM only
 
         if len(train_cands) < 30 or len(test_cands) == 0:
             return self._empty_result()
@@ -291,6 +291,51 @@ class NYXEngine:
             # Hour bonus
             hour = cand['timestamp'].hour if hasattr(cand['timestamp'], 'hour') else 12
             sf *= 1.1 if 8 <= hour <= 18 else 0.8
+
+            # Ticket 20 — fractal quality modulation (post-GBM).
+            # Agents called FRESH on bars that ALREADY passed GBM +
+            # cooldown + daily limit. They modulate SIZE, not
+            # threshold. All 4 TF contribute (MTF requirement).
+            # NOTE: _generate_candidates was called with mtf_data=None
+            # (so GBM sees only 173 tech features, no rep_*). The
+            # modulation is the ONLY channel through which agents
+            # affect the trade.
+            if mtf_data is not None:
+                from src.core.fractal_quality import compute_fractal_quality
+                from src.agents.contracts import FractalReport
+                # Call agents FRESH on this candidate's timestamp.
+                ts_cand = pd.Timestamp(cand['timestamp'])
+                rep_feats = self._build_fractal_report_features(
+                    ts_cand, mtf_data,
+                )
+                fq_reports = {}
+                for agent_name, tf_key in [
+                    ('context', '1d'), ('regime', '4h'),
+                    ('setup', '1h'), ('entry', '15m'),
+                ]:
+                    passed_val = rep_feats.get(
+                        f'rep_{agent_name}_passed',
+                        rep_feats.get(f'rep_{agent_name[:3]}_passed', 0)
+                    )
+                    score_val = rep_feats.get(
+                        f'rep_{agent_name}_score',
+                        rep_feats.get(f'rep_{agent_name[:3]}_score', 0.5)
+                    )
+                    fq_reports[agent_name] = FractalReport(
+                        asset='NYX', agent=agent_name, timeframe=tf_key,
+                        state='active' if float(passed_val) > 0.5 else 'inactive',
+                        score=float(score_val),
+                        passed=bool(float(passed_val) > 0.5),
+                        block_reasons=(
+                            [] if float(passed_val) > 0.5
+                            else ['low quality']
+                        ),
+                        timestamp=str(cand['timestamp']),
+                    )
+                fq = compute_fractal_quality(fq_reports)
+                if fq['skip_trade']:
+                    continue
+                sf *= fq['size_multiplier']
 
             # Execution filter: reject if cost > alpha
             if self.use_execution_filter:

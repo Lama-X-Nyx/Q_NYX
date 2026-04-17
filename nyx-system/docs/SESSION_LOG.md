@@ -842,3 +842,43 @@ PAS le signal primaire pour le trading.
 4. Possible direction future : entraîner les 4 agents sur un
    OBJECTIF DIFFÉRENT (pas le même label que le GBM) pour qu'ils
    capturent un signal ORTHOGONAL au lieu de compresser le même.
+
+---
+
+## 2026-04-17 — Ticket 20 (Jesse as post-decision modulators — NEUTRAL)
+
+### Question testée
+Les agents améliorent-ils l'edge quand ils MODULENT le sizing
+POST-décision GBM au lieu de contribuer au signal ML ?
+
+### Réponse : NEUTRAL. Non destructif (−3.2 % Sharpe, DD identique).
+
+| Metric | Baseline T11 | T20 modulation | Delta |
+|---|---:|---:|---|
+| n_trades | 54 | 53 | −1 |
+| Sharpe | 9.96 | 9.64 | −3.2 % |
+| PnL | $2,171 | $1,966 | −9.5 % |
+| Max DD | 0.37% | 0.375% | ≈ 0 |
+
+### Convergence des 4 expériences
+
+| # | Approche | Sharpe | Verdict |
+|---|---|---:|---|
+| T11 | GBM seul | 9.96 | Baseline |
+| T17 | rep_* DANS le GBM | 8.73 | REJECT |
+| T19 | Meta-GBM agents seuls | 1.10 | REJECT |
+| **T20** | **GBM décide + agents modulent** | **9.64** | **NEUTRAL** |
+
+### Ce que ça signifie
+C'est la PREMIÈRE fois que les agents Jesse sont wirés dans le
+runtime sans détruire l'edge. L'approche "modulation post-décision"
+est architecturalement saine : les agents ajoutent de la sémantique
+(quality_bucket, risk_hint) sans polluer le signal ML du GBM.
+
+### Fichiers touchés
+- `src/core/fractal_quality.py` (nouveau) — compute_fractal_quality
+- `src/core/nyx_engine.py` — wiring post-GBM + mtf_data=None pour
+  _generate_candidates (GBM pur)
+- `tests/test_fractal_quality_ticket20.py` (nouveau) — 9 tests
+- `reports/BTCUSDT_oos_report.json` — OOS T20
+- `docs/CHANGELOG.md` + ce log
