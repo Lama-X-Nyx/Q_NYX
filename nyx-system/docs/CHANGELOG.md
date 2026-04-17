@@ -2,6 +2,27 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 28 — Model Governance (2026-04-17)
+
+`src/ml/model_registry.py::ModelRegistry` — versioned model
+lifecycle extending the existing `train_asset_model` save/load path
+(Rule 5 — natural owner, no parallel system).
+
+- `register(symbol, artifact_dir, validation)` → copies artifacts
+  into `registry_dir/SYMBOL/vN/`, stores `registry_meta.json` with
+  version + validation metadata + timestamp.
+- `promote(symbol, version)` → sets active version. If
+  `require_validation=True`, refuses promotion without validation
+  metadata.
+- `rollback(symbol)` → instant revert to the previous promoted
+  version (history tracked in `active.json`).
+- `load_active(symbol)` → returns the path to the active version's
+  artifacts (compatible with `load_artifact()`).
+
+TDD : 11 GREEN — register, increment, list, load, metadata,
+promote, promote-requires-validation, rollback, rollback-no-previous
+raises, load_active.
+
 ### Ticket 22R — NYXRuntime single orchestrator (2026-04-17)
 
 Fix the fragmentation: batch and live were separate pipelines, Jesse

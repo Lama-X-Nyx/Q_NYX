@@ -1078,3 +1078,18 @@ Plus aucun appel direct à NYXLiveDecider, RiskEngine, OMS, etc.
 | Une seule commande ? | ✅ `python scripts/run_live_feed.py` |
 
 ### Tests : 14/14 GREEN
+
+---
+
+## 2026-04-17 — Ticket 28 (Model Governance)
+
+### Rule 7 respectée
+CLAUDE.md + OPERATING_RULES.md lus avant de coder. Natural owner
+identifié : `src/ml/train_asset_model.py` (déjà save/load).
+
+### Livré
+`src/ml/model_registry.py::ModelRegistry` — versioned model store.
+register → promote (with validation) → rollback (instant) → load_active.
+Étend le path existant, ne le remplace pas.
+
+### Tests : 11/11 GREEN
