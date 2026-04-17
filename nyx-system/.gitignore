@@ -69,3 +69,4 @@ dashboard/.env
 .coverage
 htmlcov/
 .pytest_cache/
+state/
