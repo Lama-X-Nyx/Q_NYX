@@ -252,6 +252,86 @@ class NYXRuntime:
         """Called when broker times out an order (missed trade)."""
         self.oms.cancel_order(order_id, reason='TIMED_OUT')
         self.metrics.record_order_attempt(filled=False)
+        self.state_store.save_oms(self.oms)
+
+    # ------------------------------------------------------------------
+    def on_exchange_update(self, update: Dict[str, Any]) -> None:
+        """Process an exchange execution report (fill / reject / cancel).
+
+        This is the SINGLE entry point for exchange → system state.
+        OMS → Portfolio → Persistence → Monitoring in sequence.
+        """
+        oid = int(update.get('order_id', 0))
+        event_type = str(update.get('type', ''))
+
+        if event_type == 'FILL':
+            self.on_fill(
+                order_id=oid,
+                fill_qty=float(update.get('fill_qty', 0)),
+                fill_price=float(update.get('fill_price', 0)),
+                fee=float(update.get('fee', 0)),
+            )
+        elif event_type == 'REJECT':
+            self.oms.handle_reject(oid, reason=str(update.get('reason', '')))
+            self.state_store.save_oms(self.oms)
+        elif event_type == 'CANCEL':
+            self.oms.cancel_order(oid, reason=str(update.get('reason', '')))
+            self.state_store.save_oms(self.oms)
+        elif event_type == 'TIMEOUT':
+            self.on_timeout(oid)
+        else:
+            log.warning('unknown exchange update type: %s', event_type)
+
+    # ------------------------------------------------------------------
+    def heartbeat(self) -> Dict[str, Any]:
+        """Periodic system health check. Call every N seconds.
+
+        Responsibilities :
+        - check feed health
+        - persist runtime state
+        - trigger alerts if needed
+        - return status snapshot for logging / dashboard
+
+        This is NOT a bar event — it runs on a timer independent of
+        market data. If the feed is stale, heartbeat still runs.
+        """
+        # Persist current state (regardless of trading activity).
+        self.state_store.save_oms(self.oms)
+        self.state_store.save_portfolio(self.portfolio)
+
+        # Check alerts.
+        alerts = self.alerts.check(
+            ws_connected=self.feed_health.is_healthy(),
+            equity=self.portfolio.available_balance,
+        )
+
+        # Activate kill switch on critical alerts.
+        for a in alerts:
+            if a.get('severity') == 'critical':
+                self.risk_engine.activate_kill_switch(
+                    reason=f'heartbeat alert: {a["message"]}'
+                )
+                log.critical('KILL SWITCH via heartbeat: %s', a['message'])
+
+        status = {
+            'feed_healthy': self.feed_health.is_healthy(),
+            'feed_status': self.feed_health.status(),
+            'risk_killed': self.risk_engine.is_killed,
+            'metrics': self.metrics.snapshot(),
+            'alerts': alerts,
+            'open_orders': sum(
+                1 for o in self.oms._orders.values()
+                if o.status == 'SUBMITTED'
+            ),
+            'open_positions': sum(
+                1 for p in self.portfolio.positions.values()
+                if p.quantity > 0
+            ),
+        }
+        log.info('heartbeat: %s', {
+            k: v for k, v in status.items() if k != 'metrics'
+        })
+        return status
 
     # ------------------------------------------------------------------
     # Jesse agent calls — all 4, right here, visible.

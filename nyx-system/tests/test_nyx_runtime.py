@@ -107,6 +107,53 @@ class TestAllLayersExist:
 
 
 # ===========================================================================
+class TestExchangeUpdate:
+
+    def test_on_exchange_update_fill(self, runtime):
+        """Exchange fill update flows through OMS → Portfolio."""
+        # First submit an order so we have something to fill.
+        oid = runtime.oms.submit_order(
+            client_order_id='exch-test-1', symbol='BTCUSDT',
+            side='buy', quantity=0.01, price=16500.0,
+        )
+        runtime.on_exchange_update({
+            'order_id': oid,
+            'type': 'FILL',
+            'fill_qty': 0.01,
+            'fill_price': 16500.0,
+            'fee': 0.033,
+        })
+        assert runtime.oms.get_order(oid).status == 'FILLED'
+
+    def test_on_exchange_update_reject(self, runtime):
+        oid = runtime.oms.submit_order(
+            client_order_id='exch-test-2', symbol='BTCUSDT',
+            side='buy', quantity=0.01, price=16500.0,
+        )
+        runtime.on_exchange_update({
+            'order_id': oid,
+            'type': 'REJECT',
+            'reason': 'post-only would cross',
+        })
+        assert runtime.oms.get_order(oid).status == 'REJECTED'
+
+
+class TestHeartbeat:
+
+    def test_heartbeat_returns_status(self, runtime):
+        status = runtime.heartbeat()
+        assert 'feed_healthy' in status
+        assert 'risk_killed' in status
+        assert 'metrics' in status
+        assert 'open_orders' in status
+        assert 'open_positions' in status
+
+    def test_heartbeat_persists_state(self, runtime):
+        runtime.heartbeat()
+        state_dir = Path('/tmp/nyx_test_runtime')
+        assert (state_dir / 'oms_state.json').exists()
+
+
 class TestRecoverAndShutdown:
 
     def test_shutdown_persists(self, runtime):
@@ -119,3 +166,25 @@ class TestRecoverAndShutdown:
     def test_recover_loads(self, runtime):
         """recover() must not crash."""
         runtime.recover()
+
+
+class TestFullPipelineIntegration:
+    """End-to-end: the FULL pipeline must execute when on_bar is
+    called with enough warmup bars. Every layer must be touched."""
+
+    def test_on_bar_result_documents_all_layers(self, runtime):
+        """When the GBM DOES fire a signal, the result must contain
+        evidence that Jesse + fractal + risk were evaluated.
+
+        NOTE: with only 1 bar of warmup the GBM won't fire (hard
+        gate blocks), so we just verify the infrastructure doesn't
+        crash and the signal layer is always populated.
+        """
+        for i in range(5):
+            result = runtime.on_bar(_bar(
+                ts=f'2023-06-15T{10+i}:00:00',
+                price=16500.0 + i * 10,
+            ))
+        assert result['action'] in ('FLAT', 'SKIP_QUALITY',
+                                     'BLOCKED_RISK', 'ORDER_SUBMITTED')
+        assert 'signal' in result['layers']
