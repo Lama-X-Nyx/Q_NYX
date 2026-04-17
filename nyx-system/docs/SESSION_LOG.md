@@ -958,3 +958,25 @@ CSV.iterrows()).
 - Env var `BINANCE_SYMBOL=btcusdt`
 - Artefact modèle dans `models/BTCUSDT/`
 - Réseau ouvert vers `stream.binance.com:9443`
+
+---
+
+## 2026-04-17 — Ticket 23 (OMS — Order Management System)
+
+### Livré
+`src/live/oms.py::OMS` — single source of truth pour l'état des
+ordres. Wraps le broker existant comme un CONTROLLER d'exécution.
+
+### Lifecycle canonique
+SUBMITTED → PARTIALLY_FILLED → FILLED
+SUBMITTED → REJECTED / CANCELLED
+PARTIALLY_FILLED → FILLED / CANCELLED
+Terminal (FILLED/REJECTED/CANCELLED) = immuable.
+
+### Protections
+- Duplicate client_order_id → ValueError
+- Overfill → ValueError
+- Mutation terminal → RuntimeError
+- Cancel terminal → no-op sûr
+
+### Tests : 11/11 GREEN

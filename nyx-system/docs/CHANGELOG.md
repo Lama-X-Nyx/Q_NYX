@@ -2,6 +2,50 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 23 — Order Management System (OMS) (2026-04-17)
+
+Single source of truth for order lifecycle. `src/live/oms.py::OMS`
+wraps the existing execution adapter as an execution CONTROLLER.
+NYXEngine expresses intent via `oms.submit_order()` — no direct
+order placement from strategy code.
+
+Canonical order lifecycle :
+```
+SUBMITTED → PARTIALLY_FILLED → FILLED
+SUBMITTED → REJECTED
+SUBMITTED → CANCELLED
+PARTIALLY_FILLED → FILLED
+PARTIALLY_FILLED → CANCELLED
+```
+
+Terminal states (FILLED / REJECTED / CANCELLED) cannot be mutated.
+
+Features :
+- `OMSOrder` — canonical order dataclass with client_order_id,
+  filled_qty, avg_fill_price, reject/cancel reasons, timestamps
+- Duplicate protection — same client_order_id cannot be submitted
+  twice (raises ValueError)
+- Partial fill reconciliation — running filled_qty + VWAP
+  avg_fill_price, auto-transition to FILLED when complete
+- Overfill protection — fill_qty > remaining raises ValueError
+- Terminal guard — mutation of FILLED/REJECTED/CANCELLED raises
+  RuntimeError
+- Cancel idempotence — cancel on terminal order is a safe no-op
+- Structured event log — every state transition logged with
+  timestamp + detail dict
+
+TDD : `tests/test_oms_ticket23.py` — 11 GREEN
+- Submit creates SUBMITTED order
+- Fill → FILLED, partial fill → PARTIALLY_FILLED → FILLED
+- Reject → REJECTED with reason
+- Cancel → CANCELLED
+- Invalid transition on terminal order raises
+- Duplicate client_order_id blocked
+- Cancel on terminal is no-op
+- Avg fill price computed from multiple partials
+- Overfill prevented
+- Events logged (≥ 2 per lifecycle)
+
 ### Ticket 22 — Binance Market Connectivity Layer (2026-04-17)
 
 Live market data artery feeding the existing NYX architecture.
