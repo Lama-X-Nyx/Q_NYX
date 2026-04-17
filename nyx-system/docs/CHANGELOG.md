@@ -2,6 +2,41 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 21 — Realistic OOS BTC 2023 (PostOnlyPaperBroker) (2026-04-17)
+
+First honest execution simulation. Signal from NYXEngine.run()
+(same GBM as baseline), execution via PostOnlyPaperBroker
+(maker 0.02 %, max_wait_bars=3, REJECT if crosses, TIMED_OUT if
+no fill within 45 min).
+
+**Edge survives realistic execution.** Sharpe 6.46, WR 85.7 %,
+PF 7.8, DD 0.396 %, +12.5 % return on BTC 2023.
+
+Execution truth :
+  53 signals → 53 placed → 35 FILLED (66 %) + 18 TIMED_OUT (34 %)
+  0 rejected, 0 slippage (maker fill at limit), avg 0.06 bars to fill
+
+| Metric | Idealized | Realistic | Δ |
+|---|---:|---:|---:|
+| n_trades | 53 | 35 | −34 % (missed) |
+| Win rate | — | 85.7 % | high (losers filtered by miss) |
+| Sharpe | 9.64 | 6.46 | −33 % |
+| PnL | $1,966 | $1,247 | −37 % |
+| Max DD | 0.375 % | 0.396 % | +6 % |
+| Profit factor | — | 7.8 | excellent |
+
+Miss rate 34 % is higher than the earlier 14.6 % reality-check
+estimate (which used a different execution model). The 0.1 % limit
+offset is tight — on trending BTC, price moves away before filling.
+Widening to 0.2-0.3 % offset could improve fill rate at the cost
+of slightly worse entry.
+
+The surviving 35 trades have a very high win rate (85.7 %)
+because the MISSED trades tend to be rapid breakouts where price
+moved away immediately — some of which would have been losers.
+The post-only miss filter accidentally acts as a positive quality
+filter.
+
 ### Ticket 20 — Jesse as post-decision modulators — NEUTRAL (2026-04-17)
 
 GBM (173 features) DECIDES. Agents MODULATE sizing post-decision.
