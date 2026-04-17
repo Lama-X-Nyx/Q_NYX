@@ -1013,3 +1013,23 @@ NYXEngine decision
   → OMS.submit_order()             ← STATE OWNER (Ticket 23)
   → PostOnlyPaperBroker            ← EXECUTION
   → Portfolio.on_fill()            ← POSITION STATE (Ticket 24)
+
+---
+
+## 2026-04-17 — Ticket 26 (Persistence & Recovery)
+
+### Livré
+`src/live/state_store.py::StateStore` — atomic JSON persistence.
+OMS orders + Portfolio positions + event log. Crash-safe (tmp →
+fsync → rename). On restart: load_oms + load_portfolio → state
+exact, duplicate protection active, no reconstruction needed.
+
+### Tests : 6/6 GREEN
+
+### Architecture live COMPLÈTE
+
+Binance WS → BarBuilder → FeedHealth → NYXLiveDecider
+  → Fractal Modulation → RiskEngine → OMS → Broker
+  → Portfolio → StateStore (persist) → EventAlerter
+
+Chaque couche a un rôle unique. L'état survit au crash.

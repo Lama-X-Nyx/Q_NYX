@@ -2,6 +2,28 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 26 — Persistence & Recovery (2026-04-17)
+
+`src/live/state_store.py::StateStore` — atomic JSON persistence
+for OMS + Portfolio + event log. Crash-safe via tmp → fsync → rename.
+
+- `save_oms / load_oms` — persists all orders + client_id registry +
+  next_oid + events. On reload, duplicate protection immediately
+  active (same client_order_id cannot re-submit).
+- `save_portfolio / load_portfolio` — persists positions (symbol,
+  side, qty, avg_entry, realized_pnl) + total_fees + realized_total.
+- `save_event_log` — append-only JSONL for replay / audit.
+- `_atomic_write` — tmp file → fsync → rename (no corrupt state on
+  crash mid-write).
+
+TDD : `tests/test_persistence_ticket26.py` — 6 GREEN
+- OMS save/load (orders + states + client_id registry)
+- No duplicate after reload
+- Portfolio save/load (positions + fees)
+- No lost positions (multi-symbol)
+- Event log persisted (JSONL lines ≥ 2)
+- Atomic write safety
+
 ### Ticket 25 — Risk Engine (sovereign, no bypass) (2026-04-17)
 
 `src/live/risk_engine.py::RiskEngine` sits between decision and
