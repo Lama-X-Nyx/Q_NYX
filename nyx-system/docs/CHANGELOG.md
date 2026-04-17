@@ -2,6 +2,20 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 27 — Monitoring & Observability (2026-04-17)
+
+`src/live/monitoring.py` — no blind trading.
+
+- **MetricsCollector** : trades (count, PnL, win rate), execution
+  (fill rate, miss rate, reject rate), drawdown (peak-relative %),
+  system (WS latency avg, reconnect count). `.snapshot()` → dict.
+- **AlertManager** : threshold-based triggers — daily loss ≥ 1 %,
+  drawdown ≥ 3 %, WS disconnect. Returns structured alert list.
+
+TDD : 12 GREEN — record_trade, win_rate, fill/miss/reject rates,
+drawdown tracking, snapshot, WS latency, reconnect count, alerts
+(loss, disconnect, drawdown, healthy=no alert).
+
 ### Ticket 26 — Persistence & Recovery (2026-04-17)
 
 `src/live/state_store.py::StateStore` — atomic JSON persistence

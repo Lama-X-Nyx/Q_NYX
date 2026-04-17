@@ -1033,3 +1033,20 @@ Binance WS → BarBuilder → FeedHealth → NYXLiveDecider
   → Portfolio → StateStore (persist) → EventAlerter
 
 Chaque couche a un rôle unique. L'état survit au crash.
+
+---
+
+## 2026-04-17 — Ticket 27 (Monitoring & Observability)
+
+### Livré
+`src/live/monitoring.py` — MetricsCollector (trading + system
+metrics) + AlertManager (daily loss, drawdown, disconnect alerts).
+12/12 GREEN.
+
+### Pipeline live COMPLÈTE — toutes couches
+
+Binance WS → BarBuilder → FeedHealth → NYXLiveDecider
+  → Fractal Modulation → RiskEngine → OMS → Broker
+  → Portfolio → StateStore → **MetricsCollector + AlertManager**
+
+Le système est maintenant observable, persisté, et risk-controlled.
