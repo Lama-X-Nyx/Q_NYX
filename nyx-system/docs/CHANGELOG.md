@@ -2,6 +2,35 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 36 — Central Synchronous Orchestrator (2026-04-17)
+
+Converts the system from asynchronous per-runtime allocation to
+synchronous portfolio-level allocation cycles. Per-asset runtimes
+now produce CandidateDecisions only — CentralOrchestrator collects
+the full set, applies dependency + allocator, dispatches execution.
+
+- `src/live/central_orchestrator.py` :
+  - `CandidateDecision` — dataclass emitted by NYXRuntime per bar
+  - `CandidateStore` — thread-safe store indexed by time bucket,
+    with tolerance window for late arrivals, duplicate protection
+  - `CentralOrchestrator` — runs `run_cycle(candidates)` with
+    dependency layer + allocator on the FULL cross-asset set
+- `NYXRuntime.__init__` accepts optional `candidate_store`
+- `NYXRuntime.on_bar()` candidate mode: when candidate_store is set,
+  runtime stops after fractal quality, emits CandidateDecision,
+  returns `CANDIDATE_EMITTED` — no dependency/allocator/risk/OMS
+- `scripts/run_multi_asset.py` fully rewritten:
+  - per-asset threads in candidate mode
+  - orchestrator thread polls CandidateStore
+  - synchronized allocation cycles on full candidate sets
+- Backward compatible: without candidate_store, runtime still
+  executes the full pipeline (T34/T35 inline mode)
+
+TDD : 22 GREEN (3 candidate + 7 store + 8 orchestrator +
+3 runtime candidate mode + 1 full integration).
+66 regression GREEN (14 T33 + 29 T34 + 23 T35).
+CLAUDE.md Rule 7 ✓.
+
 ### Ticket 35 — Portfolio Allocator (2026-04-17)
 
 `src/live/portfolio_allocator.py` — capital-constrained, dependency-

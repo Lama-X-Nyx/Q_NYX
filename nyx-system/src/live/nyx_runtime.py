@@ -48,10 +48,12 @@ class NYXRuntime:
         initial_capital: float = 10_000.0,
         dependency_layer: Optional[Any] = None,
         portfolio_allocator: Optional[Any] = None,
+        candidate_store: Optional[Any] = None,
     ) -> None:
         self.symbol = symbol
         self.dependency_layer = dependency_layer
         self.portfolio_allocator = portfolio_allocator
+        self.candidate_store = candidate_store
 
         # --- 0. MODELS (GBM + Jesse agents) ---
         from src.ml.nyx_live_decider import NYXLiveDecider
@@ -229,6 +231,34 @@ class NYXRuntime:
             return result
 
         size_multiplier = fq['size_multiplier']
+
+        # ---- CANDIDATE MODE (Ticket 36) ----
+        # When candidate_store is set, runtime emits a CandidateDecision
+        # and stops. The CentralOrchestrator handles dependency, allocation,
+        # risk, and execution on the full cross-asset set.
+        if self.candidate_store is not None:
+            from src.live.central_orchestrator import CandidateDecision
+            mark_price = float(bar.get('close', 0))
+            candidate = CandidateDecision(
+                symbol=self.symbol,
+                timestamp=bar.get('timestamp', ''),
+                direction=1 if signal.direction > 0 else -1,
+                confidence=float(signal.conviction),
+                expected_edge_bps=float(signal.conviction) * 40.0,
+                size_hint=size_multiplier,
+                quality_bucket=fq.get('quality_bucket', 'medium'),
+                entry_price=mark_price,
+                jesse_reports={
+                    agent: {'state': r.state, 'score': r.score, 'passed': r.passed}
+                    for agent, r in jesse_reports.items()
+                },
+            )
+            self.candidate_store.add(candidate)
+            result['action'] = 'CANDIDATE_EMITTED'
+            result['layers']['candidate'] = candidate.to_dict()
+            self._periodic_persist()
+            self._update_monitoring(result)
+            return result
 
         # ---- 3b. INTER-ASSET DEPENDENCY (Ticket 34) ----
         # Modulates size_multiplier based on cross-asset dynamics.

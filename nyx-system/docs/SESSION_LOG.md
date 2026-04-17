@@ -1267,3 +1267,50 @@ NYXRuntime.on_bar()
   ├── 5. OMS
   └── 6-10. Fill / Portfolio / Persist / Monitor
 ```
+
+---
+
+## 2026-04-17 — Ticket 36 (Central Synchronous Orchestrator)
+
+### Rule 7 ✓
+CLAUDE.md lu. Alpha (GBM/Jesse) non touché. Runtimes deviennent
+candidat-only. Orchestrateur central arbitre le portfolio.
+
+### Problème (identifié dans review architecturale)
+L'allocator (T35) dans on_bar() ne voyait qu'un candidat à la fois.
+Jamais de vrai arbitrage cross-asset. L'allocator "portfolio" était
+en fait per-asset.
+
+### Solution
+- NYXRuntime avec `candidate_store` → s'arrête après fractal quality,
+  émet `CandidateDecision`, retourne `CANDIDATE_EMITTED`
+- `CandidateStore` collecte tous les candidats par bucket temporel
+  (15m close), avec tolérance pour arrivées tardives
+- `CentralOrchestrator.run_cycle()` reçoit le SET COMPLET, applique
+  dependency + allocator, retourne décisions d'allocation
+- Backward compatible : sans candidate_store, runtime exécute
+  le pipeline complet (mode inline T34/T35)
+
+### Livré
+1. `src/live/central_orchestrator.py` :
+   - CandidateDecision (dataclass)
+   - CandidateStore (thread-safe, time-bucketed, tolerance window)
+   - CentralOrchestrator (synchronized cycles)
+2. NYXRuntime.on_bar() : candidate mode
+3. scripts/run_multi_asset.py : runtimes candidat + orchestrateur
+
+### Tests : 22/22 GREEN + 66 regression (14+29+23)
+
+### Architecture finale
+```
+Thread BTCUSDT → NYXRuntime(candidate_store) → CandidateDecision
+Thread ETHUSDT → NYXRuntime(candidate_store) → CandidateDecision
+Thread SOLUSDT → NYXRuntime(candidate_store) → CandidateDecision
+                         ↓
+                  CandidateStore (time bucket)
+                         ↓
+              CentralOrchestrator.run_cycle()
+               ├── InterAssetDependencyLayer (FULL set)
+               ├── PortfolioAllocator (FULL ranking)
+               └── Approved trades dispatched
+```

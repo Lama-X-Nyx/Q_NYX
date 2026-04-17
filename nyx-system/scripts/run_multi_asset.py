@@ -1,18 +1,18 @@
 """
-NYX Multi-Asset Live Feed — one NYXRuntime per asset.
+NYX Multi-Asset Live Feed — synchronized portfolio-level allocation.
 
-Spawns one independent NYXRuntime per configured asset.
-Each runtime has its own model, OMS, portfolio, risk engine,
-state store, and metrics — full isolation.
+Ticket 36 architecture:
 
-BTC: live (real execution)
-ETH: paper (PostOnlyPaperBroker, no exchange)
-SOL: paper (PostOnlyPaperBroker, no exchange)
+  Per-asset threads → CandidateStore → CentralOrchestrator → execution
+
+Each asset's NYXRuntime produces CandidateDecisions only (no
+direct execution). The CentralOrchestrator collects candidates per
+15m time bucket, runs dependency + portfolio allocator on the FULL
+set, then dispatches approved trades.
 
 Usage:
   python scripts/run_multi_asset.py
-
-Each asset connects to its own Binance WS kline stream.
+  NYX_ASSETS=BTCUSDT,ETHUSDT python scripts/run_multi_asset.py
 """
 from __future__ import annotations
 
@@ -42,10 +42,10 @@ ASSETS = {
 
 def run_asset(
     symbol: str, config: dict,
-    dependency_layer: object = None,
-    portfolio_allocator: object = None,
+    candidate_store: object,
+    dependency_layer: object,
 ) -> None:
-    """Run a single asset's NYXRuntime in its own thread."""
+    """Run a single asset's NYXRuntime in candidate-only mode."""
     from src.live.binance_ws import BinanceKlineStream
     from src.live.nyx_runtime import NYXRuntime
 
@@ -60,8 +60,8 @@ def run_asset(
         models_dir=models_dir,
         state_dir=HERE / 'state' / symbol,
         initial_capital=config['capital'],
+        candidate_store=candidate_store,
         dependency_layer=dependency_layer,
-        portfolio_allocator=portfolio_allocator,
     )
     runtime.recover()
     runtime.start()
@@ -85,12 +85,15 @@ def run_asset(
             return
 
         result = runtime.on_bar(bar)
-        if result['action'] != 'FLAT':
+        if result['action'] == 'CANDIDATE_EMITTED':
             asset_log.info(
-                '[%s] ACTION=%s layers=%s',
-                config['mode'].upper(), result['action'],
-                {k: v for k, v in result['layers'].items() if k != 'jesse'},
+                '[%s] CANDIDATE emitted: conf=%.2f dir=%s',
+                config['mode'].upper(),
+                result['layers'].get('candidate', {}).get('confidence', 0),
+                result['layers'].get('candidate', {}).get('direction', '?'),
             )
+        elif result['action'] != 'FLAT':
+            asset_log.info('[%s] ACTION=%s', config['mode'].upper(), result['action'])
 
         now = time.time()
         if now - last_health_log > 300:
@@ -100,7 +103,7 @@ def run_asset(
     def on_error(e: Exception) -> None:
         asset_log.error('WS error: %s', e)
 
-    asset_log.info('starting %s [%s]', symbol, config['mode'])
+    asset_log.info('starting %s [%s] (candidate mode)', symbol, config['mode'])
     try:
         stream.run(on_message=on_message, on_error=on_error)
     except Exception as exc:
@@ -108,6 +111,34 @@ def run_asset(
     finally:
         runtime.shutdown()
         asset_log.info('shutdown complete')
+
+
+def run_orchestrator(
+    candidate_store: object,
+    orchestrator: object,
+    check_interval: float = 5.0,
+) -> None:
+    """Poll the candidate store and run allocation cycles."""
+    orch_log = logging.getLogger('nyx.orchestrator')
+    orch_log.info('orchestrator started')
+
+    while True:
+        try:
+            store = candidate_store  # type: ignore[assignment]
+            for bucket_key in list(store._buckets.keys()):
+                if store.is_bucket_ready(bucket_key):
+                    candidates = store.consume(bucket_key)
+                    if candidates:
+                        results = orchestrator.run_cycle(candidates)  # type: ignore[union-attr]
+                        approved = [r for r in results if r.get('decision', '').startswith('APPROVE')]
+                        orch_log.info(
+                            'CYCLE %s: %d candidates → %d approved',
+                            bucket_key, len(candidates), len(approved),
+                        )
+            time.sleep(check_interval)
+        except Exception as exc:
+            orch_log.error('orchestrator error: %s', exc)
+            time.sleep(check_interval)
 
 
 def main() -> int:
@@ -128,22 +159,41 @@ def main() -> int:
             log.error('Missing model: %s', model_dir)
             return 1
 
-    log.info('NYX Multi-Asset starting: %s', list(assets.keys()))
+    log.info('NYX Multi-Asset starting (synchronized): %s', list(assets.keys()))
 
+    from src.live.central_orchestrator import CandidateStore, CentralOrchestrator
     from src.live.inter_asset_dependency import InterAssetDependencyLayer
     from src.live.portfolio_allocator import PortfolioAllocator
+
     dep_layer = InterAssetDependencyLayer(
         symbols=list(assets.keys()),
         leader='BTCUSDT',
         min_bars=100,
     )
+    candidate_store = CandidateStore(
+        expected_symbols=list(assets.keys()),
+        tolerance_seconds=60.0,
+    )
     allocator = PortfolioAllocator()
+    orchestrator = CentralOrchestrator(
+        symbols=list(assets.keys()),
+        dependency_layer=dep_layer,
+        portfolio_allocator=allocator,
+    )
+
+    orch_thread = threading.Thread(
+        target=run_orchestrator,
+        args=(candidate_store, orchestrator),
+        name='nyx-orchestrator',
+        daemon=True,
+    )
+    orch_thread.start()
 
     threads: Dict[str, threading.Thread] = {}
     for symbol, config in assets.items():
         t = threading.Thread(
             target=run_asset,
-            args=(symbol, config, dep_layer, allocator),
+            args=(symbol, config, candidate_store, dep_layer),
             name=f'nyx-{symbol}',
             daemon=True,
         )
@@ -159,6 +209,8 @@ def main() -> int:
             if all(not a for a in alive.values()):
                 log.error('all threads dead — exiting')
                 return 1
+            snap = orchestrator.snapshot()
+            log.info('orchestrator: %d cycles completed', snap['total_cycles'])
             time.sleep(30)
     except KeyboardInterrupt:
         log.info('shutting down all assets...')
