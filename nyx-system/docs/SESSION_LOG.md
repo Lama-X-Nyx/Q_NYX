@@ -993,3 +993,23 @@ Position : open/add/close/flip, VWAP avg entry, realized + unrealized PnL.
 Portfolio : multi-symbol, available_balance, total_equity, exposure.
 
 ### Tests : 16/16 GREEN
+
+---
+
+## 2026-04-17 — Ticket 25 (Risk Engine — sovereign, no bypass)
+
+### Livré
+`src/live/risk_engine.py::RiskEngine` — sovereign risk gate.
+Validates every trade intent BEFORE OMS submission. Kill switch
+for anomalies.
+
+### Tests : 12/12 GREEN
+Trade-level + portfolio-level + drawdown protection + kill switch.
+
+### Architecture canonique complète
+
+NYXEngine decision
+  → RiskEngine.validate_trade()    ← SOVEREIGN (Ticket 25)
+  → OMS.submit_order()             ← STATE OWNER (Ticket 23)
+  → PostOnlyPaperBroker            ← EXECUTION
+  → Portfolio.on_fill()            ← POSITION STATE (Ticket 24)

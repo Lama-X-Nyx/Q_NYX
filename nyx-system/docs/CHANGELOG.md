@@ -2,6 +2,26 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 25 — Risk Engine (sovereign, no bypass) (2026-04-17)
+
+`src/live/risk_engine.py::RiskEngine` sits between decision and
+execution. Can BLOCK any trade. NYXEngine → risk.validate_trade()
+→ OMS. Cannot be bypassed.
+
+Rules :
+- Trade-level : max risk per trade (% balance), max position notional
+- Portfolio-level : max total exposure (% capital), max concurrent positions
+- Drawdown : max daily loss (1 %), max weekly loss (3 %), max DD from peak (5 %)
+- Kill switch : manual activation, blocks ALL trades until reset
+
+TDD : `tests/test_risk_engine_ticket25.py` — 12 GREEN
+- Trade within limits passes / exceeds max risk blocked /
+  exceeds max position blocked
+- Max exposure blocked / max concurrent blocked
+- Daily loss / weekly loss / max DD stops trading
+- Kill switch blocks all + can be reset + status exposed
+- Structured result {allowed, reason}
+
 ### Ticket 24 — Position & Portfolio State (2026-04-17)
 
 Single source of truth for open positions, exposure, PnL.
