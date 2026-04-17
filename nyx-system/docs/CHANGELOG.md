@@ -2,6 +2,29 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 24 — Position & Portfolio State (2026-04-17)
+
+Single source of truth for open positions, exposure, PnL.
+Derived ONLY from OMS fill events — no parallel state system.
+
+`src/live/portfolio_state.py` :
+- **`Position`** — per-symbol tracker : on_fill (open / add /
+  partial close / full close / flip), unrealized_pnl(mark), VWAP
+  avg_entry_price. Realized PnL accumulated on close fills.
+- **`Portfolio`** — multi-symbol state : on_fill routes to Position,
+  tracks total realized_pnl + total_fees. Properties :
+  available_balance, total_equity, total_exposure.
+  Methods : exposure(symbol, mark), total_exposure_at(marks dict),
+  equity_at(marks dict) = balance + Σ unrealized.
+
+TDD : `tests/test_portfolio_state_ticket24.py` — 16 GREEN
+- Position: open long/short, add to position (VWAP), partial close
+  (realize PnL), full close (flat), flip (close + reverse),
+  unrealized PnL (long/short/flat)
+- Portfolio: initial state, fill updates, close realizes PnL,
+  exposure per symbol + total, equity includes unrealized, single
+  positions dict is authoritative
+
 ### Ticket 23 — Order Management System (OMS) (2026-04-17)
 
 Single source of truth for order lifecycle. `src/live/oms.py::OMS`

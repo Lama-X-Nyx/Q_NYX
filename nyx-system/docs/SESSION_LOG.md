@@ -980,3 +980,16 @@ Terminal (FILLED/REJECTED/CANCELLED) = immuable.
 - Cancel terminal → no-op sûr
 
 ### Tests : 11/11 GREEN
+
+---
+
+## 2026-04-17 — Ticket 24 (Position & Portfolio State)
+
+### Livré
+`src/live/portfolio_state.py` — Position + Portfolio, single source
+of truth. Derived from OMS fills only.
+
+Position : open/add/close/flip, VWAP avg entry, realized + unrealized PnL.
+Portfolio : multi-symbol, available_balance, total_equity, exposure.
+
+### Tests : 16/16 GREEN
