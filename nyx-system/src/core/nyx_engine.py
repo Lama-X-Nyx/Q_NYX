@@ -798,8 +798,11 @@ class NYXEngine:
                     pd.Timestamp(df_15m.index[i]), mtf_data,
                 )
                 features.update(rep_features)
-            else:
-                features.update(self._REP_NEUTRAL_DEFAULTS)
+            # When mtf_data=None, do NOT inject neutral rep_* defaults
+            # into the feature block. This ensures the GBM trains on
+            # ONLY the features that the live path can produce (no
+            # constant-zero rep_* that pollute feature_names and
+            # create a mismatch with NYXLiveDecider).
 
             candidates.append({
                 'bar_idx': i, 'timestamp': df_15m.index[i],

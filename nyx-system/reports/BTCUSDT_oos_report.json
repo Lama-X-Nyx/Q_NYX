@@ -5,16 +5,16 @@
     "symbol": "BTCUSDT",
     "train_end": "2022-12-31",
     "n_train_candidates": 1248,
-    "n_features": 194,
-    "in_sample_accuracy": 0.9022435897435898,
+    "n_features": 128,
+    "in_sample_accuracy": 0.8998397435897436,
     "positive_class_rate": 0.43669871794871795
   },
   "oos_2023": {
     "n_candidates": 571,
-    "n_trades": 53,
-    "sharpe": 9.635704322304049,
-    "total_pnl_dollars": 1965.7964495959532,
-    "max_drawdown_pct": 0.003749288698575728,
+    "n_trades": 63,
+    "sharpe": 7.060230360258439,
+    "total_pnl_dollars": 2288.744963827343,
+    "max_drawdown_pct": 0.008557534882683257,
     "execution_reject_rate": 0,
     "bear_dial_activation_rate": 0.4658493870402802
   }
