@@ -2,6 +2,27 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 33 — Multi-Asset NYXRuntime Instances (2026-04-17)
+
+Extend NYX from single-asset (BTC) to multi-asset (BTC/ETH/SOL).
+One canonical NYXRuntime per asset — full isolation (model, OMS,
+portfolio, risk engine, state store, metrics).
+
+- ETH + SOL parquets regenerated from canonical
+  `compute_stationary_features('full')` → 37 cols/TF (replacing
+  legacy 53-col parquets)
+- ETH model retrained: 128 features, Sharpe 7.36 (2023 OOS),
+  90 trades, 1.5% max DD
+- SOL model retrained: 128 features, Sharpe 2.59 (2023 OOS),
+  49 trades, 1.0% max DD
+- All 3 assets share identical 128-feature canonical set
+- `scripts/run_multi_asset.py` — multi-asset runner, one thread
+  per asset, per-asset WS kline stream, independent lifecycles
+- Per-asset execution isolation: BTC live, ETH/SOL paper
+
+TDD : 14 GREEN (instantiation, state isolation, bar processing,
+control plane isolation). CLAUDE.md Rule 7 ✓.
+
 ### Ticket 32 — Execution Optimization (2026-04-17)
 
 `src/live/execution_optimizer.py` — fill probability + dynamic

@@ -4,16 +4,16 @@
     "symbol": "SOLUSDT",
     "train_end": "2022-12-31",
     "n_train_candidates": 727,
-    "n_features": 84,
-    "in_sample_accuracy": 0.90646492434663,
+    "n_features": 128,
+    "in_sample_accuracy": 0.921595598349381,
     "positive_class_rate": 0.4016506189821183
   },
   "oos_2023": {
     "n_candidates": 493,
-    "n_trades": 48,
-    "sharpe": 4.207338324725274,
-    "total_pnl_dollars": 1753.9536798123809,
-    "max_drawdown_pct": 0.010229412619710656,
+    "n_trades": 49,
+    "sharpe": 2.593571588498901,
+    "total_pnl_dollars": 886.5261353509504,
+    "max_drawdown_pct": 0.010229412619710629,
     "execution_reject_rate": 0,
     "bear_dial_activation_rate": 0.4300202839756592
   }

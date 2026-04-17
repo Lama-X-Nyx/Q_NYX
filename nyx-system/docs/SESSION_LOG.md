@@ -1138,3 +1138,43 @@ logic, build_execution_plan(). Déterministe, reproductible.
 ### Tests : 12/12 GREEN
 Fill prob range + monotonicity, offset widens with vol + low fill
 prob, maker/taker logic, execution plan structure + limit prices.
+
+---
+
+## 2026-04-17 — Ticket 33 (Multi-Asset NYXRuntime)
+
+### Rule 7 ✓
+CLAUDE.md lu. Extension multi-asset par instanciation — une NYXRuntime
+par asset, isolation totale.
+
+### Problème
+ETH + SOL models trained sur legacy 84 features (ancien parquet 53 cols/TF).
+BTC déjà sur 128 features canoniques. Divergence empêche multi-asset.
+
+### Hypothèse
+Regenerate parquets canoniques (37 cols/TF × 4 TFs) + retrain ETH/SOL
+→ les 3 assets partagent le même feature set 128.
+
+### Livré
+1. Parquets ETH + SOL regénérés (37 cols/TF, `compute_stationary_features('full')`)
+2. ETH retrained : 128 features, Sharpe 7.36, 90 trades, $2,895 PnL (2023 OOS)
+3. SOL retrained : 128 features, Sharpe 2.59, 49 trades, $887 PnL (2023 OOS)
+4. `tests/test_multi_asset_runtime_ticket33.py` : 14 tests
+   - 3 instantiation (3 runtimes, correct model, feature parity)
+   - 5 state isolation (OMS, portfolio, risk, metrics, state dirs)
+   - 4 bar processing (stopped, started, independent, kill switch)
+   - 2 control plane isolation (pause, stop)
+5. `scripts/run_multi_asset.py` : multi-threaded runner, per-asset WS,
+   BTC=live, ETH/SOL=paper
+
+### Tests : 14/14 GREEN
+
+### Architecture
+```
+run_multi_asset.py
+  ├── Thread BTCUSDT → NYXRuntime(BTCUSDT) → BinanceKlineStream(btcusdt)
+  ├── Thread ETHUSDT → NYXRuntime(ETHUSDT) → BinanceKlineStream(ethusdt)
+  └── Thread SOLUSDT → NYXRuntime(SOLUSDT) → BinanceKlineStream(solusdt)
+```
+Each thread owns its runtime. No shared state. Kill switch on one
+does not affect others (proven by test).
