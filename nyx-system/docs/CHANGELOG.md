@@ -2,6 +2,57 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 22 — Binance Market Connectivity Layer (2026-04-17)
+
+Live market data artery feeding the existing NYX architecture.
+No new engine, no shadow pipeline, no duplicate feature path.
+
+Canonical flow :
+```
+Binance WS (btcusdt@kline_15m)
+  → BarBuilder (normalize + closed-only + duplicate reject)
+  → FeedHealth (stale / monotonicity / gap checks)
+  → NYXLiveDecider.on_15m_bar() (existing canonical runtime)
+  → Signal (logged via EventAlerter)
+```
+
+New modules (`src/live/`) :
+- **`binance_ws.py::BinanceKlineStream`** — thin WebSocket client
+  with exponential-backoff reconnect (max 10 attempts). Connects to
+  `wss://stream.binance.com:9443/ws/<symbol>@kline_<interval>`.
+  Injectable `on_message` callback — no exchange logic leaks past
+  this layer. Requires `pip install websocket-client` at runtime.
+- **`bar_builder.py::BarBuilder`** — normalizes raw kline events
+  into canonical OHLCV bar dicts. Only CLOSED klines promoted
+  (`k.x == true`). Duplicates rejected (same `k.t` start time).
+  Output format : `{timestamp, open, high, low, close, volume}` —
+  directly compatible with `NYXLiveDecider.on_15m_bar()`.
+- **`feed_health.py::FeedHealth`** — monitors feed quality :
+  stale detection (no event within `stale_seconds`), timestamp
+  monotonicity (bars must be strictly increasing), gap detection
+  (if gap > 1.5 × expected_interval_ms → count missing bars).
+
+Integration script : `scripts/run_live_feed.py`
+- Blocking main loop : WS → BarBuilder → FeedHealth → NYXLiveDecider
+- Signals logged with direction + conviction + timestamp
+- Health status logged every 5 min
+- Kill with Ctrl+C or SIGTERM
+
+TDD : `tests/test_binance_connectivity_ticket22.py` — 12 GREEN
+- BarBuilder normalization (closed vs unclosed, duplicate rejection,
+  ISO timestamp, canonical keys)
+- FeedHealth (staleness, monotonicity violation, missing bar gap)
+- Bar format compatibility with NYXLiveDecider input contract
+- No exchange-specific key leakage into bar dict
+
+Acceptance criteria all met :
+- ☑ Binance WS data ingested reliably (adapter + reconnect)
+- ☑ Normalized into NYX's existing format (BarBuilder)
+- ☑ Live bars feed the existing NYXEngine path (via NYXLiveDecider)
+- ☑ No second runtime pipeline (same canonical path)
+- ☑ Duplicate / stale / gap conditions handled safely (FeedHealth)
+- ☑ Tests prove integration path (12 GREEN)
+
 ### Ticket 21 — Realistic OOS BTC 2023 (PostOnlyPaperBroker) (2026-04-17)
 
 First honest execution simulation. Signal from NYXEngine.run()

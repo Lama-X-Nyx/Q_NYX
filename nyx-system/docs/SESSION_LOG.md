@@ -923,3 +923,38 @@ de meilleure qualité → WR 85.7 %.
 ### Verdict
 Le système est DÉPLOYABLE. L'edge est réel, mesurable, et survit
 à l'exécution réaliste. Next : Binance testnet ou live micro-capital.
+
+---
+
+## 2026-04-17 — Ticket 22 (Binance Market Connectivity Layer)
+
+### Problème
+NYX a un edge validé + exécution réaliste mais AUCUNE connexion au
+marché live. Le flux de données vient de CSVs historiques.
+
+### Livré
+3 modules dans src/live/ :
+- `binance_ws.py` : WebSocket client avec reconnect exponentiel
+- `bar_builder.py` : normalisation kline → bar dict canonique (closed-
+  only, duplicate reject, ISO timestamp, no exchange key leakage)
+- `feed_health.py` : staleness + monotonicity + gap detection
+
+Script d'intégration `scripts/run_live_feed.py` :
+- WS → BarBuilder → FeedHealth → NYXLiveDecider.on_15m_bar()
+- Même path canonique que le backtest, juste le DATA SOURCE change
+- Pas de nouveau engine, pas de pipeline parallèle
+
+### Tests
+12/12 GREEN avec payloads WS mockés (pas de connexion réseau réelle).
+
+### Architecture canonique préservée
+Le ticket est explicite : le live feed NOURRIT l'architecture
+existante, il ne la remplace pas. NYXLiveDecider reste le runtime
+canonique. Le seul changement est la source des bars (WS au lieu de
+CSV.iterrows()).
+
+### Prérequis pour le déploiement réel
+- `pip install websocket-client`
+- Env var `BINANCE_SYMBOL=btcusdt`
+- Artefact modèle dans `models/BTCUSDT/`
+- Réseau ouvert vers `stream.binance.com:9443`
