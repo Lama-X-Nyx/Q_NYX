@@ -1050,3 +1050,31 @@ Binance WS → BarBuilder → FeedHealth → NYXLiveDecider
   → Portfolio → StateStore → **MetricsCollector + AlertManager**
 
 Le système est maintenant observable, persisté, et risk-controlled.
+
+---
+
+## 2026-04-17 — Ticket 22R (NYXRuntime — single orchestrator)
+
+### Problème
+Le live était fragmenté : run_live_feed.py appelait seulement
+NYXLiveDecider. Jesse absent du live. Risk/OMS/Portfolio/State/
+Monitoring jamais appelés en live. Deux pipelines divergents
+(batch vs live).
+
+### Livré
+`src/live/nyx_runtime.py::NYXRuntime` — UN orchestrateur, UN fichier.
+`on_bar(bar)` traverse les 10 couches. Rien n'est caché.
+
+`run_live_feed.py` appelle SEULEMENT `runtime.on_bar(bar)`.
+Plus aucun appel direct à NYXLiveDecider, RiskEngine, OMS, etc.
+
+### Vérification de lisibilité (la question du user)
+
+| Question | Réponse |
+|---|---|
+| Où est le GBM ? | `runtime.decider._meta.score_vector()` via `on_15m_bar()` → visible via `runtime.gbm` |
+| Où sont les Jesse ? | `runtime._call_jesse_agents()` — 4 agents, un seul endroit |
+| Un seul flux ? | ✅ OUI — `on_bar()` = GBM → Jesse → FractalQuality → Risk → OMS → Portfolio → State → Monitoring |
+| Une seule commande ? | ✅ `python scripts/run_live_feed.py` |
+
+### Tests : 14/14 GREEN

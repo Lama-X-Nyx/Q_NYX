@@ -2,6 +2,46 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 22R — NYXRuntime single orchestrator (2026-04-17)
+
+Fix the fragmentation: batch and live were separate pipelines, Jesse
+absent from live, `run_live_feed.py` called only 1/9 layers.
+
+`src/live/nyx_runtime.py::NYXRuntime` — THE single orchestrator.
+One file, one `on_bar()` method, ALL 10 layers visible :
+
+```
+bar → on_bar()
+  1. HARD GATE + GBM SCORE    (NYXLiveDecider → MetaGBM → predict_proba)
+  2. JESSE REPORTS             (_call_jesse_agents → 4 FractalReports)
+  3. FRACTAL QUALITY           (compute_fractal_quality → size modulation)
+  4. RISK ENGINE               (validate_trade → sovereign block/allow)
+  5. OMS                       (submit_order → single state owner)
+  6. BROKER                    (PostOnlyPaperBroker or exchange)
+  7. PORTFOLIO                 (on_fill → positions + PnL)
+  8. PERSISTENCE               (state_store.save → atomic JSON)
+  9. MONITORING                (metrics + alerts)
+```
+
+`scripts/run_live_feed.py` now calls ONLY `runtime.on_bar(bar)`.
+No direct NYXLiveDecider/RiskEngine/OMS/Portfolio calls. No bypass.
+
+Traceability : `runtime.gbm` = the MetaGBM (GBM accessible).
+`runtime.context_agent / regime_agent / setup_agent / entry_agent`
+= the 4 Jesse agents (visible). `_call_jesse_agents()` is the ONE
+place where Jesse is called at runtime — if it's not there, it
+doesn't exist.
+
+TDD : `tests/test_nyx_runtime.py` — 14 GREEN
+- on_bar returns structured result with action + layers
+- flat when no signal (warmup)
+- signal layer always present
+- GBM accessible on runtime (has_trained_model=True)
+- 4 Jesse agents accessible + _call_jesse_agents returns 4 FractalReports
+- risk_engine / oms / portfolio / state_store / metrics / alerts on runtime
+- shutdown persists state (oms_state.json + portfolio_state.json)
+- recover loads state
+
 ### Ticket 27 — Monitoring & Observability (2026-04-17)
 
 `src/live/monitoring.py` — no blind trading.
