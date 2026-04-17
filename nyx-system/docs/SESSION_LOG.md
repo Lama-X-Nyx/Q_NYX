@@ -1093,3 +1093,18 @@ register → promote (with validation) → rollback (instant) → load_active.
 Étend le path existant, ne le remplace pas.
 
 ### Tests : 11/11 GREEN
+
+---
+
+## 2026-04-17 — Ticket 29 (Control Plane — Operator Layer)
+
+### Rule 7 ✓
+CLAUDE.md lu. Natural owner identifié : NYXRuntime (pas un module
+séparé). Rule 1 integration-first respectée.
+
+### Livré
+6 commandes opérateur SUR NYXRuntime : start/stop/pause/resume/
+emergency_stop/cancel_all_orders/flatten_all. Guards dans on_bar()
+retournent SYSTEM_STOPPED/PAUSED si pas running/paused.
+
+### Tests : 27/27 GREEN (8 control + 19 runtime)

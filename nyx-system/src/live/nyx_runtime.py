@@ -86,6 +86,78 @@ class NYXRuntime:
         self._order_counter = 0
         self._last_persist_time = 0.0
 
+        # Ticket 29 — operator control state.
+        self._running = False
+        self._paused = False
+
+    # ------------------------------------------------------------------
+    # TICKET 29 — Control Plane (operator layer)
+    # ------------------------------------------------------------------
+    @property
+    def is_running(self) -> bool:
+        return self._running
+
+    @property
+    def is_paused(self) -> bool:
+        return self._paused
+
+    def start(self) -> None:
+        self._running = True
+        self._paused = False
+        log.info('SYSTEM STARTED')
+
+    def stop(self) -> None:
+        self._running = False
+        self._paused = False
+        self.state_store.save_oms(self.oms)
+        self.state_store.save_portfolio(self.portfolio)
+        log.info('SYSTEM STOPPED — state persisted')
+
+    def pause(self) -> None:
+        self._paused = True
+        log.info('TRADING PAUSED')
+
+    def resume(self) -> None:
+        self._paused = False
+        log.info('TRADING RESUMED')
+
+    def emergency_stop(self, reason: str = 'operator') -> None:
+        """Halt everything immediately : kill switch + stop."""
+        self.risk_engine.activate_kill_switch(reason=f'EMERGENCY: {reason}')
+        self.stop()
+        log.critical('EMERGENCY STOP: %s', reason)
+
+    def cancel_all_orders(self) -> int:
+        """Cancel every non-terminal order in OMS. Returns count."""
+        n = 0
+        for oid, order in list(self.oms._orders.items()):
+            if order.status in ('SUBMITTED', 'PARTIALLY_FILLED'):
+                self.oms.cancel_order(oid, reason='cancel_all')
+                n += 1
+        self.state_store.save_oms(self.oms)
+        log.info('CANCEL ALL — %d orders cancelled', n)
+        return n
+
+    def flatten_all(self) -> list:
+        """Return close instructions for every open position.
+
+        Does NOT place orders itself — the caller (or a follow-up
+        command) submits them through the runtime. This keeps the
+        control plane declarative, not imperative.
+        """
+        to_close = []
+        for sym, pos in self.portfolio.positions.items():
+            if pos.quantity > 1e-12 and pos.side != 'flat':
+                close_side = 'sell' if pos.side == 'long' else 'buy'
+                to_close.append({
+                    'symbol': sym,
+                    'side': close_side,
+                    'quantity': pos.quantity,
+                    'reason': 'flatten_all',
+                })
+        log.info('FLATTEN ALL — %d positions to close', len(to_close))
+        return to_close
+
     # ------------------------------------------------------------------
     def on_bar(self, bar: Dict[str, Any]) -> Dict[str, Any]:
         """Process ONE 15m bar through the ENTIRE pipeline.
@@ -100,6 +172,14 @@ class NYXRuntime:
             'action': 'FLAT',
             'layers': {},
         }
+
+        # Ticket 29 — control plane guards.
+        if not self._running:
+            result['action'] = 'SYSTEM_STOPPED'
+            return result
+        if self._paused:
+            result['action'] = 'PAUSED'
+            return result
 
         # ---- 1. HARD GATE + GBM SCORE (inside NYXLiveDecider) ----
         # NYXLiveDecider.on_15m_bar does:

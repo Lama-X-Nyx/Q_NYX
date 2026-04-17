@@ -18,12 +18,14 @@ MODELS_DIR = Path(__file__).parent.parent / 'models'
 @pytest.fixture(scope='module')
 def runtime():
     from src.live.nyx_runtime import NYXRuntime
-    return NYXRuntime(
+    rt = NYXRuntime(
         symbol='BTCUSDT',
         models_dir=MODELS_DIR / 'BTCUSDT',
         state_dir=Path('/tmp/nyx_test_runtime'),
         initial_capital=10_000.0,
     )
+    rt.start()  # Ticket 29 — must start before on_bar works
+    return rt
 
 
 def _bar(ts='2023-06-15T10:00:00', price=16500.0, vol=500.0):

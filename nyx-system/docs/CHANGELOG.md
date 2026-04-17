@@ -2,6 +2,25 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 29 — Control Plane (Operator Layer) (2026-04-17)
+
+Operator commands added directly ON `NYXRuntime` (natural owner per
+CLAUDE.md Rule 1 — no separate controller module).
+
+- `start()` / `stop()` — system lifecycle
+- `pause()` / `resume()` — suspend trading without stopping
+- `emergency_stop(reason)` — kill switch + stop in one call
+- `cancel_all_orders()` → int — cancel every non-terminal order
+- `flatten_all()` → list — returns close instructions for all open
+  positions (declarative, not imperative — caller submits via OMS)
+- `is_running` / `is_paused` properties
+- `on_bar()` guards : returns `SYSTEM_STOPPED` / `PAUSED` immediately
+  if not running / paused
+
+TDD : 8 GREEN + 19 runtime regression = 27 total GREEN.
+CLAUDE.md Rule 7 respected (read CLAUDE.md + OPERATING_RULES.md +
+git log before coding).
+
 ### Ticket 28 — Model Governance (2026-04-17)
 
 `src/ml/model_registry.py::ModelRegistry` — versioned model
