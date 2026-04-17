@@ -1223,3 +1223,47 @@ NYXRuntime(SOL).on_bar()  ─┘     ├── update_return(symbol, ts, ret)
 ```
 BTC = leader (not modulated). ETH/SOL = followers (modulated by
 dependency with BTC).
+
+---
+
+## 2026-04-17 — Ticket 35 (Portfolio Allocator)
+
+### Rule 7 ✓
+CLAUDE.md lu. Alpha (GBM/Jesse) non touché. Allocator opère APRÈS
+Dependency Layer, AVANT RiskEngine. Direction jamais changée.
+
+### Problème
+Chaque runtime alloue du capital indépendamment. Pas de vue
+consolidée : 3 trades simultanés pourraient dépasser le capital
+total, ou sur-concentrer dans une direction.
+
+### Hypothèse
+Un allocator partagé reçoit les candidates de chaque runtime, les
+score, les rank, et alloue le capital de façon contrainte et
+déterministe.
+
+### Livré
+1. `src/live/portfolio_allocator.py` :
+   - `compute_allocation_score()` — ranking metric (confidence + edge +
+     quality - contagion - exposure)
+   - `PortfolioAllocator.allocate()` — score → rank → allocate iteratively
+     avec 4 contraintes (per-trade, per-asset, total, directional)
+   - Decisions : APPROVE_FULL / APPROVE_REDUCED / DEFER / REJECT
+   - Dependency-aware : follower sizing reduced by dep_strength × 40%
+2. NYXRuntime.on_bar() wired : step 3c between Dependency and Risk Engine
+3. scripts/run_multi_asset.py : shared allocator across runtimes
+
+### Tests : 23/23 GREEN + 43 regression (14 T33 + 29 T34)
+
+### Architecture
+```
+NYXRuntime.on_bar()
+  ├── 1. GBM signal
+  ├── 2. Jesse fractal reports
+  ├── 3. Fractal quality modulation
+  ├── 3b. Inter-asset dependency
+  ├── 3c. Portfolio allocator ← NEW
+  ├── 4. RiskEngine
+  ├── 5. OMS
+  └── 6-10. Fill / Portfolio / Persist / Monitor
+```

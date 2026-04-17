@@ -40,7 +40,11 @@ ASSETS = {
 }
 
 
-def run_asset(symbol: str, config: dict, dependency_layer: object = None) -> None:
+def run_asset(
+    symbol: str, config: dict,
+    dependency_layer: object = None,
+    portfolio_allocator: object = None,
+) -> None:
     """Run a single asset's NYXRuntime in its own thread."""
     from src.live.binance_ws import BinanceKlineStream
     from src.live.nyx_runtime import NYXRuntime
@@ -57,6 +61,7 @@ def run_asset(symbol: str, config: dict, dependency_layer: object = None) -> Non
         state_dir=HERE / 'state' / symbol,
         initial_capital=config['capital'],
         dependency_layer=dependency_layer,
+        portfolio_allocator=portfolio_allocator,
     )
     runtime.recover()
     runtime.start()
@@ -126,17 +131,19 @@ def main() -> int:
     log.info('NYX Multi-Asset starting: %s', list(assets.keys()))
 
     from src.live.inter_asset_dependency import InterAssetDependencyLayer
+    from src.live.portfolio_allocator import PortfolioAllocator
     dep_layer = InterAssetDependencyLayer(
         symbols=list(assets.keys()),
         leader='BTCUSDT',
         min_bars=100,
     )
+    allocator = PortfolioAllocator()
 
     threads: Dict[str, threading.Thread] = {}
     for symbol, config in assets.items():
         t = threading.Thread(
             target=run_asset,
-            args=(symbol, config, dep_layer),
+            args=(symbol, config, dep_layer, allocator),
             name=f'nyx-{symbol}',
             daemon=True,
         )

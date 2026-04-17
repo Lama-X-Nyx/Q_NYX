@@ -2,6 +2,34 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 35 — Portfolio Allocator (2026-04-17)
+
+`src/live/portfolio_allocator.py` — capital-constrained, dependency-
+aware trade arbiter. Consumes per-asset decisions + dependency
+outputs, produces coherent execution plan.
+
+- `compute_allocation_score(confidence, edge, quality, dep, contagion,
+  exposure)` → ranking metric (higher = more deserving of capital)
+- `PortfolioAllocator` — configurable constraints:
+  - `max_capital_per_trade_pct` (default 10%)
+  - `max_capital_per_asset_pct` (default 15%)
+  - `max_total_capital_pct` (default 30%)
+  - `max_directional_pct` (default 25%)
+- `allocate(candidates, portfolio_ctx)` → list of decisions:
+  APPROVE_FULL / APPROVE_REDUCED / DEFER / REJECT
+  - Scores candidates → ranks by score → allocates iteratively
+  - Dependency penalties reduce follower sizing
+  - Concentration control (asset + directional)
+  - Capital exhaustion rejects lower-ranked trades
+- `NYXRuntime.__init__` accepts optional `portfolio_allocator`
+- `NYXRuntime.on_bar()` calls allocator as step 3c between
+  dependency layer and RiskEngine, can return BLOCKED_ALLOCATOR
+- `scripts/run_multi_asset.py` updated to wire shared allocator
+
+TDD : 23 GREEN (3 schema + 5 scoring + 4 constraints +
+2 dependency + 2 concentration + 4 selection + 3 integration).
+43 regression GREEN (14 T33 + 29 T34). CLAUDE.md Rule 7 ✓.
+
 ### Ticket 34 — Dynamic Inter-Asset Dependency Layer (2026-04-17)
 
 `src/live/inter_asset_dependency.py` — models how assets influence

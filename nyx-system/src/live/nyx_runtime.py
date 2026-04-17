@@ -47,9 +47,11 @@ class NYXRuntime:
         state_dir: Optional[Path] = None,
         initial_capital: float = 10_000.0,
         dependency_layer: Optional[Any] = None,
+        portfolio_allocator: Optional[Any] = None,
     ) -> None:
         self.symbol = symbol
         self.dependency_layer = dependency_layer
+        self.portfolio_allocator = portfolio_allocator
 
         # --- 0. MODELS (GBM + Jesse agents) ---
         from src.ml.nyx_live_decider import NYXLiveDecider
@@ -256,10 +258,53 @@ class NYXRuntime:
                 'adjusted_size_multiplier', size_multiplier,
             )
 
-        # ---- 4. RISK ENGINE (sovereign — can block) ----
+        # ---- 3c. PORTFOLIO ALLOCATOR (Ticket 35) ----
+        # Capital-constrained, dependency-aware trade arbiter.
+        # Only active when a shared portfolio_allocator is provided.
         mark_price = float(bar.get('close', 0))
-        quantity = self._compute_quantity(mark_price, size_multiplier)
         side = 'buy' if signal.direction > 0 else 'sell'
+
+        if self.portfolio_allocator is not None:
+            dep = result['layers'].get('dependency', {}).get('dependency', {})
+            candidate = {
+                'symbol': self.symbol,
+                'direction': 1 if signal.direction > 0 else -1,
+                'confidence': float(signal.conviction),
+                'expected_edge_bps': float(signal.conviction) * 40.0,
+                'size_hint': size_multiplier,
+                'quality_bucket': fq.get('quality_bucket', 'medium'),
+                'entry_price': mark_price,
+                'dependency': dep,
+            }
+            pf_ctx = {
+                'total_equity': self.portfolio.available_balance + self.portfolio.total_exposure,
+                'available_capital': self.portfolio.available_balance,
+                'exposure_by_asset': {
+                    sym: p.quantity * p.avg_entry_price
+                    for sym, p in self.portfolio.positions.items()
+                    if p.quantity > 0
+                },
+                'total_exposure': self.portfolio.total_exposure,
+                'open_position_count': sum(
+                    1 for p in self.portfolio.positions.values()
+                    if p.quantity > 0
+                ),
+            }
+            alloc_results = self.portfolio_allocator.allocate([candidate], pf_ctx)
+            if alloc_results:
+                alloc = alloc_results[0]
+                result['layers']['allocator'] = alloc
+                if alloc['decision'] in ('REJECT', 'DEFER'):
+                    result['action'] = 'BLOCKED_ALLOCATOR'
+                    self._periodic_persist()
+                    self._update_monitoring(result)
+                    return result
+                size_multiplier = alloc['allocated_size'] * mark_price / max(
+                    self._compute_quantity(mark_price, 1.0) * mark_price, 1e-12,
+                )
+
+        # ---- 4. RISK ENGINE (sovereign — can block) ----
+        quantity = self._compute_quantity(mark_price, size_multiplier)
 
         pf_snapshot = {
             'available_balance': self.portfolio.available_balance,
