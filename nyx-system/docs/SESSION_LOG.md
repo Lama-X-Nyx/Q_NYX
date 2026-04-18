@@ -1498,3 +1498,22 @@ CLAUDE.md lu. Evaluator pluggé dans framework T42.1. Pas de script ad hoc.
 - Flags (stable_across_cycles, unstable_edge, high_regime_dependency, etc.)
 
 ### Tests : 17/17 GREEN
+
+---
+
+## 2026-04-18 — Ticket 43.1 (Regime-Aware Stability v2)
+
+### Rule 7 ✓
+CLAUDE.md lu. Extension de T43, pas de réécriture.
+
+### Livré
+Extensions au StabilityEvaluator :
+- Tail risk : worst_trade, tail_loss_95/99, skewness, kurtosis
+- Gain concentration : Gini coefficient, top 5%/10 contribution
+- Regime dependency matrix : per-regime Sharpe/DD/WR
+- Capital-aware classification : core/satellite/opportunistic/avoid
+- Stability score v2 : composite avec pénalités tail/concentration/regime
+- Advanced flags : tail_risk_dominant, gain_concentration_high,
+  requires_regime_filter, capital_limited_edge
+
+### Tests : 17/17 GREEN + 17 T43 regression = 34 total

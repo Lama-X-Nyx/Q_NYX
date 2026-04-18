@@ -2,6 +2,31 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 43.1 — Regime-Aware Stability Upgrade (2026-04-18)
+
+Institution-grade upgrade to Stability Evaluator. Extends T43 with
+capital-allocation decision support.
+
+- `compute_tail_risk(pnls)` → worst_trade, tail_loss_95/99,
+  downside_deviation, skewness, kurtosis
+- `compute_gain_concentration(pnls)` → top_5pct/top_10
+  contribution, gini_coefficient
+- `build_regime_dependency_matrix(segments)` → per-regime
+  Sharpe/DD/WR
+- `compute_regime_dependency_score(matrix)` → [0,1] spread
+- `classify_capital_aware()` → core / satellite / opportunistic /
+  avoid + max_capital_tier
+- `compute_stability_score_v2()` — composite including tail risk
+  + concentration + regime dependency penalties
+- `generate_advanced_flags()` → tail_risk_dominant,
+  gain_concentration_high, requires_regime_filter,
+  capital_limited_edge
+- `StabilityEvaluator.evaluate()` now includes all v2 fields:
+  tail_risk, gain_concentration, regime_matrix,
+  capital_classification, stability_score_v2, advanced_flags
+
+TDD : 17 GREEN + 17 T43 regression = 34 total. CLAUDE.md Rule 7 ✓.
+
 ### Ticket 43 — Multi-Year Regime Stability Evaluator (2026-04-18)
 
 `src/live/evaluators/stability.py` — first-class evaluator plugged
