@@ -1419,3 +1419,23 @@ Remplacé les limites fixes par des % d'equity :
 - `risk_meta` dans chaque réponse : equity, limits, caps
 
 ### Tests : 16/16 GREEN + 152 regression (T25+T31+T33-T38)
+
+---
+
+## 2026-04-18 — Ticket 41 (Per-Asset ML Artifact Validation)
+
+### Rule 7 ✓
+CLAUDE.md lu. Pas de changement d'alpha. Validation + retrain des artifacts.
+
+### Constat
+ETH+SOL déjà retrained (Ticket 33) sur 128 features canoniques.
+Retrain fresh = résultats IDENTIQUES (seed=42, déterministe).
+
+### Validation
+- Feature parity : BTC == ETH == SOL (128 noms identiques)
+- Prefixes MTF : h1_, h4_, d1_ présents dans les 3 assets
+- Runtime : chaque asset charge ses propres artifacts
+- Pas de cross-contamination (MetaGBM distinct par instance)
+- OOS reports avec idealized_baseline + performance séparés
+
+### Tests : 38/38 GREEN

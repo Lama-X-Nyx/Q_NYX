@@ -2,6 +2,23 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 41 — Per-Asset ML Artifact Validation (2026-04-18)
+
+Confirmed ETH and SOL have dedicated, current artifacts trained
+on the canonical full 128-feature stack. Retraining is
+deterministically reproducible (same seed=42).
+
+- ETH: 1061 candidates, accuracy 0.899, 128 features
+  OOS 2023: idealized Sharpe 7.36, realistic Sharpe 4.09
+- SOL: 727 candidates, accuracy 0.922, 128 features
+  OOS 2023: idealized Sharpe 2.59, realistic Sharpe 0.97
+- Feature parity: BTC == ETH == SOL (128 identical names)
+- Runtime loads correct per-asset artifact (no cross-contamination)
+- 38 validation tests: existence, coverage, prefixes, metadata,
+  runtime compatibility, OOS report format
+
+TDD : 38 GREEN. CLAUDE.md Rule 7 ✓.
+
 ### Ticket 40 — Capital-Aware Risk Engine Scaling (2026-04-18)
 
 All primary limits now %-based, computed dynamically from equity.
