@@ -1535,3 +1535,23 @@ CLAUDE.md lu. Evaluator pluggé dans T42.1. Pas de script ad hoc.
 - Capacity flags (core_scalable, capital_limited_edge, etc.)
 
 ### Tests : 20/20 GREEN + 34 T43 regression
+
+---
+
+## 2026-04-18 — Ticket 44.1 (Execution Reality Stress)
+
+### Rule 7 ✓
+CLAUDE.md lu. Extension de T44. Pas de réécriture.
+
+### Livré
+`src/live/evaluators/capacity_execution.py` :
+- ExecutionStressConfig (offset × fill_deg × fee × capital grid)
+- Scenario generator (combinatorial, IDs uniques)
+- Composite edge retention (Sharpe + miss + DD + PF pondéré)
+- Breakpoint detection sous friction
+- Sensitivity per dimension (offset, fill, fee)
+- Flags : offset_sensitive, fill_fragile, execution_resilient, etc.
+- Deployability : core_scalable_under_realistic_execution /
+  execution_fragile / satellite_only
+
+### Tests : 16/16 GREEN + 54 regression

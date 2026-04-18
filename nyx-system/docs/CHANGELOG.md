@@ -2,6 +2,29 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 44.1 — Execution Reality Stress Evaluator (2026-04-18)
+
+`src/live/evaluators/capacity_execution.py` — execution friction
+stress testing. Evaluator name: `capacity_execution`.
+
+- `ExecutionStressConfig` — capital + offset + fill degradation +
+  fee multiplier ladders (combinatorial grid)
+- `generate_execution_scenarios(config)` → full scenario grid with
+  unique IDs (capital × offset × fill_deg × fee)
+- `compute_composite_retention()` — weighted composite of Sharpe
+  retention, miss rate penalty, DD penalty, PF retention
+- `detect_execution_breakpoint()` → first scenario where composite
+  retention drops below threshold
+- `generate_execution_flags()` → offset_sensitive, fill_fragile,
+  fee_fragile, execution_breakpoint_reached, execution_resilient
+- `CapacityExecutionEvaluator.evaluate()` — runs grid, computes
+  sensitivities per dimension, classifies deployability under
+  realistic friction
+- Deployability classes: core_scalable_under_realistic_execution /
+  scalable_with_execution_caution / satellite_only / execution_fragile
+
+TDD : 16 GREEN + 54 T43-T44 regression = 70 total. CLAUDE.md Rule 7 ✓.
+
 ### Ticket 44 — Capacity & Liquidity Stress Evaluator (2026-04-18)
 
 `src/live/evaluators/capacity.py` — capital ladder stress testing
