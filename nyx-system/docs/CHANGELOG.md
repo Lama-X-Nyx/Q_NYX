@@ -2,6 +2,29 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 45 — OOS Performance Optimization (2026-04-18)
+
+`src/live/oos_cache.py` — caching, reuse, profiling for the
+canonical OOS engine. Same outputs, faster execution.
+
+- `compute_cache_key()` — deterministic SHA-256 key from
+  assets + dates + capital + mode
+- `OOSResultCache` — disk-persisted JSON cache with
+  get/put/list_keys
+- `DataCache` — in-memory singleton cache for OHLCV and feature
+  DataFrames (load once, reuse across runs)
+- `OOSProfiler` — lightweight section timer with
+  start/stop/report
+
+Profiling results (BTC mono-asset OOS):
+- Data loading: 1.9s (3%)
+- Feature loading: 5.1s (9%)
+- Model loading: 8.9s (16%)
+- NYXEngine.run(): 39.7s (72%)
+- Total: 55.6s → DataCache eliminates repeated loads
+
+TDD : 15 GREEN. CLAUDE.md Rule 7 ✓.
+
 ### Ticket 44.1 — Execution Reality Stress Evaluator (2026-04-18)
 
 `src/live/evaluators/capacity_execution.py` — execution friction

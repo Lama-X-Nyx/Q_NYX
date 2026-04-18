@@ -1555,3 +1555,28 @@ CLAUDE.md lu. Extension de T44. Pas de réécriture.
   execution_fragile / satellite_only
 
 ### Tests : 16/16 GREEN + 54 regression
+
+---
+
+## 2026-04-18 — Ticket 45 (OOS Performance Optimization)
+
+### Rule 7 ✓
+CLAUDE.md lu. Pas de changement d'alpha ou de sémantique.
+
+### Profiling
+```
+Data loading:     1.9s  (3%)
+Feature loading:  5.1s  (9%)
+Model loading:    8.9s  (16%)
+NYXEngine.run(): 39.7s  (72%)
+Total:           55.6s
+```
+
+### Livré
+`src/live/oos_cache.py` :
+- compute_cache_key() (SHA-256 déterministe)
+- OOSResultCache (disque, JSON, get/put/list)
+- DataCache (mémoire, singleton, OHLCV + features)
+- OOSProfiler (start/stop/report par section)
+
+### Tests : 15/15 GREEN
