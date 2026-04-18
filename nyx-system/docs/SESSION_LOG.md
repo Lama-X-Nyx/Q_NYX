@@ -1606,3 +1606,26 @@ protection automatique si fills collapse ou fees spike.
 - BLOCKED_EXECUTION_CRITICAL si multiplier=0
 
 ### Tests : 23/23 GREEN + 109 regression (T33-T37)
+
+---
+
+## 2026-04-18 — Ticket 46.1 (Execution Monitor v1 Hardening)
+
+### Rule 7 ✓
+CLAUDE.md lu. Extension additive. API v1 préservée.
+
+### Fixes
+1. Signaux indépendants (fill, cost, timeout) — plus de double-counting
+2. EMA smoothing (alpha=0.2) — résistance au bruit
+3. Multiplier continu — plus de cliffs entre états
+
+### Livré
+- `compute_health_score_v2()` — 3 signaux indépendants, w={0.60, 0.25, 0.15}
+- `compute_execution_cost_factor()` / `compute_timeout_quality()`
+- `EMASmoother` — lissage temporel déterministe
+- `continuous_risk_multiplier()` — interpolation linéaire
+- `ExecutionMonitor(use_v2=True)` — opt-in
+- Nouvelles APIs: `get_smoothed_health`, `get_risk_multiplier`
+- Backward-compatible: v1 code fonctionne inchangé
+
+### Tests : 23/23 GREEN + 37 regression (T46+T33)

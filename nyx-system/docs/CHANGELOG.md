@@ -2,6 +2,36 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 46.1 — Execution Monitor v1 Hardening (2026-04-18)
+
+Fixes 3 production-safety issues in T46:
+1. **Double-counted signals** (fill_rate + (1-miss_rate) = same info)
+2. **No temporal smoothing** (noise sensitive)
+3. **Hard threshold cliffs** (oscillation)
+
+Backward-compatible with v1 API.
+
+- `HEALTH_V2_WEIGHTS` — {fill: 0.60, cost: 0.25, timeout: 0.15},
+  aligned with T44.1 sensitivities, sum=1.0
+- `compute_execution_cost_factor(avg_fee, baseline, decay_slope)` —
+  1.0 at baseline, linear decay above
+- `compute_timeout_quality(timeout_rate)` — independent signal
+- `compute_health_score_v2(fill_rate, cost_factor, timeout_quality)`
+  — INDEPENDENT signals (no double-counting)
+- `EMASmoother(alpha)` — exponential moving average for health
+- `continuous_risk_multiplier(health, critical, normal)` — linear
+  interpolation between critical (0.35) and normal (0.70), no cliffs
+- `ExecutionMonitor(use_v2=True, smoothing_alpha=0.2)` — opt-in v2
+- `get_smoothed_health()` / `get_risk_multiplier()` — new APIs
+
+Behavior:
+- single bad fill in healthy history → multiplier stays >0.7 (no overreaction)
+- sustained degradation → multiplier scales smoothly toward 0
+- deterministic replay preserved
+
+TDD : 23 GREEN + 23 T46 regression + 14 T33 regression = 60 total.
+CLAUDE.md Rule 7 ✓.
+
 ### Ticket 46 — Real-Time Execution Monitoring & Adaptive Risk (2026-04-18)
 
 Addresses T44.1 finding: system is execution-fragile (fill_sens≈0.88,
