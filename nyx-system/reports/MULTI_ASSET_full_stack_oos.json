@@ -1,0 +1,143 @@
+{
+  "capital": 10000000.0,
+  "allocations": {
+    "BTCUSDT": 0.5,
+    "ETHUSDT": 0.3,
+    "SOLUSDT": 0.2
+  },
+  "per_asset": [
+    {
+      "symbol": "BTCUSDT",
+      "capital": 5000000.0,
+      "modules_tested": [
+        "NYXEngine (GBM)",
+        "Jesse (4 agents)",
+        "FractalQuality",
+        "RiskEngine + VaR/CVaR",
+        "ExecutionOptimizer",
+        "OMS",
+        "PostOnlyPaperBroker",
+        "Portfolio",
+        "Monitoring"
+      ],
+      "idealized_baseline": {
+        "n_trades": 63,
+        "sharpe": 7.06,
+        "total_pnl": 1144372.48,
+        "win_rate": 0.8413
+      },
+      "execution": {
+        "idealized_signals": 63,
+        "skipped_quality": 0,
+        "blocked_risk": 4,
+        "placed": 59,
+        "filled": 39,
+        "timed_out": 20,
+        "fill_rate": 0.661,
+        "miss_rate": 0.339
+      },
+      "performance": {
+        "n_trades": 39,
+        "win_rate": 0.7692,
+        "sharpe": 4.2,
+        "total_pnl": 612594.26,
+        "max_drawdown_pct": 0.9311
+      },
+      "var_cvar": {
+        "var_95": -28484.4897947341,
+        "cvar_95": -32996.80853038079
+      }
+    },
+    {
+      "symbol": "ETHUSDT",
+      "capital": 3000000.0,
+      "modules_tested": [
+        "NYXEngine (GBM)",
+        "Jesse (4 agents)",
+        "FractalQuality",
+        "RiskEngine + VaR/CVaR",
+        "ExecutionOptimizer",
+        "OMS",
+        "PostOnlyPaperBroker",
+        "Portfolio",
+        "Monitoring"
+      ],
+      "idealized_baseline": {
+        "n_trades": 90,
+        "sharpe": 7.36,
+        "total_pnl": 868440.58,
+        "win_rate": 0.8
+      },
+      "execution": {
+        "idealized_signals": 90,
+        "skipped_quality": 0,
+        "blocked_risk": 18,
+        "placed": 72,
+        "filled": 49,
+        "timed_out": 23,
+        "fill_rate": 0.6806,
+        "miss_rate": 0.3194
+      },
+      "performance": {
+        "n_trades": 49,
+        "win_rate": 0.7143,
+        "sharpe": 4.09,
+        "total_pnl": 426886.56,
+        "max_drawdown_pct": 1.5514
+      },
+      "var_cvar": {
+        "var_95": -17216.771382772316,
+        "cvar_95": -20796.359771679578
+      }
+    },
+    {
+      "symbol": "SOLUSDT",
+      "capital": 2000000.0,
+      "modules_tested": [
+        "NYXEngine (GBM)",
+        "Jesse (4 agents)",
+        "FractalQuality",
+        "RiskEngine + VaR/CVaR",
+        "ExecutionOptimizer",
+        "OMS",
+        "PostOnlyPaperBroker",
+        "Portfolio",
+        "Monitoring"
+      ],
+      "idealized_baseline": {
+        "n_trades": 49,
+        "sharpe": 2.59,
+        "total_pnl": 177305.23,
+        "win_rate": 0.7347
+      },
+      "execution": {
+        "idealized_signals": 49,
+        "skipped_quality": 0,
+        "blocked_risk": 22,
+        "placed": 27,
+        "filled": 21,
+        "timed_out": 6,
+        "fill_rate": 0.7778,
+        "miss_rate": 0.2222
+      },
+      "performance": {
+        "n_trades": 21,
+        "win_rate": 0.619,
+        "sharpe": 0.97,
+        "total_pnl": 21838.36,
+        "max_drawdown_pct": 0.5001
+      },
+      "var_cvar": {
+        "var_95": -5327.433097570569,
+        "cvar_95": -5943.2417401918665
+      }
+    }
+  ],
+  "portfolio": {
+    "total_pnl": 1061319.18,
+    "return_pct": 10.61,
+    "final_equity": 11061319.18,
+    "total_trades": 109,
+    "aggregate_win_rate": 0.6972
+  }
+}

@@ -2,6 +2,34 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 39 — Full-Stack OOS Standardization (2026-04-18)
+
+All assets now evaluated through the IDENTICAL full-stack pipeline.
+No mixed idealized/realistic modes. Results directly comparable.
+
+- `scripts/oos_multi_asset_full_stack.py` — standardized runner:
+  `run_full_stack_asset(symbol, capital)` applies GBM → Jesse →
+  Fractal Quality → Risk Engine → Execution Optimizer → OMS →
+  PostOnlyPaperBroker → Portfolio → Monitoring for each asset
+- Per-asset reports: `{SYMBOL}_full_stack_oos.json` with both
+  `idealized_baseline` and `performance` (realistic) sections
+- Unified report: `MULTI_ASSET_full_stack_oos.json`
+- Comparison table: all values from same pipeline, same broker,
+  same risk engine, same execution constraints
+
+$10M OOS Results (2023, BTC 50% / ETH 30% / SOL 20%):
+
+| Asset | Trades | Sharpe | PnL | WR | Miss | DD |
+|---|---|---|---|---|---|---|
+| BTC | 39 | 4.20 | +$612k | 76.9% | 34% | 0.93% |
+| ETH | 49 | 4.09 | +$427k | 71.4% | 32% | 1.55% |
+| SOL | 21 | 0.97 | +$22k | 61.9% | 22% | 0.50% |
+| **Total** | **109** | — | **+$1.06M** | **69.7%** | — | — |
+
+Portfolio: $10M → $11.06M (+10.61%)
+
+TDD : 12 GREEN. CLAUDE.md Rule 7 ✓.
+
 ### Ticket 38 — Repository Refactor (Clean Architecture) (2026-04-18)
 
 Shim-based refactor: zero file moves, zero import breakage.

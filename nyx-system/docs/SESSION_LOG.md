@@ -1369,3 +1369,33 @@ modules canoniques. Documenter le legacy dans `legacy/MANIFEST.md`.
 4. `tests/test_architecture_ticket38.py` : 19 tests structurels
 
 ### Tests : 19/19 GREEN + 109 regression (14+29+23+22+21)
+
+---
+
+## 2026-04-18 — Ticket 39 (Full-Stack OOS Standardization)
+
+### Rule 7 ✓
+CLAUDE.md lu. Pipeline identique pour les 3 assets. Pas de mode
+idéalisé mélangé avec réaliste.
+
+### Problème
+BTC avait un OOS full-stack (broker, risk, OMS). ETH et SOL
+n'avaient qu'un OOS idéalisé (pas de broker, pas de miss rate).
+Résultats non comparables.
+
+### Solution
+`scripts/oos_multi_asset_full_stack.py` — fonction paramétrique
+`run_full_stack_asset(symbol, capital)` applique le pipeline COMPLET
+identique pour chaque asset. Reports séparés idealized_baseline vs
+performance (réaliste).
+
+### Résultats ($10M, 2023)
+```
+Asset      Trades  Sharpe      PnL     WR   Miss%    DD%
+BTC            39    4.20  $612,594  76.9%    34%   0.93%
+ETH            49    4.09  $426,887  71.4%    32%   1.55%
+SOL            21    0.97   $21,838  61.9%    22%   0.50%
+Portfolio: $10M → $11.06M (+10.61%)
+```
+
+### Tests : 12/12 GREEN

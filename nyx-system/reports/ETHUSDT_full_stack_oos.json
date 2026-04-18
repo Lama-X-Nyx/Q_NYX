@@ -1,0 +1,42 @@
+{
+  "symbol": "ETHUSDT",
+  "capital": 3000000.0,
+  "modules_tested": [
+    "NYXEngine (GBM)",
+    "Jesse (4 agents)",
+    "FractalQuality",
+    "RiskEngine + VaR/CVaR",
+    "ExecutionOptimizer",
+    "OMS",
+    "PostOnlyPaperBroker",
+    "Portfolio",
+    "Monitoring"
+  ],
+  "idealized_baseline": {
+    "n_trades": 90,
+    "sharpe": 7.36,
+    "total_pnl": 868440.58,
+    "win_rate": 0.8
+  },
+  "execution": {
+    "idealized_signals": 90,
+    "skipped_quality": 0,
+    "blocked_risk": 18,
+    "placed": 72,
+    "filled": 49,
+    "timed_out": 23,
+    "fill_rate": 0.6806,
+    "miss_rate": 0.3194
+  },
+  "performance": {
+    "n_trades": 49,
+    "win_rate": 0.7143,
+    "sharpe": 4.09,
+    "total_pnl": 426886.56,
+    "max_drawdown_pct": 1.5514
+  },
+  "var_cvar": {
+    "var_95": -17216.771382772316,
+    "cvar_95": -20796.359771679578
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "symbol": "SOLUSDT",
+  "capital": 2000000.0,
+  "modules_tested": [
+    "NYXEngine (GBM)",
+    "Jesse (4 agents)",
+    "FractalQuality",
+    "RiskEngine + VaR/CVaR",
+    "ExecutionOptimizer",
+    "OMS",
+    "PostOnlyPaperBroker",
+    "Portfolio",
+    "Monitoring"
+  ],
+  "idealized_baseline": {
+    "n_trades": 49,
+    "sharpe": 2.59,
+    "total_pnl": 177305.23,
+    "win_rate": 0.7347
+  },
+  "execution": {
+    "idealized_signals": 49,
+    "skipped_quality": 0,
+    "blocked_risk": 22,
+    "placed": 27,
+    "filled": 21,
+    "timed_out": 6,
+    "fill_rate": 0.7778,
+    "miss_rate": 0.2222
+  },
+  "performance": {
+    "n_trades": 21,
+    "win_rate": 0.619,
+    "sharpe": 0.97,
+    "total_pnl": 21838.36,
+    "max_drawdown_pct": 0.5001
+  },
+  "var_cvar": {
+    "var_95": -5327.433097570569,
+    "cvar_95": -5943.2417401918665
+  }
+}
