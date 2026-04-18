@@ -2,6 +2,35 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 42 — Canonical OOS Engine (2026-04-18)
+
+`src/live/oos_engine.py` — one parameter-driven engine for all OOS
+requests. No new scripts needed.
+
+- `OOSConfig` — validated, serializable config (assets, dates,
+  capital, mode, train_end, allocations)
+- `CanonicalOOSEngine` — `run_oos(config)` handles mono/multi-asset,
+  idealized/realistic, any calendar window, $100→$1B capital
+  - `list_oos_runs()` — browse past runs
+  - `load_oos_report(run_id)` — reload any past result
+- Reports auto-persisted as `oos_{run_id}.json`
+- Idealized mode: GBM signals only, no execution layer
+- Realistic mode: full stack (Jesse → Risk → Broker → OMS → Portfolio)
+- Capital scaling via T40 %-based RiskEngine
+- Deterministic (same config → same result)
+
+Usage:
+```python
+from src.live.oos_engine import OOSConfig, CanonicalOOSEngine
+cfg = OOSConfig(assets=['BTCUSDT','ETHUSDT','SOLUSDT'],
+                start_date='2023-01-01', end_date='2023-12-31',
+                initial_capital=10_000_000, mode='realistic')
+result = CanonicalOOSEngine().run_oos(cfg)
+```
+
+TDD : 19 GREEN (7 config + 5 engine + 2 scaling + 3 persistence +
+1 determinism + 1 instantiation). CLAUDE.md Rule 7 ✓.
+
 ### Ticket 41 — Per-Asset ML Artifact Validation (2026-04-18)
 
 Confirmed ETH and SOL have dedicated, current artifacts trained

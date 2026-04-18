@@ -1439,3 +1439,29 @@ Retrain fresh = résultats IDENTIQUES (seed=42, déterministe).
 - OOS reports avec idealized_baseline + performance séparés
 
 ### Tests : 38/38 GREEN
+
+---
+
+## 2026-04-18 — Ticket 42 (Canonical OOS Engine)
+
+### Rule 7 ✓
+CLAUDE.md lu. Alpha non touché. Engine OOS paramétrique, pas de
+nouveau script.
+
+### Livré
+`src/live/oos_engine.py` :
+- `OOSConfig` : assets, dates, capital, mode (idealized/realistic)
+- `CanonicalOOSEngine.run_oos(config)` : mono/multi, toute fenêtre,
+  tout capital ($100 → $1B)
+- Reports persistés comme `oos_{run_id}.json`
+- `list_oos_runs()` / `load_oos_report(run_id)` pour naviguer
+
+### Usage
+```python
+cfg = OOSConfig(assets=['BTCUSDT','ETHUSDT','SOLUSDT'],
+                start_date='2023-01-01', end_date='2023-12-31',
+                initial_capital=10_000_000, mode='realistic')
+result = CanonicalOOSEngine().run_oos(cfg)
+```
+
+### Tests : 19/19 GREEN
