@@ -1580,3 +1580,29 @@ Total:           55.6s
 - OOSProfiler (start/stop/report par section)
 
 ### Tests : 15/15 GREEN
+
+---
+
+## 2026-04-18 — Ticket 46 (Execution Monitor + Adaptive Risk)
+
+### Rule 7 ✓
+CLAUDE.md lu. Alpha non touché. Contrôle post-décision déterministe.
+
+### Problème (T44.1)
+Tous les assets fragiles en execution (fill_sens≈0.88). Pas de
+protection automatique si fills collapse ou fees spike.
+
+### Livré
+`src/live/execution_monitor.py` :
+- ExecutionMetricsCollector (rolling window per asset)
+- compute_health_score (poids alignés sur sensitivités T44.1)
+- RiskController (normal/degraded/critical avec hysteresis)
+- ExecutionMonitor (orchestrateur + systemic detection)
+
+### Intégration NYXRuntime
+- Étape 3d entre allocator et risk engine
+- risk_multiplier × size_multiplier
+- Auto-record sur on_fill / on_timeout
+- BLOCKED_EXECUTION_CRITICAL si multiplier=0
+
+### Tests : 23/23 GREEN + 109 regression (T33-T37)

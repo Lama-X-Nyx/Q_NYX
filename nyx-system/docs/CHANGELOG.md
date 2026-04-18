@@ -2,6 +2,35 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 46 — Real-Time Execution Monitoring & Adaptive Risk (2026-04-18)
+
+Addresses T44.1 finding: system is execution-fragile (fill_sens≈0.88,
+fee breakpoint at +50%). Adds deterministic adaptive risk control
+that protects capital when execution degrades.
+
+- `src/live/execution_monitor.py`:
+  - `ExecutionMetricsCollector` — rolling window per asset:
+    placed, filled, missed, fill_rate, miss_rate, avg_fee
+  - `compute_health_score()` — weighted [0,1]:
+    0.5×fill_rate + 0.3×(1-miss_rate) + 0.2×fee_factor.
+    Weights aligned with T44.1 sensitivities.
+  - `RiskController` — 3-state (normal/degraded/critical) with
+    hysteresis. Returns risk_multiplier (1.0 / 0.5 / 0.0).
+  - `ExecutionMonitor` — orchestrator:
+    per-asset health + systemic degradation detection
+    (majority of assets below threshold = systemic)
+  - `detect_flags()` → execution_healthy / execution_degraded /
+    execution_critical / fill_collapse_detected / fee_spike_detected
+
+- NYXRuntime integration (Step 3d, between allocator and risk engine):
+  - `execution_monitor` parameter in __init__
+  - `on_bar()`: applies `risk_multiplier` to size_multiplier; if 0.0,
+    returns BLOCKED_EXECUTION_CRITICAL
+  - `on_fill()` + `on_timeout()`: auto-record events
+  - Backward compatible (None → no-op)
+
+TDD : 23 GREEN + 109 regression (T33-T37). CLAUDE.md Rule 7 ✓.
+
 ### Ticket 45 — OOS Performance Optimization (2026-04-18)
 
 `src/live/oos_cache.py` — caching, reuse, profiling for the

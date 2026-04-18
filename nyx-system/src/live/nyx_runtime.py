@@ -50,11 +50,13 @@ class NYXRuntime:
         portfolio_allocator: Optional[Any] = None,
         candidate_store: Optional[Any] = None,
         audit_store: Optional[Any] = None,
+        execution_monitor: Optional[Any] = None,
     ) -> None:
         self.symbol = symbol
         self.dependency_layer = dependency_layer
         self.portfolio_allocator = portfolio_allocator
         self.candidate_store = candidate_store
+        self.execution_monitor = execution_monitor
         self.audit_store = audit_store
 
         # --- 0. MODELS (GBM + Jesse agents) ---
@@ -335,6 +337,24 @@ class NYXRuntime:
                     self._compute_quantity(mark_price, 1.0) * mark_price, 1e-12,
                 )
 
+        # ---- 3d. EXECUTION MONITOR (Ticket 46) ----
+        # Applies adaptive risk_multiplier based on real-time execution
+        # health (fill rate, fee level). 0.0 = critical (block trade),
+        # 0.5 = degraded, 1.0 = normal. Does not alter signals.
+        if self.execution_monitor is not None:
+            exec_mult = self.execution_monitor.get_multiplier(self.symbol)
+            result['layers']['execution_monitor'] = {
+                'risk_multiplier': exec_mult,
+                'health_score': self.execution_monitor.get_health(self.symbol),
+                'flags': self.execution_monitor.get_flags(self.symbol),
+            }
+            if exec_mult <= 0.0:
+                result['action'] = 'BLOCKED_EXECUTION_CRITICAL'
+                self._periodic_persist()
+                self._update_monitoring(result)
+                return result
+            size_multiplier *= exec_mult
+
         # ---- 4. RISK ENGINE (sovereign — can block) ----
         quantity = self._compute_quantity(mark_price, size_multiplier)
 
@@ -382,6 +402,8 @@ class NYXRuntime:
             'limit_price': limit_price,
         }
         result['action'] = 'ORDER_SUBMITTED'
+        if self.execution_monitor is not None:
+            self.execution_monitor.record_order(self.symbol, placed=True)
 
         # ---- 6-10 happen on fill (broker callback) ----
         # In live: broker.on_bar() checks fills, then we call
@@ -401,6 +423,11 @@ class NYXRuntime:
         # 7. OMS fill
         self.oms.handle_fill(order_id, fill_qty, fill_price)
         order = self.oms.get_order(order_id)
+
+        if self.execution_monitor is not None:
+            self.execution_monitor.record_fill(
+                self.symbol, filled=True, fee=fee,
+            )
 
         # 8. PORTFOLIO update
         if order is not None:
@@ -440,6 +467,8 @@ class NYXRuntime:
         self.oms.cancel_order(order_id, reason='TIMED_OUT')
         self.metrics.record_order_attempt(filled=False)
         self.state_store.save_oms(self.oms)
+        if self.execution_monitor is not None:
+            self.execution_monitor.record_fill(self.symbol, filled=False)
 
     # ------------------------------------------------------------------
     def on_exchange_update(self, update: Dict[str, Any]) -> None:
