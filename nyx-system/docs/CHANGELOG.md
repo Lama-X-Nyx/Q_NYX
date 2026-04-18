@@ -2,6 +2,30 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 40 — Capital-Aware Risk Engine Scaling (2026-04-18)
+
+All primary limits now %-based, computed dynamically from equity.
+Consistent behavior across $10k → $10M+.
+
+- `max_position_pct` (default 5%) replaces `max_position_notional`
+  ($50k) as primary constraint. Position limit =
+  `equity × max_position_pct / 100`.
+- `max_var_95_pct` / `max_cvar_95_pct` — %-based VaR/CVaR limits
+  computed from equity (replaces fixed-dollar legacy params)
+- `max_position_notional_hard_cap` / `max_order_notional_hard_cap`
+  — optional absolute safety caps (secondary, never primary)
+- `risk_meta` dict in every response: equity, computed limits,
+  applied caps, blocking reason
+- Backward compatible: `max_position_notional=50000` auto-maps
+  to `max_position_notional_hard_cap`
+- Legacy `max_var_95` / `max_cvar_95` (fixed $) still work as
+  fallback when %-based params not set
+- Zero/negative equity → automatic block
+
+TDD : 16 GREEN (5 scaling + 2 hard cap + 3 VaR + 2 metadata +
+2 backward compat + 2 edge cases).
+152 regression GREEN (T25+T31+T33-T38). CLAUDE.md Rule 7 ✓.
+
 ### Ticket 39 — Full-Stack OOS Standardization (2026-04-18)
 
 All assets now evaluated through the IDENTICAL full-stack pipeline.

@@ -1399,3 +1399,23 @@ Portfolio: $10M → $11.06M (+10.61%)
 ```
 
 ### Tests : 12/12 GREEN
+
+---
+
+## 2026-04-18 — Ticket 40 (Capital-Aware Risk Engine)
+
+### Rule 7 ✓
+CLAUDE.md lu. Alpha non touché. Seul le RiskEngine est modifié.
+
+### Problème
+`max_position_notional = $50,000` hardcodé bloquait 62/63 trades
+BTC à $5M de capital. Le système n'était pas scalable.
+
+### Solution
+Remplacé les limites fixes par des % d'equity :
+- `max_position_pct=5.0` → compute `equity × 5% = max_position`
+- `max_var_95_pct` / `max_cvar_95_pct` → dynamiques
+- Legacy `max_position_notional` → auto-mappé comme hard_cap secondaire
+- `risk_meta` dans chaque réponse : equity, limits, caps
+
+### Tests : 16/16 GREEN + 152 regression (T25+T31+T33-T38)
