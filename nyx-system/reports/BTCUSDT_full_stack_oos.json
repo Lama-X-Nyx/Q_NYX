@@ -12,38 +12,38 @@
     "Monitoring"
   ],
   "execution": {
-    "idealized_signals": 53,
+    "idealized_signals": 63,
     "skipped_quality": 0,
-    "blocked_risk": 4,
-    "placed": 49,
-    "filled": 33,
-    "timed_out": 16,
-    "fill_rate": 0.673469387755102,
-    "miss_rate": 0.32653061224489793
+    "blocked_risk": 6,
+    "placed": 57,
+    "filled": 38,
+    "timed_out": 19,
+    "fill_rate": 0.6666666666666666,
+    "miss_rate": 0.3333333333333333
   },
   "performance": {
-    "n_trades": 33,
-    "win_rate": 0.8788,
-    "sharpe": 6.78,
-    "total_pnl": 1194.64,
-    "max_drawdown_pct": 0.003997
+    "n_trades": 38,
+    "win_rate": 0.7632,
+    "sharpe": 4.1,
+    "total_pnl": 1150.42,
+    "max_drawdown_pct": 0.009886
   },
   "baseline_t11": {
     "sharpe": 9.96,
     "pnl": 2171.18
   },
   "var_cvar": {
-    "var_95": -35.96410323636479,
-    "cvar_95": -40.81292768133255
+    "var_95": -57.10297124709096,
+    "cvar_95": -65.99361706076157
   },
   "monitoring": {
-    "total_trades": 33,
-    "total_pnl": 1194.64,
-    "win_rate": 0.8788,
-    "fill_rate": 0.6735,
-    "miss_rate": 0.3265,
+    "total_trades": 38,
+    "total_pnl": 1150.42,
+    "win_rate": 0.7632,
+    "fill_rate": 0.6667,
+    "miss_rate": 0.3333,
     "reject_rate": 0.0,
-    "max_drawdown_pct": 0.6225,
+    "max_drawdown_pct": 2.1189,
     "avg_ws_latency_ms": 0.0,
     "reconnect_count": 0
   }
