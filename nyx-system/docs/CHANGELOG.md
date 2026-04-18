@@ -2,6 +2,26 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 44 — Capacity & Liquidity Stress Evaluator (2026-04-18)
+
+`src/live/evaluators/capacity.py` — capital ladder stress testing
+plugged into T42.1 framework. Evaluator name: `capacity`.
+
+- `CapacityStressConfig` — assets, capital_ladder, mode, dates
+- `generate_scenarios(config)` → scenario grid with IDs
+- `compute_edge_retention(baseline, stressed)` → retention ratio
+- `detect_breakpoint(results, thresholds)` → first capital where
+  edge degrades below threshold
+- `classify_deployability()` → core_scalable / scalable_with_caution
+  / satellite_only / opportunistic_small_only / not_deployable
+  + max_recommended_capital
+- `generate_capacity_flags()` → core_scalable / capital_limited_edge
+  / execution_fragile / miss_rate_explodes_above_size
+- `CapacityEvaluator.evaluate(oos_result)` — runs capital ladder
+  scenarios, detects breakpoints, classifies, flags
+
+TDD : 20 GREEN + 34 T43 regression = 54 total. CLAUDE.md Rule 7 ✓.
+
 ### Ticket 43.1 — Regime-Aware Stability Upgrade (2026-04-18)
 
 Institution-grade upgrade to Stability Evaluator. Extends T43 with

@@ -1517,3 +1517,21 @@ Extensions au StabilityEvaluator :
   requires_regime_filter, capital_limited_edge
 
 ### Tests : 17/17 GREEN + 17 T43 regression = 34 total
+
+---
+
+## 2026-04-18 — Ticket 44 (Capacity & Liquidity Stress Evaluator)
+
+### Rule 7 ✓
+CLAUDE.md lu. Evaluator pluggé dans T42.1. Pas de script ad hoc.
+
+### Livré
+`src/live/evaluators/capacity.py` :
+- CapacityStressConfig (capital ladder, mode, dates)
+- Scenario generator (grid avec IDs)
+- Edge retention computation
+- Breakpoint detection (Sharpe + retention thresholds)
+- Deployability classification (core/satellite/opportunistic/avoid)
+- Capacity flags (core_scalable, capital_limited_edge, etc.)
+
+### Tests : 20/20 GREEN + 34 T43 regression
