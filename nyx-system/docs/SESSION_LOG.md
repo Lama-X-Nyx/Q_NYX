@@ -1481,3 +1481,20 @@ CLAUDE.md lu. Extension du OOS engine, pas de nouveau pipeline.
 - Résultats d'évaluation persistés comme `eval_{run_id}_{name}.json`
 
 ### Tests : 15/15 GREEN + 19 T42 regression
+
+---
+
+## 2026-04-18 — Ticket 43 (Stability Evaluator)
+
+### Rule 7 ✓
+CLAUDE.md lu. Evaluator pluggé dans framework T42.1. Pas de script ad hoc.
+
+### Livré
+`src/live/evaluators/stability.py` :
+- Segment slicer (year/quarter)
+- Regime tagger (volatility/trend/composite)
+- Stability metrics (score, profitable ratio, Sharpe dispersion)
+- Classification (robust / unstable / regime_sensitive / opportunistic)
+- Flags (stable_across_cycles, unstable_edge, high_regime_dependency, etc.)
+
+### Tests : 17/17 GREEN

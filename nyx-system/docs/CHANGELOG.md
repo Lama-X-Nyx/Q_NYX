@@ -2,6 +2,35 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 43 — Multi-Year Regime Stability Evaluator (2026-04-18)
+
+`src/live/evaluators/stability.py` — first-class evaluator plugged
+into the OOS Evaluator Framework (T42.1). Evaluator name: `stability`.
+
+- `segment_years(start, end)` / `segment_quarters(start, end)` —
+  calendar slicers for multi-year / multi-quarter analysis
+- `tag_regime_volatility()` / `tag_regime_trend()` /
+  `tag_regime_composite()` — deterministic regime tagging
+- `compute_stability_metrics(segments)` — mean/std/best/worst Sharpe,
+  profitable_segment_ratio, stability_score ∈ [0,1]
+- `classify_stability()` → robust / regime_sensitive / unstable /
+  opportunistic / fragile_drawdown_profile
+- `generate_stability_flags()` → stable_across_cycles /
+  unstable_edge / high_regime_dependency / drawdown_clustered
+- `StabilityEvaluator.evaluate(oos_result)` — full pipeline:
+  segment → metrics → classify → flags, per-asset output
+- Deterministic, serializable, persistable via framework
+
+Usage:
+```python
+result = engine.run_oos(cfg)
+result.register_evaluator(StabilityEvaluator())
+analysis = result.evaluate(['stability'])
+```
+
+TDD : 17 GREEN (3 slicer + 3 regime + 2 metrics + 3 classification
++ 2 flags + 4 integration). CLAUDE.md Rule 7 ✓.
+
 ### Ticket 42.1 — OOS Evaluator Framework (2026-04-18)
 
 Pluggable post-OOS analysis layer. Evaluators consume `OOSResult`,
