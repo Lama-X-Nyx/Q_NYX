@@ -324,14 +324,106 @@ def _run_asset_realistic(
     }
 
 
+# =========================================================================
+# Evaluator Framework (Ticket 42.1)
+# =========================================================================
+
+class OOSResultEvaluator:
+    """Base class for post-OOS evaluators. Subclasses must set evaluator_name."""
+    evaluator_name: str = ''
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if not cls.evaluator_name and 'evaluator_name' not in cls.__dict__:
+            pass
+
+    def __init__(self):
+        if not self.evaluator_name:
+            raise TypeError(
+                f'{type(self).__name__} must set evaluator_name'
+            )
+
+    def evaluate(self, oos_result: 'OOSResult') -> dict:
+        raise NotImplementedError
+
+
+class EvaluatorRegistry:
+    """Registry mapping evaluator names to instances."""
+
+    def __init__(self) -> None:
+        self._evaluators: Dict[str, OOSResultEvaluator] = {}
+
+    def register(self, evaluator: OOSResultEvaluator) -> None:
+        self._evaluators[evaluator.evaluator_name] = evaluator
+
+    def get(self, name: str) -> OOSResultEvaluator:
+        if name not in self._evaluators:
+            raise KeyError(f'Unknown evaluator: {name!r}')
+        return self._evaluators[name]
+
+    def list(self) -> List[str]:
+        return list(self._evaluators.keys())
+
+
+class OOSResult:
+    """Structured wrapper around OOS run output with evaluate() capability."""
+
+    def __init__(
+        self,
+        data: Dict[str, Any],
+        reports_dir: Optional[Path] = None,
+    ) -> None:
+        self._data = data
+        self._reports_dir = reports_dir
+        self._registry = EvaluatorRegistry()
+
+    @property
+    def run_id(self) -> str:
+        return self._data.get('run_id', '')
+
+    @property
+    def config(self) -> Dict[str, Any]:
+        return self._data.get('config', {})
+
+    @property
+    def per_asset(self) -> List[Dict[str, Any]]:
+        return self._data.get('per_asset', [])
+
+    @property
+    def portfolio(self) -> Dict[str, Any]:
+        return self._data.get('portfolio', {})
+
+    def to_dict(self) -> Dict[str, Any]:
+        return dict(self._data)
+
+    def register_evaluator(self, evaluator: OOSResultEvaluator) -> None:
+        self._registry.register(evaluator)
+
+    def evaluate(self, evaluator_names: List[str]) -> Dict[str, Any]:
+        results: Dict[str, Any] = {}
+        for name in evaluator_names:
+            ev = self._registry.get(name)
+            output = ev.evaluate(self)
+            results[name] = output
+            if self._reports_dir is not None:
+                self._reports_dir.mkdir(parents=True, exist_ok=True)
+                path = self._reports_dir / f'eval_{self.run_id}_{name}.json'
+                path.write_text(json.dumps(output, indent=2, default=str))
+        return results
+
+
 class CanonicalOOSEngine:
     """One engine for all OOS requests. Parameter-driven."""
 
     def __init__(self, reports_dir: Optional[Path] = None) -> None:
         self.reports_dir = reports_dir or (_HERE / 'reports' / 'oos_runs')
         self.reports_dir.mkdir(parents=True, exist_ok=True)
+        self._registry = EvaluatorRegistry()
 
-    def run_oos(self, config: OOSConfig) -> Dict[str, Any]:
+    def register_evaluator(self, evaluator: OOSResultEvaluator) -> None:
+        self._registry.register(evaluator)
+
+    def run_oos(self, config: OOSConfig) -> OOSResult:
         run_id = uuid.uuid4().hex[:12]
         alloc = config.allocations
         if alloc is None:
@@ -354,7 +446,7 @@ class CanonicalOOSEngine:
         total_wins = sum(int(r['performance']['win_rate'] * r['performance']['n_trades'])
                          for r in per_asset)
 
-        result = {
+        data = {
             'run_id': run_id,
             'config': config.to_dict(),
             'per_asset': per_asset,
@@ -368,12 +460,20 @@ class CanonicalOOSEngine:
         }
 
         path = self.reports_dir / f'oos_{run_id}.json'
-        path.write_text(json.dumps(result, indent=2, default=str))
+        path.write_text(json.dumps(data, indent=2, default=str))
+
+        result = OOSResult(data, reports_dir=self.reports_dir)
+        for name in self._registry.list():
+            result.register_evaluator(self._registry.get(name))
         return result
 
-    def load_oos_report(self, run_id: str) -> Dict[str, Any]:
+    def load_oos_report(self, run_id: str) -> OOSResult:
         path = self.reports_dir / f'oos_{run_id}.json'
-        return json.loads(path.read_text())
+        data = json.loads(path.read_text())
+        result = OOSResult(data, reports_dir=self.reports_dir)
+        for name in self._registry.list():
+            result.register_evaluator(self._registry.get(name))
+        return result
 
     def list_oos_runs(self) -> List[str]:
         return [p.stem.replace('oos_', '')

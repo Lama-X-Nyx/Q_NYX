@@ -2,6 +2,27 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 42.1 — OOS Evaluator Framework (2026-04-18)
+
+Pluggable post-OOS analysis layer. Evaluators consume `OOSResult`,
+produce serializable analysis, persist results.
+
+- `OOSResult` — class wrapping OOS run data with `.evaluate()`
+  method, `.run_id`, `.per_asset`, `.portfolio`, `.config` properties
+- `OOSResultEvaluator` — base class (must set `evaluator_name`,
+  implement `evaluate(oos_result) → dict`)
+- `EvaluatorRegistry` — register/get/list evaluators by name
+- `OOSResult.evaluate(['stability', 'capacity'])` — dispatches to
+  registered evaluators, persists results as `eval_{run_id}_{name}.json`
+- `CanonicalOOSEngine.run_oos()` now returns `OOSResult` (not dict)
+- `CanonicalOOSEngine.register_evaluator()` — engine-level registration
+- `load_oos_report()` returns `OOSResult` with evaluators attached
+- Ready for T43 (stability) and T44 (capacity) without custom wiring
+
+TDD : 15 GREEN (6 OOSResult + 3 evaluator + 3 registry +
+1 persistence + 2 engine integration).
+19 T42 regression GREEN. CLAUDE.md Rule 7 ✓.
+
 ### Ticket 42 — Canonical OOS Engine (2026-04-18)
 
 `src/live/oos_engine.py` — one parameter-driven engine for all OOS

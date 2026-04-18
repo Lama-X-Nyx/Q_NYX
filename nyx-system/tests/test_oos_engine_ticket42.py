@@ -83,17 +83,17 @@ class TestCanonicalOOSEngine:
         assert engine is not None
 
     def test_run_oos_returns_result(self):
-        from src.live.oos_engine import OOSConfig, CanonicalOOSEngine
+        from src.live.oos_engine import OOSConfig, CanonicalOOSEngine, OOSResult
         cfg = OOSConfig(
             assets=['BTCUSDT'], start_date='2023-01-01',
             end_date='2023-12-31', initial_capital=10_000.0,
         )
         engine = CanonicalOOSEngine()
         result = engine.run_oos(cfg)
-        assert isinstance(result, dict)
-        assert 'run_id' in result
-        assert 'config' in result
-        assert 'per_asset' in result
+        assert isinstance(result, OOSResult)
+        assert result.run_id is not None
+        assert result.config is not None
+        assert result.per_asset is not None
 
     def test_run_oos_mono_asset(self):
         from src.live.oos_engine import OOSConfig, CanonicalOOSEngine
@@ -103,8 +103,8 @@ class TestCanonicalOOSEngine:
         )
         engine = CanonicalOOSEngine()
         result = engine.run_oos(cfg)
-        assert len(result['per_asset']) == 1
-        assert result['per_asset'][0]['symbol'] == 'BTCUSDT'
+        assert len(result.per_asset) == 1
+        assert result.per_asset[0]['symbol'] == 'BTCUSDT'
 
     def test_run_oos_multi_asset(self):
         from src.live.oos_engine import OOSConfig, CanonicalOOSEngine
@@ -114,10 +114,10 @@ class TestCanonicalOOSEngine:
         )
         engine = CanonicalOOSEngine()
         result = engine.run_oos(cfg)
-        assert len(result['per_asset']) == 2
-        syms = {r['symbol'] for r in result['per_asset']}
+        assert len(result.per_asset) == 2
+        syms = {r['symbol'] for r in result.per_asset}
         assert syms == {'BTCUSDT', 'ETHUSDT'}
-        assert 'portfolio' in result
+        assert result.portfolio is not None
 
     def test_idealized_mode_no_execution(self):
         from src.live.oos_engine import OOSConfig, CanonicalOOSEngine
@@ -127,8 +127,8 @@ class TestCanonicalOOSEngine:
         )
         engine = CanonicalOOSEngine()
         result = engine.run_oos(cfg)
-        r = result['per_asset'][0]
-        assert 'execution' not in r or r['execution']['placed'] == 0 or r.get('mode') == 'idealized'
+        r = result.per_asset[0]
+        assert 'execution' not in r or r.get('mode') == 'idealized'
 
     def test_realistic_mode_has_execution(self):
         from src.live.oos_engine import OOSConfig, CanonicalOOSEngine
@@ -138,7 +138,7 @@ class TestCanonicalOOSEngine:
         )
         engine = CanonicalOOSEngine()
         result = engine.run_oos(cfg)
-        r = result['per_asset'][0]
+        r = result.per_asset[0]
         assert 'execution' in r
         assert r['execution']['placed'] > 0
 
@@ -153,7 +153,7 @@ class TestCapitalScaling:
         )
         engine = CanonicalOOSEngine()
         result = engine.run_oos(cfg)
-        assert result['per_asset'][0]['capital'] == 100.0
+        assert result.per_asset[0]['capital'] == 100.0
 
     def test_capital_10M(self):
         from src.live.oos_engine import OOSConfig, CanonicalOOSEngine
@@ -163,7 +163,7 @@ class TestCapitalScaling:
         )
         engine = CanonicalOOSEngine()
         result = engine.run_oos(cfg)
-        assert result['per_asset'][0]['capital'] == 10_000_000.0
+        assert result.per_asset[0]['capital'] == 10_000_000.0
 
 
 class TestReportPersistence:
@@ -177,8 +177,7 @@ class TestReportPersistence:
         )
         engine = CanonicalOOSEngine(reports_dir=reports_dir)
         result = engine.run_oos(cfg)
-        run_id = result['run_id']
-        path = reports_dir / f'oos_{run_id}.json'
+        path = reports_dir / f'oos_{result.run_id}.json'
         assert path.exists()
 
     def test_load_report(self):
@@ -190,8 +189,8 @@ class TestReportPersistence:
             end_date='2023-12-31',
         )
         result = engine.run_oos(cfg)
-        loaded = engine.load_oos_report(result['run_id'])
-        assert loaded['run_id'] == result['run_id']
+        loaded = engine.load_oos_report(result.run_id)
+        assert loaded.run_id == result.run_id
 
     def test_list_runs(self):
         from src.live.oos_engine import OOSConfig, CanonicalOOSEngine
@@ -217,7 +216,7 @@ class TestDeterminism:
         engine = CanonicalOOSEngine()
         r1 = engine.run_oos(cfg)
         r2 = engine.run_oos(cfg)
-        p1 = r1['per_asset'][0]['performance']
-        p2 = r2['per_asset'][0]['performance']
+        p1 = r1.per_asset[0]['performance']
+        p2 = r2.per_asset[0]['performance']
         assert p1['sharpe'] == p2['sharpe']
         assert p1['total_pnl'] == p2['total_pnl']

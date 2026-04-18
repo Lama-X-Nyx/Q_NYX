@@ -1465,3 +1465,19 @@ result = CanonicalOOSEngine().run_oos(cfg)
 ```
 
 ### Tests : 19/19 GREEN
+
+---
+
+## 2026-04-18 — Ticket 42.1 (OOS Evaluator Framework)
+
+### Rule 7 ✓
+CLAUDE.md lu. Extension du OOS engine, pas de nouveau pipeline.
+
+### Livré
+- `OOSResult` : classe wrapper avec `.evaluate()`, `.run_id`, `.per_asset`
+- `OOSResultEvaluator` : base class pour évaluateurs post-OOS
+- `EvaluatorRegistry` : registration/dispatch par nom
+- `CanonicalOOSEngine.run_oos()` retourne `OOSResult` (plus dict)
+- Résultats d'évaluation persistés comme `eval_{run_id}_{name}.json`
+
+### Tests : 15/15 GREEN + 19 T42 regression
