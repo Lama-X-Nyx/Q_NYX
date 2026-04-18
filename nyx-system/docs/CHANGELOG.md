@@ -2,6 +2,33 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket 38 — Repository Refactor (Clean Architecture) (2026-04-18)
+
+Shim-based refactor: zero file moves, zero import breakage.
+Makes the canonical production system obvious to a new developer
+in <5 minutes.
+
+- `src/nyx/` — canonical re-export namespace (8 modules):
+  - `runtime.py` → NYXRuntime, CentralOrchestrator, CandidateDecision
+  - `decision.py` → MetaGBM, NYXLiveDecider, compute_fractal_quality
+  - `portfolio.py` → PortfolioAllocator, InterAssetDependencyLayer, Portfolio
+  - `execution.py` → OMS, RiskEngine, VaR/CVaR
+  - `data.py` → BarBuilder, FeedHealth, compute_stationary_features
+  - `state.py` → StateStore, AuditStore, MetricsCollector, AlertManager
+  - `contracts.py` → FractalReport, MetaDecision, Signal, CandidateDecision
+  - `__init__.py` → `from src.nyx import NYXRuntime, CentralOrchestrator`
+- `docs/ARCHITECTURE.md` — single-page system overview with pipeline
+  diagram, module map, entrypoints, new-developer quickstart
+- `legacy/MANIFEST.md` — full inventory of ~110 legacy modules with
+  what they do, why they're legacy, what replaced them
+- Structural tests enforce: canonical boundary (no legacy imports),
+  re-export layer works, documentation exists, no circular imports
+
+TDD : 19 GREEN (9 namespace + 2 boundary + 4 docs + 4 circular).
+109 regression GREEN (T33-T37). CLAUDE.md Rule 7 ✓.
+
+Zero existing files modified. Zero import paths changed.
+
 ### Ticket 37 — Unified Audit Trail (2026-04-17)
 
 `src/live/audit_trail.py` — structured, deterministic, replayable

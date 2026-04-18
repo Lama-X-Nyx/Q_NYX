@@ -1343,3 +1343,29 @@ reconstructibles ou rejouables. Pas institutional-grade.
 - Zero overhead quand audit_store=None
 
 ### Tests : 21/21 GREEN + 88 regression (14+29+23+22)
+
+---
+
+## 2026-04-18 — Ticket 38 (Repository Refactor)
+
+### Rule 7 ✓
+CLAUDE.md lu. Zero fichiers modifiés. Zero import paths changés.
+Refactor par shims (pattern prouvé par nyx_pipeline.py).
+
+### Problème
+141 fichiers src/, un nouveau développeur ne peut pas distinguer
+canonical vs legacy en <5 minutes.
+
+### Solution
+Shim-based : créer un namespace `src/nyx/` qui re-exporte les 30
+modules canoniques. Documenter le legacy dans `legacy/MANIFEST.md`.
+Écrire `docs/ARCHITECTURE.md` pour la vue 5 minutes.
+
+### Livré
+1. `src/nyx/` : 8 modules re-export (runtime, decision, portfolio,
+   execution, data, state, contracts, __init__)
+2. `docs/ARCHITECTURE.md` : pipeline diagram, module map, entrypoints
+3. `legacy/MANIFEST.md` : inventaire complet des ~110 modules legacy
+4. `tests/test_architecture_ticket38.py` : 19 tests structurels
+
+### Tests : 19/19 GREEN + 109 regression (14+29+23+22+21)
