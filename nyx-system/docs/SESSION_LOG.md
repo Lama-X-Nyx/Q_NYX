@@ -1706,3 +1706,32 @@ CLAUDE.md lu. Backend souverain. Frontend reflet.
 - Critical block affiché avec raison + animation
 
 ### Tests : 19/19 GREEN. Build OK.
+
+---
+
+## 2026-04-19 — Ticket SEC-1 (Security & Access Control)
+
+### Rule 7 ✓
+CLAUDE.md lu. Backend souverain. Frontend non-trusté.
+
+### Livré
+**security.py** :
+- Auth JWT (bcrypt + HS256 + expiry)
+- RBAC (viewer/operator/admin)
+- UserStore (in-memory, default admin)
+- SecurityAuditLog (sanitize sensitive keys)
+- EnvironmentConfig (paper/testnet/live)
+- RateLimiter (sliding window)
+
+**API** :
+- /api/auth/{login,logout,me}
+- /api/security/audit (admin-only)
+- get_current_user + require_role middleware
+
+**Frontend** :
+- Login screen + auth gate
+- Environment badge (PAPER/TESTNET/LIVE)
+- Role + Logout in header
+- Token-bearing requests (sessionStorage)
+
+### Tests : 27+19 = 46/46 GREEN. Build OK.

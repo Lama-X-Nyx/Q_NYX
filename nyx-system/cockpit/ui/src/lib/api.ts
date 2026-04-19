@@ -124,6 +124,58 @@ export interface CapacityAnalytics {
   breakpoints: Array<{ asset: string; capital: number; reason: string }>;
 }
 
+export interface LoginResponse {
+  token: string;
+  user_id: string;
+  role: string;
+  environment: string;
+}
+
+export async function login(username: string, password: string): Promise<LoginResponse> {
+  const res = await fetch(`${API_BASE}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+  if (!res.ok) throw new Error('Login failed');
+  return res.json();
+}
+
+export function setAuthToken(token: string) {
+  if (typeof window !== 'undefined') sessionStorage.setItem('nyx_token', token);
+}
+
+export function getAuthToken(): string | null {
+  if (typeof window !== 'undefined') return sessionStorage.getItem('nyx_token');
+  return null;
+}
+
+export function clearAuth() {
+  if (typeof window !== 'undefined') sessionStorage.removeItem('nyx_token');
+}
+
+export async function fetchApiAuth<T>(path: string): Promise<T> {
+  const token = getAuthToken();
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}${path}`, { headers });
+  if (res.status === 401) {
+    clearAuth();
+    throw new Error('Unauthorized');
+  }
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.json();
+}
+
+export async function postControlAuth(action: string, reason = ''): Promise<PaperControlResult> {
+  const token = getAuthToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}/api/control/paper/${action}?reason=${encodeURIComponent(reason)}`, { method: 'POST', headers });
+  if (res.status === 401) { clearAuth(); throw new Error('Unauthorized'); }
+  return res.json();
+}
+
 export interface PaperControlStatus {
   current_state: string;
   last_updated_at: number;

@@ -2,6 +2,41 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket SEC-1 — Operational Security & Access Control (2026-04-19)
+
+Production-grade security layer. Backend-enforced, zero-trust.
+
+**Backend** (`cockpit/api/security.py`):
+- `hash_password()` / `verify_password()` — bcrypt
+- `create_token()` / `decode_token()` — JWT (PyJWT, HS256, expiry)
+- `check_permission(role, action)` — RBAC: viewer (read) / operator
+  (read+control) / admin (all)
+- `UserStore` — in-memory user store with bcrypt, default admin
+- `SecurityAuditLog` — logs all security events, sanitizes sensitive
+  keys (password, api_key, token never logged)
+- `EnvironmentConfig` — paper/testnet/live isolation
+- `RateLimiter` — sliding window per user/IP
+
+**API** (cockpit/api/server.py):
+- `POST /api/auth/login` — returns JWT token + role + environment
+- `POST /api/auth/logout` — invalidates session
+- `GET /api/auth/me` — current user info
+- `GET /api/security/audit` — admin-only audit log
+- `get_current_user()` — FastAPI dependency for auth
+- `require_role(min_role)` — RBAC middleware
+- Rate limiting on login endpoint
+
+**Frontend** (cockpit/ui):
+- Login screen with auth form
+- JWT stored in sessionStorage (not localStorage)
+- Auth gate wrapping dashboard
+- Environment badge (PAPER green / TESTNET amber / LIVE red)
+- Role indicator + Logout button in header
+- `fetchApiAuth()` / `postControlAuth()` — token-bearing requests
+
+TDD : 27 security tests + 19 UI-2 regression = 46 total GREEN.
+Build clean. CLAUDE.md Rule 7 ✓.
+
 ### Ticket UI-2 — Paper Trading Control Plane (2026-04-19)
 
 Backend-sovereign control plane for paper trading, operated from

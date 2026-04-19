@@ -16,12 +16,18 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 HERE = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(HERE))
+
+from cockpit.api.security import (
+    UserStore, SecurityAuditLog, RateLimiter, EnvironmentConfig,
+    create_token, decode_token, check_permission,
+)
 
 log = logging.getLogger('nyx.cockpit')
 
@@ -72,6 +78,83 @@ def register_paper_control(svc: Any) -> None:
 
 def set_system_state(state: str) -> None:
     _state['system_state'] = state
+
+
+# =========================================================================
+# Security (SEC-1)
+# =========================================================================
+
+_user_store = UserStore(create_default_admin=True)
+_security_log = SecurityAuditLog()
+_rate_limiter = RateLimiter(max_requests=30, window_seconds=60)
+_env_config = EnvironmentConfig(env=os.environ.get('NYX_ENV', 'paper'))
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+def get_current_user(request: Request) -> Dict[str, str]:
+    auth = request.headers.get('Authorization', '')
+    if not auth.startswith('Bearer '):
+        raise HTTPException(status_code=401, detail='Missing token')
+    token = auth[7:]
+    payload = decode_token(token)
+    if payload is None:
+        raise HTTPException(status_code=401, detail='Invalid or expired token')
+    return {'user_id': payload['user_id'], 'role': payload['role']}
+
+
+def require_role(min_role: str):
+    def checker(user: Dict[str, str] = Depends(get_current_user)):
+        if not check_permission(user['role'], min_role):
+            raise HTTPException(status_code=403, detail=f'Insufficient role: need {min_role}')
+        return user
+    return checker
+
+
+@app.post('/api/auth/login')
+def login(body: LoginRequest) -> Dict[str, Any]:
+    ip = 'unknown'
+    if not _rate_limiter.allow(f'login:{body.username}'):
+        _security_log.record('login_rate_limited', user_id=body.username, success=False)
+        raise HTTPException(status_code=429, detail='Too many login attempts')
+    user = _user_store.authenticate(body.username, body.password)
+    if user is None:
+        _security_log.record('login', user_id=body.username, success=False)
+        raise HTTPException(status_code=401, detail='Invalid credentials')
+    token = create_token(user_id=user['username'], role=user['role'])
+    _security_log.record('login', user_id=user['username'], success=True)
+    return {
+        'token': token,
+        'user_id': user['username'],
+        'role': user['role'],
+        'environment': _env_config.env,
+    }
+
+
+@app.post('/api/auth/logout')
+def logout(user: Dict[str, str] = Depends(get_current_user)) -> Dict[str, str]:
+    _security_log.record('logout', user_id=user['user_id'], success=True)
+    return {'status': 'logged_out'}
+
+
+@app.get('/api/auth/me')
+def get_me(user: Dict[str, str] = Depends(get_current_user)) -> Dict[str, Any]:
+    return {
+        'user_id': user['user_id'],
+        'role': user['role'],
+        'environment': _env_config.env,
+    }
+
+
+@app.get('/api/security/audit')
+def get_security_audit(
+    user: Dict[str, str] = Depends(require_role('admin')),
+    limit: int = 100,
+) -> List[Dict[str, Any]]:
+    return _security_log.entries[-limit:]
 
 
 def record_bar_result(symbol: str, bar: dict, result: dict) -> None:

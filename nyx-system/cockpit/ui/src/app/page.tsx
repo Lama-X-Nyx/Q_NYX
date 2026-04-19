@@ -1,7 +1,10 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { fetchApi, connectWs, postControl } from '@/lib/api';
+import {
+  fetchApi, fetchApiAuth, connectWs, postControlAuth,
+  login as apiLogin, setAuthToken, getAuthToken, clearAuth,
+} from '@/lib/api';
 import type {
   SystemState, PortfolioState, HealthSnapshot, Order,
   DecisionResult, WsMessage, HealthPoint, EquityPoint, FillMissBar,
@@ -102,7 +105,56 @@ const PAPER_STATE_LABELS: Record<string, string> = {
   paper_critical_blocked: 'CRITICAL BLOCK',
 };
 
-export default function Dashboard() {
+function LoginScreen({ onLogin }: { onLogin: (token: string, role: string, env: string) => void }) {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      const r = await apiLogin(username, password);
+      setAuthToken(r.token);
+      onLogin(r.token, r.role, r.environment);
+    } catch {
+      setError('Invalid credentials');
+    } finally {
+      setLoading(false);
+    }
+  };
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-950">
+      <form onSubmit={handleSubmit} className="bg-gray-900 border border-gray-800 rounded-lg p-8 w-96 space-y-4">
+        <h1 className="text-2xl font-bold text-center">NYX<span className="text-blue-400">.</span>cockpit</h1>
+        <p className="text-xs text-center text-gray-500">Operator Login</p>
+        {error && <div className="text-sm text-red-400 text-center">{error}</div>}
+        <input type="text" placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm" autoFocus />
+        <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm" />
+        <button type="submit" disabled={loading} className="w-full py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm font-medium disabled:opacity-50">
+          {loading ? 'Connecting...' : 'Login'}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+export default function App() {
+  const [authed, setAuthed] = useState(false);
+  const [role, setRole] = useState('');
+  const [env, setEnv] = useState('paper');
+  useEffect(() => {
+    const t = getAuthToken();
+    if (t) { setAuthed(true); }
+  }, []);
+  if (!authed) {
+    return <LoginScreen onLogin={(token, r, e) => { setAuthed(true); setRole(r); setEnv(e); }} />;
+  }
+  return <Dashboard userRole={role} environment={env} onLogout={() => { clearAuth(); setAuthed(false); }} />;
+}
+
+function Dashboard({ userRole, environment, onLogout }: { userRole: string; environment: string; onLogout: () => void }) {
   const [state, setState] = useState<SystemState | null>(null);
   const [portfolio, setPortfolio] = useState<PortfolioState | null>(null);
   const [health, setHealth] = useState<HealthSnapshot | null>(null);
@@ -228,7 +280,7 @@ export default function Dashboard() {
   const paperState = paperStatus?.current_state || 'paper_disabled';
 
   const handlePaperAction = async (action: string) => {
-    const r = await postControl(action);
+    const r = await postControlAuth(action);
     if (r.state) {
       setPaperStatus(prev => prev ? { ...prev, current_state: r.state! } : prev);
     }
@@ -309,6 +361,11 @@ export default function Dashboard() {
             <span className="text-xs text-gray-500">{wsConnected ? 'WS' : 'OFFLINE'}</span>
           </div>
           <StatusBadge state={state?.global_execution_state || 'normal'} />
+          <span className={`text-xs px-2 py-0.5 rounded font-bold ${environment === 'live' ? 'bg-red-500/20 text-red-400 border border-red-500/50' : environment === 'testnet' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/50' : 'bg-green-500/20 text-green-400 border border-green-500/50'}`}>
+            {environment?.toUpperCase() || 'PAPER'}
+          </span>
+          {userRole && <span className="text-xs text-gray-500">{userRole}</span>}
+          <button onClick={onLogout} className="text-xs text-gray-500 hover:text-white px-2 py-0.5 rounded hover:bg-gray-800">Logout</button>
           <span className="text-xs text-gray-400 font-mono">{state?.timestamp || ''}</span>
         </div>
       </header>
