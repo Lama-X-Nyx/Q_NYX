@@ -1769,3 +1769,22 @@ CLAUDE.md lu. Modules core sans réseau. Ready pour VS Code.
   only 1 production per asset, rollback, persistent JSON, audit log
 
 ### Tests : 12+15 = 27/27 GREEN
+
+---
+
+## 2026-04-19 — Ticket DATA-1.1 (Raw Market Data Lake)
+
+### Rule 7 ✓
+CLAUDE.md lu. Extension DATA-1. Raw lake append-only.
+
+### Livré
+- `RawEvent` (kline + trade, schema_version=1, preserve payload)
+- `RawMarketStore` partitionné par exchange/type/symbol/date
+- Dedupe SHA-256 déterministe (jamais silencieux)
+- Replay iterator + query par range
+- Metadata sidecar (total, duplicates, last_ts, write_failures)
+- Quality report (out-of-order, duplicates)
+- Restart-safe (dedupe cache rebuilt on load)
+- Malformed rejected explicitly
+
+### Tests : 22/22 GREEN

@@ -2,6 +2,40 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket DATA-1.1 — Raw Market Data Lake (2026-04-19)
+
+Append-only, partitioned, exchange-native raw event storage.
+Canonical source for replay, bar rebuild, debug, retraining.
+
+- `RawEvent` — canonical raw event schema, versioned
+  (schema_version=1), preserves full exchange-native payload
+  - `RawEvent.from_kline()` — dedupe = SHA256(symbol|interval|t|closed)
+  - `RawEvent.from_trade()` — dedupe = SHA256(symbol|trade|id)
+  - Tracks event_ts_exchange_ms / event_ts_receive / event_ts_store
+  - Tracks ingest_source (ws / backfill)
+- `RawMarketStore` — partitioned JSONL storage:
+  ```
+  raw/
+    exchange=binance/
+      event_type=kline/
+        symbol=BTCUSDT/
+          date=2026-04-19/
+            events.jsonl
+  ```
+  - `append(event)` — returns `{stored, reason, dedupe_key}`,
+    rejects duplicates explicitly (never silent)
+  - `get_raw_events(symbol, event_type, start, end)` — query
+  - `replay_raw_events()` — iterator for bar rebuild / audit
+  - `list_partitions()` — inventory
+  - `get_ingestion_metadata()` — total_events, duplicate_count,
+    write_failures, last_event_ts
+- `raw_quality_report()` — duplicate_count, out_of_order,
+  write_failures, quality (good/degraded)
+- Restart-safe: dedupe cache rebuilt from disk on reload
+- Malformed payloads rejected explicitly at schema construction
+
+TDD : 22 GREEN. CLAUDE.md Rule 7 ✓.
+
 ### Ticket DATA-1 + ML-1 — Data Pipeline + ML Pipeline Core (2026-04-19)
 
 Core modules for canonical data and ML infrastructure. Ready for
