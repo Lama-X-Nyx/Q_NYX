@@ -2,6 +2,37 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket DATA-1 + ML-1 — Data Pipeline + ML Pipeline Core (2026-04-19)
+
+Core modules for canonical data and ML infrastructure. Ready for
+live integration in VS Code (Binance WS + backfill + retraining).
+
+**DATA-1** (`src/data_pipeline/bar_store.py`):
+- `CanonicalBarStore` — append-only parquet storage per symbol ×
+  timeframe, deduplication, get_bars(symbol, tf, start, end),
+  metadata, list_symbols
+- `detect_gaps(index, freq)` — finds missing bars in DatetimeIndex
+- `detect_duplicates(index)` — finds duplicate timestamps
+- `data_quality_report(store, symbol, tf)` — n_bars, n_gaps,
+  n_duplicates, quality (good/degraded/empty)
+
+**ML-1** (`src/ml_pipeline/`):
+- `DatasetSnapshot` — versioned dataset metadata (dataset_id, asset,
+  dates, feature/label versions, n_samples, fingerprint SHA-256)
+- `ModelRegistryV2` — persistent JSON registry with promotion
+  workflow:
+  - `register()` → candidate
+  - `promote('approved')` → approved
+  - `promote('production')` → production (auto-retires previous)
+  - `rollback(asset, model_id)` → restores previous production
+  - `get_production(asset)` → current production model
+  - Only one production model per asset
+  - Invalid transitions rejected (candidate→production blocked)
+  - Full audit log (register/promote/retire/rollback)
+  - Persisted to disk (survives restart)
+
+TDD : 12 DATA-1 + 15 ML-1 = 27 GREEN. CLAUDE.md Rule 7 ✓.
+
 ### Ticket SEC-1.1 — First-Time Admin Bootstrap (2026-04-19)
 
 Secure one-shot admin creation. Auto-disables after first use.

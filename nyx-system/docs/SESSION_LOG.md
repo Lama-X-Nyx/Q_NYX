@@ -1751,3 +1751,21 @@ CLAUDE.md lu. Extension SEC-1. Zero default credentials.
 - No default admin (create_default_admin=False)
 
 ### Tests : 12+27 = 39/39 GREEN. Build OK.
+
+---
+
+## 2026-04-19 — Ticket DATA-1 + ML-1 (Pipeline Core Modules)
+
+### Rule 7 ✓
+CLAUDE.md lu. Modules core sans réseau. Ready pour VS Code.
+
+### DATA-1 Livré
+- `CanonicalBarStore` : append-only parquet, dedup, metadata
+- `detect_gaps()`, `detect_duplicates()`, `data_quality_report()`
+
+### ML-1 Livré
+- `DatasetSnapshot` : versioned metadata + SHA-256 fingerprint
+- `ModelRegistryV2` : candidate → approved → production workflow,
+  only 1 production per asset, rollback, persistent JSON, audit log
+
+### Tests : 12+15 = 27/27 GREEN
