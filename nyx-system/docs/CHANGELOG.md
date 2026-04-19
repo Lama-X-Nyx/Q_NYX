@@ -2,6 +2,47 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket UI-1.1 — Graphical Analytics Output Layer (2026-04-19)
+
+Cockpit upgraded to **charts-first**. Tables secondary. Every
+critical backend output has a graphical representation.
+
+**Backend additions** (`cockpit/api/server.py`):
+- Ring buffers for time-series history (health, equity, decisions, OHLCV)
+- `/api/series/health/{symbol}` — health/smoothed/multiplier over time
+- `/api/series/equity` — equity/balance/exposure/pnl over time
+- `/api/series/decisions/{symbol}` — per-bar decision history
+- `/api/series/ohlcv/{symbol}` — candlestick data
+- `/api/analytics/stability/{run_id}` — heatmap segments, scores,
+  regime matrix, tail distribution (from T43.1 evaluator)
+- `/api/analytics/capacity/{run_id}` — ladder series, deployability,
+  breakpoints (from T44 evaluator)
+- `/api/analytics/execution_stress/{run_id}` — heatmap cells,
+  sensitivities (from T44.1 evaluator)
+- `/api/analytics/fill_miss_bars` — per-asset execution bars
+
+**Frontend chart library** (`cockpit/ui/src/components/charts.tsx`):
+- `HealthTimeSeries` — line chart with state bands (critical/degraded/normal)
+- `EquityCurve` — area chart with gradient fill
+- `DrawdownCurve` — computed from equity, red area chart
+- `FillMissBars` — grouped bar chart per asset
+- `ScoreGauge` — circular SVG gauge (p_trade, size_mult, risk_mult)
+- `Heatmap` — reusable cell grid (stability segments, regime matrix,
+  execution stress) with green-red / red-green / blue color scales
+- `CapacityLadder` — log-scale line chart (Sharpe vs capital per asset)
+- `StabilityScoreBars` — horizontal bars (v1 + v2)
+- `SensitivityBars` — offset/fill/fee sensitivity per asset
+- `DecisionWaterfall` — 5-step pipeline degradation visual
+- `AllocationBars` — per-asset capital split
+- `LiveVsResearch` — expected vs actual horizontal bars
+
+**Dashboard redesign**:
+- Decision Waterfall + 3 Score Gauges replace text pipeline
+- Equity + Drawdown + Fill/Miss bars replace metric rows
+- Health TimeSeries with colored bands replaces static health bar
+- Research panel: OOS run selector + heatmaps + ladders +
+  sensitivity bars + classification badges
+
 ### Ticket UI-1 — NYX Operator Cockpit (2026-04-19)
 
 Full operator dashboard for monitoring NYX paper trading.

@@ -1656,3 +1656,28 @@ CLAUDE.md lu. Frontend read-only. Backend truth only.
 **Launcher** : `python cockpit/run_cockpit.py --with-ui`
 
 ### Build : Next.js compile OK, FastAPI routes OK
+
+---
+
+## 2026-04-19 — Ticket UI-1.1 (Graphical Analytics Layer)
+
+### Rule 7 ✓
+CLAUDE.md lu. Frontend charts-first. Backend fournit data chart-ready.
+
+### Livré
+**Backend** — 8 nouveaux endpoints analytics :
+- /api/series/{health,equity,decisions,ohlcv}
+- /api/analytics/{stability,capacity,execution_stress}/{run_id}
+- /api/analytics/fill_miss_bars
+
+**Frontend** — charts.tsx library (12 composants) :
+- HealthTimeSeries, EquityCurve, DrawdownCurve, FillMissBars
+- ScoreGauge (circular SVG), Heatmap (multi color scales)
+- CapacityLadder (log-scale), StabilityScoreBars, SensitivityBars
+- DecisionWaterfall, AllocationBars, LiveVsResearch
+
+### Dashboard redesigné
+Decision waterfall + gauges + equity/drawdown + heatmaps pour
+stability/capacity/execution_stress. Tables secondaires.
+
+### Build : Next.js compile OK
