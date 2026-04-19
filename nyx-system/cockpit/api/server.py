@@ -37,6 +37,7 @@ _state: Dict[str, Any] = {
     'runtimes': {},
     'execution_monitor': None,
     'oos_engine': None,
+    'paper_control': None,
     'last_bars': {},
     'last_results': {},
     'system_mode': 'paper',
@@ -63,6 +64,10 @@ def register_execution_monitor(monitor: Any) -> None:
 
 def register_oos_engine(engine: Any) -> None:
     _state['oos_engine'] = engine
+
+
+def register_paper_control(svc: Any) -> None:
+    _state['paper_control'] = svc
 
 
 def set_system_state(state: str) -> None:
@@ -470,6 +475,40 @@ def get_fill_miss_bars() -> List[Dict[str, Any]]:
             'timed_out': snap.get('missed', 0),
         })
     return out
+
+
+# =========================================================================
+# Paper Trading Control Plane (UI-2)
+# =========================================================================
+
+@app.get('/api/control/paper/status')
+def get_paper_status() -> Dict[str, Any]:
+    svc = _state['paper_control']
+    if not svc:
+        return {'current_state': 'no_control_service', 'restrictions': []}
+    return svc.status()
+
+
+@app.post('/api/control/paper/{action}')
+async def paper_control_action(action: str, reason: str = '') -> Dict[str, Any]:
+    svc = _state['paper_control']
+    if not svc:
+        return {'success': False, 'reason': 'no_control_service'}
+    result = svc.execute(action, source='operator', reason=reason)
+    await broadcast('paper_control', {
+        'action': action,
+        'result': result,
+        'status': svc.status(),
+    })
+    return result
+
+
+@app.get('/api/control/paper/audit')
+def get_paper_audit(limit: int = 50) -> List[Dict[str, Any]]:
+    svc = _state['paper_control']
+    if not svc:
+        return []
+    return svc.audit_log[-limit:]
 
 
 # =========================================================================

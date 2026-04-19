@@ -1681,3 +1681,28 @@ Decision waterfall + gauges + equity/drawdown + heatmaps pour
 stability/capacity/execution_stress. Tables secondaires.
 
 ### Build : Next.js compile OK
+
+---
+
+## 2026-04-19 — Ticket UI-2 (Paper Trading Control Plane)
+
+### Rule 7 ✓
+CLAUDE.md lu. Backend souverain. Frontend reflet.
+
+### Livré
+**PaperControlService** :
+- State machine : disabled → enabled ↔ paused, critical_blocked
+- Runtime integration : start/stop/pause/resume/cancel_all/flatten
+- Audit log complet (timestamp, action, previous/new state, source)
+
+**API** :
+- GET/POST /api/control/paper/{status,on,off,pause,resume,cancel_all,flatten}
+- WebSocket broadcast des changements d'état
+
+**Frontend** :
+- Status badge top-bar (vert=ON, jaune=PAUSED, gris=OFF, rouge=CRITICAL)
+- Boutons contextuels : START / PAUSE / RESUME / STOP
+- Cancel All + Flatten avec ConfirmModal
+- Critical block affiché avec raison + animation
+
+### Tests : 19/19 GREEN. Build OK.

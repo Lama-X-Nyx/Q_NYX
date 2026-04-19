@@ -2,6 +2,38 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket UI-2 — Paper Trading Control Plane (2026-04-19)
+
+Backend-sovereign control plane for paper trading, operated from
+the cockpit UI. Backend validates, executes, and audits. Frontend
+reflects backend truth.
+
+**Backend** (`cockpit/api/paper_control.py`):
+- `PaperControlService` — state machine: paper_disabled →
+  paper_enabled ↔ paper_paused, paper_critical_blocked
+- State transitions validated (invalid transitions rejected)
+- Runtime integration: on→start, off→stop, pause→pause,
+  resume→resume, cancel_all→cancel_all_orders, flatten→flatten_all
+- Full audit log (timestamp, action, prev/new state, source, reason)
+
+**API endpoints** (cockpit/api/server.py):
+- `GET /api/control/paper/status` — current state + restrictions
+- `POST /api/control/paper/{action}` — execute command (on/off/
+  pause/resume/cancel_all/flatten)
+- `GET /api/control/paper/audit` — audit log
+- WebSocket broadcasts paper state changes to all connected UIs
+
+**Frontend** (cockpit/ui/src/app/page.tsx):
+- Top-bar paper status badge (color-coded: green=ON, yellow=PAUSED,
+  grey=OFF, red=CRITICAL)
+- Primary controls: START PAPER / PAUSE / RESUME / STOP
+- Secondary controls: Cancel All / Flatten
+- `ConfirmModal` with destructive action warning for: STOP, Cancel
+  All, Flatten (double-confirm for flatten)
+- Contextual buttons: only shows valid actions for current state
+
+TDD : 19 GREEN. Build clean. CLAUDE.md Rule 7 ✓.
+
 ### Ticket UI-1.1 — Graphical Analytics Output Layer (2026-04-19)
 
 Cockpit upgraded to **charts-first**. Tables secondary. Every

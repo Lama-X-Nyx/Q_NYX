@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { fetchApi, connectWs } from '@/lib/api';
+import { fetchApi, connectWs, postControl } from '@/lib/api';
 import type {
   SystemState, PortfolioState, HealthSnapshot, Order,
   DecisionResult, WsMessage, HealthPoint, EquityPoint, FillMissBar,
   StabilityAnalytics, CapacityAnalytics, ExecutionStressAnalytics,
+  PaperControlStatus,
 } from '@/lib/api';
 import {
   HealthTimeSeries, EquityCurve, DrawdownCurve, FillMissBars,
@@ -68,6 +69,39 @@ function ClassBadge({ cls }: { cls: string }) {
   );
 }
 
+function ConfirmModal({ title, message, onConfirm, onCancel, destructive = false }: {
+  title: string; message: string; onConfirm: () => void; onCancel: () => void; destructive?: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 max-w-md w-full shadow-2xl">
+        <h3 className="text-lg font-bold mb-2">{title}</h3>
+        <p className="text-sm text-gray-400 mb-6">{message}</p>
+        <div className="flex justify-end gap-3">
+          <button onClick={onCancel} className="px-4 py-2 text-sm rounded bg-gray-800 hover:bg-gray-700 text-gray-300">Cancel</button>
+          <button onClick={onConfirm} className={`px-4 py-2 text-sm rounded font-medium ${destructive ? 'bg-red-600 hover:bg-red-500' : 'bg-blue-600 hover:bg-blue-500'} text-white`}>
+            Confirm
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const PAPER_STATE_COLORS: Record<string, string> = {
+  paper_enabled: 'bg-green-500',
+  paper_paused: 'bg-yellow-500',
+  paper_disabled: 'bg-gray-500',
+  paper_critical_blocked: 'bg-red-500',
+};
+
+const PAPER_STATE_LABELS: Record<string, string> = {
+  paper_enabled: 'PAPER ON',
+  paper_paused: 'PAUSED',
+  paper_disabled: 'PAPER OFF',
+  paper_critical_blocked: 'CRITICAL BLOCK',
+};
+
 export default function Dashboard() {
   const [state, setState] = useState<SystemState | null>(null);
   const [portfolio, setPortfolio] = useState<PortfolioState | null>(null);
@@ -81,6 +115,8 @@ export default function Dashboard() {
   const [fillMissBars, setFillMissBars] = useState<FillMissBar[]>([]);
   const [runs, setRuns] = useState<string[]>([]);
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
+  const [paperStatus, setPaperStatus] = useState<PaperControlStatus | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{ action: string; title: string; message: string; destructive: boolean } | null>(null);
   const [stability, setStability] = useState<StabilityAnalytics | null>(null);
   const [capacity, setCapacity] = useState<CapacityAnalytics | null>(null);
   const [execStress, setExecStress] = useState<ExecutionStressAnalytics | null>(null);
@@ -97,13 +133,14 @@ export default function Dashboard() {
   useEffect(() => {
     const poll = async () => {
       try {
-        const [s, p, h, o, fm, rl] = await Promise.all([
+        const [s, p, h, o, fm, rl, ps] = await Promise.all([
           fetchApi<SystemState>('/api/state'),
           fetchApi<PortfolioState>('/api/portfolio'),
           fetchApi<HealthSnapshot>('/api/health'),
           fetchApi<Order[]>('/api/orders?limit=30'),
           fetchApi<FillMissBar[]>('/api/analytics/fill_miss_bars'),
           fetchApi<string[]>('/api/runs'),
+          fetchApi<PaperControlStatus>('/api/control/paper/status'),
         ]);
         setState(s);
         setPortfolio(p);
@@ -111,6 +148,7 @@ export default function Dashboard() {
         setOrders(o);
         setFillMissBars(fm);
         setRuns(rl);
+        setPaperStatus(ps);
         for (const sym of ASSETS) {
           try {
             const [d, hs] = await Promise.all([
@@ -187,15 +225,84 @@ export default function Dashboard() {
     { metric: 'Health score', expected: 100, actual: (assetHealth?.health_score ?? 0) * 100 },
   ];
 
+  const paperState = paperStatus?.current_state || 'paper_disabled';
+
+  const handlePaperAction = async (action: string) => {
+    const r = await postControl(action);
+    if (r.state) {
+      setPaperStatus(prev => prev ? { ...prev, current_state: r.state! } : prev);
+    }
+    setConfirmAction(null);
+  };
+
+  const askConfirm = (action: string, title: string, message: string, destructive = false) => {
+    setConfirmAction({ action, title, message, destructive });
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
+      {/* Confirmation modal */}
+      {confirmAction && (
+        <ConfirmModal
+          title={confirmAction.title}
+          message={confirmAction.message}
+          destructive={confirmAction.destructive}
+          onConfirm={() => handlePaperAction(confirmAction.action)}
+          onCancel={() => setConfirmAction(null)}
+        />
+      )}
+
       {/* Top bar */}
       <header className="bg-gray-900 border-b border-gray-800 px-4 py-2 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <h1 className="text-lg font-bold tracking-tight">NYX<span className="text-blue-400">.</span>cockpit</h1>
-          <StatusBadge state={state?.system_state || 'stopped'} />
-          <span className="text-xs text-gray-500 uppercase">{state?.system_mode || 'paper'}</span>
+
+          {/* Paper status badge */}
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold text-white ${PAPER_STATE_COLORS[paperState] || 'bg-gray-500'}`}>
+            <span className="w-2 h-2 rounded-full bg-white/50 animate-pulse" />
+            {PAPER_STATE_LABELS[paperState] || paperState}
+          </span>
+
+          {/* Primary controls */}
+          <div className="flex items-center gap-1 border-l border-gray-700 pl-3">
+            {paperState === 'paper_disabled' ? (
+              <button onClick={() => handlePaperAction('on')} className="px-3 py-1 rounded text-xs font-medium bg-green-600 hover:bg-green-500 text-white">
+                START PAPER
+              </button>
+            ) : paperState === 'paper_enabled' ? (
+              <>
+                <button onClick={() => handlePaperAction('pause')} className="px-3 py-1 rounded text-xs font-medium bg-yellow-600 hover:bg-yellow-500 text-white">
+                  PAUSE
+                </button>
+                <button onClick={() => askConfirm('off', 'Stop Paper Trading', 'This will stop all paper trading. No new orders will be placed. Existing positions remain.', true)} className="px-3 py-1 rounded text-xs font-medium bg-red-700 hover:bg-red-600 text-white">
+                  STOP
+                </button>
+              </>
+            ) : paperState === 'paper_paused' ? (
+              <>
+                <button onClick={() => handlePaperAction('resume')} className="px-3 py-1 rounded text-xs font-medium bg-green-600 hover:bg-green-500 text-white">
+                  RESUME
+                </button>
+                <button onClick={() => askConfirm('off', 'Stop Paper Trading', 'This will stop paper trading completely.', true)} className="px-3 py-1 rounded text-xs font-medium bg-red-700 hover:bg-red-600 text-white">
+                  STOP
+                </button>
+              </>
+            ) : paperState === 'paper_critical_blocked' ? (
+              <span className="text-xs text-red-400 font-bold animate-pulse">SYSTEM BLOCKED — {paperStatus?.reason || 'unknown'}</span>
+            ) : null}
+          </div>
+
+          {/* Secondary controls */}
+          <div className="flex items-center gap-1 border-l border-gray-700 pl-3">
+            <button onClick={() => askConfirm('cancel_all', 'Cancel All Orders', 'Cancel all open paper orders. Filled positions remain.', false)} className="px-2 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-300">
+              Cancel All
+            </button>
+            <button onClick={() => askConfirm('flatten', 'Flatten Portfolio', 'Close ALL open positions. This is a destructive action.', true)} className="px-2 py-1 rounded text-xs bg-gray-700 hover:bg-red-700 text-gray-300 hover:text-white">
+              Flatten
+            </button>
+          </div>
         </div>
+
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-1.5">
             <span className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-green-400' : 'bg-red-400'}`} />

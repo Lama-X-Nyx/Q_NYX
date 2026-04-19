@@ -124,6 +124,26 @@ export interface CapacityAnalytics {
   breakpoints: Array<{ asset: string; capital: number; reason: string }>;
 }
 
+export interface PaperControlStatus {
+  current_state: string;
+  last_updated_at: number;
+  source: string;
+  reason: string;
+  restrictions: string[];
+}
+
+export interface PaperControlResult {
+  success: boolean;
+  state?: string;
+  action?: string;
+  reason?: string;
+}
+
+export async function postControl(action: string, reason = ''): Promise<PaperControlResult> {
+  const res = await fetch(`${API_BASE}/api/control/paper/${action}?reason=${encodeURIComponent(reason)}`, { method: 'POST' });
+  return res.json();
+}
+
 export interface ExecutionStressAnalytics {
   run_id: string;
   heatmap_cells: Array<{ asset: string; capital: number; offset_bps: number; fill_degradation: number; fee_multiplier: number; composite_retention: number; miss_rate: number }>;
