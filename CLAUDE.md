@@ -1,451 +1,276 @@
-# Q_NYX — Operating System for Claude Code
+# Q_NYX — Operating System for Claude Code (VS Code Edition)
 
-## Mission
+> **Read this entire file before EVERY task.** This is Rule 7.
+> If you skip this, you WILL break the system.
 
-You are working on **one integrated trading system**, not a collection of disconnected experiments.
+---
 
-Your job is to **understand, preserve, and improve the existing project as a coherent multi-timeframe system**.
+## What is NYX?
 
-You must optimize for:
-1. **architectural coherence**
-2. **end-to-end integration**
-3. **TDD-first development**
-4. **multi-timeframe consistency**
-5. **clear documentation at every iteration**
+An **institutional-grade multi-asset crypto trading system** with:
+- **GBM monolith** (GradientBoostingClassifier, 128 features) = the ONLY decision brain
+- **4 Jesse agents** (Context 1D / Regime 4H / Setup 1H / Entry 15M) = post-decision modulators
+- **3 assets**: BTC / ETH / SOL — each with its own NYXRuntime instance
+- **Full live infrastructure**: OMS, RiskEngine, Portfolio, StateStore, AuditTrail, ExecutionMonitor
+- **Cockpit UI**: Next.js + FastAPI operator dashboard with charts, controls, security
+- **OOS Engine**: parametric, evaluator-driven research platform
 
-You must **not** optimize for local elegance, isolated module quality, or parallel prototype creation.
+**211 commits. 50+ tickets. 300+ tests. This is NOT a prototype.**
+
+---
+
+## The ONE canonical pipeline
+
+```
+15m bar → NYXRuntime.on_bar()
+  ├── 1. GBM signal           (src/ml/nyx_live_decider.py)
+  ├── 2. Jesse fractal reports (src/agents/*_agent.py)
+  ├── 3. Fractal quality       (src/core/fractal_quality.py)
+  ├── 3b. Inter-asset dependency (src/live/inter_asset_dependency.py)
+  ├── 3c. Portfolio allocator  (src/live/portfolio_allocator.py)
+  ├── 3d. Execution monitor    (src/live/execution_monitor.py)
+  ├── 4. Risk engine           (src/live/risk_engine.py)
+  ├── 5. OMS                   (src/live/oms.py)
+  └── 6-10. Fill → Portfolio → State → Monitoring → Audit
+```
+
+**If it's not in this pipeline, it doesn't exist in production.**
 
 ---
 
 ## Non-negotiable rules
 
-### 1) Integration-first, always
-This repository is a **single product**.
-Do not create side architectures, parallel pipelines, duplicate implementations, or isolated “better versions” unless explicitly requested.
-
-Before writing code, you must identify:
-- the current execution path
-- the current owner module of the behavior
-- how the new logic fits into the existing runtime path
-- how the change will be verified end-to-end
+### 1) Integration-first
+This is **one product**. No parallel pipelines, no duplicate modules, no `*_v2.py`, no `*_new.py`. Before writing code:
+- Identify the current execution path
+- Identify the owner module
+- Explain how the change fits the existing path
 
 ### 2) TDD only
-You must work **only in TDD**.
+For EVERY change:
+1. Write a failing test FIRST
+2. Implement the smallest patch
+3. Run the test
+4. Refactor only if tests stay green
 
-For every change:
-1. identify the behavior to change
-2. write or update a failing test first
-3. implement the smallest patch that makes the test pass
-4. run the relevant tests
-5. refactor only if integration remains unchanged and tests stay green
-
-Never implement large code changes first and “add tests later”.
+**No "test later". No "works in theory".**
 
 ### 3) Multi-timeframe is mandatory
-This is a **multi-timeframe system**.
-You must never treat components as isolated single-timeframe toys if they affect the real pipeline.
-
-Every relevant change must be reasoned through the MTF stack:
-- 1D context
-- 4H structure
-- 1H regime
-- 15M setup / entry
-- meta orchestration / execution / risk
-
-Any feature, model, rule, validator, filter, or refactor that ignores the MTF nature of the system is incomplete by default.
+Every change must respect: 1D context → 4H regime → 1H setup → 15M entry.
 
 ### 4) Document every iteration
-At **every iteration**, you must document what happened.
-
-For each meaningful step:
-- what problem was addressed
-- what hypothesis was tested
-- what files were touched
-- what test was added or changed
-- what passed / failed
-- what remains uncertain
-- what the next smallest step is
-
-Documentation is part of the work, not an optional cleanup step.
+Update `docs/SESSION_LOG.md` and `docs/CHANGELOG.md` at every meaningful step.
 
 ### 5) Minimal surface area
-Patch the smallest possible surface area.
-Prefer modifying the natural owner of the behavior over creating a new module.
+Patch the smallest possible area. Don't refactor nearby code "while you're here".
 
 ### 6) No architectural improvisation
-Do not rename, move, split, merge, or replace architectural components unless explicitly asked.
+Don't rename, move, split, or replace modules unless explicitly asked.
 
-Do not invent:
-- `*_v2.py`
-- `*_new.py`
-- `*_clean.py`
-- `*_refactor.py`
-- `experimental_*`
-- alternative pipelines
-- duplicate orchestration layers
-
-unless the user explicitly asks for that.
+### 7) Read this file first — EVERY session
+Before acting, summarize: current execution path, owner module, TDD plan.
 
 ---
 
-## Project worldview
+## Repository structure
 
-This project is not a bag of utilities.
-It is a **connected decision system** with:
-- data ingestion
-- feature generation
-- multi-timeframe interpretation
-- agent coordination
-- filtering
-- execution realism
-- validation
-- feedback
+### Canonical production modules (THE system)
 
-When you touch one part, you must think about:
-- who produces its inputs
-- who consumes its outputs
-- how it affects the rest of the pipeline
-- whether tests prove that it still works together
+```
+src/live/
+  nyx_runtime.py           ← THE single orchestrator
+  central_orchestrator.py   ← synchronized multi-asset cycles (T36)
+  oms.py                    ← order management state machine
+  risk_engine.py            ← sovereign risk gate (%-based, T40)
+  var_cvar.py               ← VaR/CVaR distribution risk
+  portfolio_state.py        ← positions + PnL
+  portfolio_allocator.py    ← capital-constrained allocation (T35)
+  inter_asset_dependency.py ← cross-asset lead/lag/contagion (T34)
+  execution_monitor.py      ← adaptive risk (v2 smoothed, T46.1)
+  execution_optimizer.py    ← fill probability + dynamic offset (T32)
+  state_store.py            ← atomic JSON persistence
+  monitoring.py             ← metrics + alerts
+  audit_trail.py            ← structured decision history (T37)
+  bar_builder.py            ← kline normalization
+  feed_health.py            ← stale detection
+  binance_ws.py             ← WebSocket adapter
+  oos_engine.py             ← canonical OOS engine + evaluator framework (T42/42.1)
+  oos_cache.py              ← caching + profiling (T45)
 
-Local correctness without system coherence is failure.
+src/core/
+  meta_gbm.py               ← MetaGBM strategy brain
+  fractal_quality.py         ← post-decision modulation (T20)
 
----
+src/agents/
+  contracts.py               ← FractalReport, MetaDecision, etc.
+  context_agent.py           ← 1D context
+  regime_agent.py            ← 4H regime
+  setup_agent.py             ← 1H setup
+  entry_agent.py             ← 15M entry
 
-## Required workflow for every task
+src/ml/
+  nyx_live_decider.py        ← per-bar live inference
+  jesse_features.py          ← canonical 37-col feature engine
+  train_asset_model.py       ← model training + persistence
+  mtf_feature_stack.py       ← MTF buffer
+  feature_buffer.py          ← incremental features
+  jesse_agents.py            ← mono-file Jesse ML-native agents
 
-For every non-trivial task, follow this exact order.
+src/data_pipeline/
+  bar_store.py               ← canonical bar store (DATA-1)
+  raw_market_store.py        ← raw event lake, append-only (DATA-1.1)
 
-### Step 1 — Read before acting
-Read the relevant existing files first.
-Do not jump into implementation.
+src/ml_pipeline/
+  dataset_builder.py         ← dataset snapshots (ML-1)
+  model_registry_v2.py       ← model versioning + promotion (ML-1)
 
-You must summarize:
-- the current execution path
-- the relevant modules already involved
-- the owner module that should be changed first
-- the current test coverage related to the request
+src/live/evaluators/
+  stability.py               ← T43 + T43.1 (regime, tail risk, classification)
+  capacity.py                ← T44 (capital ladder)
+  capacity_execution.py      ← T44.1 (execution friction stress)
+```
 
-### Step 2 — State the integration path
-Before coding, explicitly state:
-- where the change begins
-- where it flows
-- what modules are affected
-- what remains unchanged
+### Cockpit (operator UI)
 
-You must think in terms of **call path**, not isolated code fragments.
+```
+cockpit/
+  api/
+    server.py                ← FastAPI backend (REST + WebSocket)
+    paper_control.py         ← paper trading state machine (UI-2)
+    security.py              ← JWT auth, RBAC, audit, rate limiting (SEC-1)
+  ui/
+    src/app/page.tsx          ← main dashboard page
+    src/components/charts.tsx ← 12 recharts components
+    src/lib/api.ts            ← API client + types
+  run_cockpit.py             ← launcher (API + UI)
+```
 
-### Step 3 — Define the TDD target
-Before implementation, define:
-- the expected behavior
-- the failing test that proves the need for change
-- whether the test is unit, integration, or MTF validation
+### Clean namespace (src/nyx/ — re-exports)
 
-### Step 4 — Implement the smallest patch
-Implement the minimal change required to satisfy the failing test.
-Do not “improve nearby code” unless strictly necessary.
+```python
+from src.nyx import NYXRuntime, CentralOrchestrator
+from src.nyx.decision import MetaGBM, NYXLiveDecider
+from src.nyx.execution import OMS, RiskEngine
+from src.nyx.contracts import FractalReport, Signal
+```
 
-### Step 5 — Verify together
-Run the smallest relevant test set first, then any necessary broader checks.
+### Legacy (see legacy/MANIFEST.md)
 
-Verification priority:
-1. targeted test
-2. surrounding module tests
-3. integration tests
-4. MTF/path-level validation if the change affects cross-timeframe logic
-
-### Step 6 — Document the iteration
-After each iteration, document:
-- what changed
-- why
-- which tests proved it
-- what risk remains
-- what next step is still needed
-
----
-
-## TDD policy
-
-TDD is mandatory.
-
-### TDD rules
-- Every bugfix must begin with a failing test reproducing the bug.
-- Every new behavior must begin with a test describing the intended behavior.
-- Every refactor must preserve existing tests and behavior.
-- Every integration change must include a test proving compatibility with the current execution path.
-- No “test later”.
-- No “manual validation only”.
-- No “works in theory”.
-
-### Preferred test order
-1. narrow failing test
-2. minimal implementation
-3. passing targeted test
-4. surrounding regression tests
-5. integration or MTF validation if required
-
-### Test types
-Use the right level:
-- **unit tests** for local logic
-- **integration tests** for module interaction
-- **MTF tests** for timeframe coordination
-- **regression tests** for previously broken behavior
-
-### What is not acceptable
-- implementing first and planning tests afterward
-- adding only happy-path tests
-- ignoring runtime path compatibility
-- claiming confidence without executed tests
+Everything in `src/paper_live/`, `src/validation/`, `src/data/`, `src/execution/`, old engine versions. **Do NOT import legacy from canonical modules.**
 
 ---
 
-## Multi-timeframe policy
+## Key models
 
-All meaningful logic must be evaluated in the context of the full MTF architecture.
+| Asset | Features | Sharpe (2023 OOS realistic) | Path |
+|---|---|---|---|
+| BTC | 128 | 4.20 | models/BTCUSDT/ |
+| ETH | 128 | 4.09 | models/ETHUSDT/ |
+| SOL | 128 | 0.97 | models/SOLUSDT/ |
 
-### Mandatory MTF questions
-When changing anything relevant, ask:
-- Does this affect 1D context interpretation?
-- Does this affect 1H regime classification?
-- Does this affect 15M setup or entry timing?
-- Does this affect cross-agent agreement?
-- Does this affect orchestrator behavior?
-- Does this affect execution or risk downstream?
-
-### MTF consistency rule
-No change is complete if it improves one timeframe view while silently breaking another.
-
-### MTF-aware implementation
-When designing or modifying behavior:
-- preserve timeframe responsibilities
-- preserve cross-timeframe data flow
-- preserve alignment logic
-- preserve the distinction between context, regime, setup, entry, and orchestration
-- avoid collapsing MTF logic into simplistic single-layer shortcuts
-
-### MTF-aware testing
-If a change affects cross-timeframe behavior, you must include a test that verifies the interaction, not only the isolated subcomponent.
+**Models are FROZEN.** Do not retrain unless explicitly asked.
 
 ---
 
-## Documentation policy
+## Running NYX
 
-You must document every iteration.
+### Paper trading (multi-asset)
+```bash
+python scripts/run_multi_asset.py
+```
 
-### Required documentation outputs
-At minimum, keep documentation updated through the work.
+### Cockpit (UI + API)
+```bash
+python cockpit/run_cockpit.py --with-ui
+```
 
-Use these files when they exist:
-- `docs/SESSION_LOG.md` for chronological iteration logs
-- `docs/CHANGELOG.md` for meaningful versioned behavior changes
-- task-specific docs if already part of the repository structure
+### OOS engine
+```python
+from src.live.oos_engine import OOSConfig, CanonicalOOSEngine
+cfg = OOSConfig(assets=['BTCUSDT'], start_date='2023-01-01',
+                end_date='2023-12-31', initial_capital=10_000_000)
+result = CanonicalOOSEngine().run_oos(cfg)
+```
 
-If the repository already has a documentation convention, follow it.
-Do not invent a parallel documentation system unless necessary.
-
-### Every iteration log must include
-- date / iteration title
-- task being addressed
-- current hypothesis
-- files read
-- files changed
-- tests added/updated
-- test results
-- architectural impact
-- open questions
-- next step
-
-### Documentation style
-Be concrete.
-Do not write vague progress theater.
-Document facts:
-- what was proven
-- what failed
-- what remains unknown
+### Tests
+```bash
+cd nyx-system && python -m pytest tests/ -v
+```
 
 ---
 
-## Source-of-truth policy
+## Current status
 
-The existing repository is the source of truth.
-
-Priority order:
-1. current runtime path
-2. current tests
-3. current documented architecture
-4. new ideas
-
-If there is tension between elegance and compatibility, prefer compatibility unless explicitly asked otherwise.
-
----
-
-## Reuse-before-create policy
-
-Before creating any new file, class, helper, abstraction, or pipeline, you must answer:
-
-1. Which existing module should own this behavior?
-2. Why can it not live there?
-3. Who will import the new thing?
-4. Who will call it?
-5. What existing path does it extend or replace?
-6. What test proves it works with the rest of the system?
-
-If you cannot answer these clearly, do not create the new artifact.
-
-### New files are allowed only when
-- responsibility truly does not belong to an existing module
-- reuse would make the existing owner incorrect or overloaded
-- the import/call path is explicit
-- tests prove the new artifact works inside the current architecture
+| Layer | Status | Key file |
+|---|---|---|
+| GBM signal | ✅ frozen | nyx_live_decider.py |
+| Jesse modulation | ✅ post-decision | fractal_quality.py |
+| Risk engine | ✅ %-based, scalable | risk_engine.py |
+| OMS | ✅ state machine | oms.py |
+| Portfolio | ✅ multi-asset | portfolio_state.py |
+| Execution monitor | ✅ v2 smoothed | execution_monitor.py |
+| Audit trail | ✅ per-bar + per-cycle | audit_trail.py |
+| Inter-asset dependency | ✅ lead/lag + contagion | inter_asset_dependency.py |
+| Portfolio allocator | ✅ capital-constrained | portfolio_allocator.py |
+| Central orchestrator | ✅ synchronized cycles | central_orchestrator.py |
+| OOS engine | ✅ parametric + evaluators | oos_engine.py |
+| Cockpit UI | ✅ charts-first + controls | cockpit/ |
+| Security | ✅ JWT + RBAC + bootstrap | security.py |
+| Data pipeline | ✅ bar store + raw lake | data_pipeline/ |
+| Model registry v2 | ✅ promote/rollback | ml_pipeline/ |
+| Live Binance | 🔌 ready, needs network | binance_ws.py |
 
 ---
 
-## Forbidden default behaviors
+## What NOT to do
 
-Unless the user explicitly asks otherwise, do **not**:
-
-- create parallel pipelines
-- create duplicate versions of existing logic
-- create “clean” rewrites
-- create speculative modules
-- migrate architecture while solving a local bug
-- split logic into many helpers just to satisfy typing
-- refactor broad areas because one local change felt messy
-- introduce a new abstraction without proving need
-- optimize only for pyright/lint at the expense of runtime clarity
-- treat documentation as optional
+1. **Don't move files.** The import graph has 1,400+ references.
+2. **Don't create _v2, _new, _clean files.** Patch the natural owner.
+3. **Don't modify GBM or Jesse logic.** Models are frozen.
+4. **Don't import from legacy** (src/paper_live/, src/validation/) in canonical modules.
+5. **Don't skip tests.** Every change gets a test first.
+6. **Don't make grand architectural changes.** Small patches, one behavior at a time.
+7. **Don't add features beyond what was asked.** No "while I'm here" cleanup.
+8. **Don't create documentation files unless asked.** Work from conversation context.
 
 ---
 
-## Pyright / lint / typing policy
+## Environment variables
 
-Typing improvements must preserve runtime behavior and architecture.
-
-When fixing pyright:
-- prefer local annotations
-- prefer narrowing and guard clauses
-- prefer minimal fixes
-- do not restructure the project to make types easier
-- do not create abstraction layers just for typing cleanliness
-
-The goal is:
-- safer code
-- same architecture
-- same behavior
-- better verified integration
+```bash
+NYX_JWT_SECRET=<random-long-string>    # auth token signing
+NYX_ENV=paper                           # paper / testnet / live
+BINANCE_API_KEY=<read-only-key>         # for live data feed
+BINANCE_API_SECRET=<secret>             # for live data feed
+```
 
 ---
 
-## Change-size policy
+## Git workflow
 
-Prefer:
-- small PR-sized patches
-- reversible changes
-- one behavior change at a time
-- one integration proof at a time
-
-Avoid:
-- giant sweeps
-- touching many files without necessity
-- bundling unrelated cleanups together
-- “while I’m here” changes
+- Branch: `claude/run-pyright-system-qroCy`
+- Commit style: `feat(ticket-XX): Short description`
+- Always commit + push when done
+- Never force-push
+- Never amend published commits
 
 ---
 
-## Definition of done
+## When in doubt
 
-A change is done only when all of the following are true:
-
-1. the current execution path is understood
-2. the correct owner module was patched first
-3. a failing test existed first
-4. the smallest fix was implemented
-5. relevant tests pass
-6. multi-timeframe coherence was considered
-7. the iteration was documented
-8. no unnecessary parallel module or architecture was introduced
-
-Code that looks clean but is not integrated is **not done**.
+1. Read `docs/ARCHITECTURE.md` (5-minute system overview)
+2. Read `docs/CHANGELOG.md` (ticket-by-ticket history)
+3. Read `src/live/nyx_runtime.py` (THE orchestrator, numbered steps)
+4. Run `python -m pytest tests/ -v` (verify nothing is broken)
+5. Ask the user before making architectural decisions
 
 ---
 
-## Required response style during work
+## Priority (what the user wants next)
 
-When working on a task, communicate like an integration engineer.
+1. **Live paper trading on Binance** — connect WS, run 24/7, observe behavior
+2. **Historical data backfill** — 10+ years via Binance REST API
+3. **Walk-forward CV** — purged multi-fold validation
+4. **Cockpit improvements** — as needed during paper trading
 
-Always provide:
-- current path summary
-- files involved
-- TDD plan
-- smallest patch plan
-- test plan
-- documentation update plan
-
-When finishing an iteration, summarize:
-- what changed
-- what did not change
-- what was proven
-- what remains risky
-- what the next smallest step should be
-
----
-
-## Default mindset
-
-Think like this:
-
-- “What already owns this behavior?”
-- “How does this fit into the existing MTF system?”
-- “What test proves this integration works?”
-- “What is the smallest patch?”
-- “What do I need to document before moving on?”
-
-Do **not** think like this:
-
-- “I can build a cleaner version next to it”
-- “I’ll isolate this in a fresh module”
-- “I’ll make it elegant first and integrate later”
-- “I’ll add tests once the architecture feels right”
-
----
-
-## Final rule
-
-**Do not optimize for local cleanliness.  
-Optimize for architectural coherence, TDD discipline, multi-timeframe integrity, and documented iteration-by-iteration progress.**
-
----
-
-## Canonical architecture pointer (Ticket 01)
-
-The single canonical architecture for this project is declared in
-`nyx-system/docs/ARCHITECTURE_CANONIQUE.md`. Before proposing any
-change that touches multiple modules, read it. It names :
-
-- The **canonical runtime entrypoint** (`NYXPipeline.run` batch /
-  `NYXLiveDecider.on_15m_bar` live).
-- The **canonical runtime path** — Data MTF → 4 Jesse fractal
-  reporters (proxied today by `rule_*` scalars) → Meta-GBM (strategy
-  brain, `GradientBoostingClassifier` threshold 0.60) → Risk manager
-  (`conditional_dial` + `bear_risk_dial`) → Execution
-  (`PostOnlyPaperBroker` + `HubSpokeRunner` + `PortfolioAllocator`) →
-  Logging / feedback.
-- The **canonical offline path** — features → candidates →
-  calibration (`threshold_optimizer`, offline-only) → training
-  (`train_asset_model.train_and_save`) → OOS / walk-forward /
-  reality checks.
-- Which modules are **offline-only** (`edge_strategy`,
-  `threshold_optimizer`, `ml_filter_v2`, `realistic_backtest`) —
-  these are **not runtime strategies** and must not be called by the
-  live path.
-
-`tests/test_architecture_canonical.py` asserts the canonical
-declarations stay present. Breaking that test = breaking the
-architecture contract and must never land.
-
-Companion docs :
-- `nyx-system/docs/STATE_OF_PROJECT.md` — what is validated today
-  (4 hard sections : production / research / ready-but-unvalidated /
-  historical).
-- `nyx-system/docs/OPERATING_RULES.md` — 7 test-enforced technical
-  invariants (TDD, MTF always, honest execution, no data loss, events
-  alerted, pyright clean, read context first).
+**The model is frozen. The priority is operational, not research.**
