@@ -2,6 +2,24 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket SEC-1.1 — First-Time Admin Bootstrap (2026-04-19)
+
+Secure one-shot admin creation. Auto-disables after first use.
+
+- `UserStore.bootstrap(username, password, audit_log)` — creates
+  admin account only if user_count==0, auto-disables after success
+- `UserStore.needs_bootstrap()` / `user_count()` — gate check
+- `POST /api/auth/bootstrap` — one-time endpoint (403 if any user
+  exists), rate-limited
+- `GET /api/auth/needs-bootstrap` — frontend checks at load
+- Frontend: detects bootstrap vs login state, shows "FIRST-TIME
+  SETUP" screen with yellow CTA when no users exist
+- No default credentials (create_default_admin=False in production)
+- All bootstrap actions audited (bootstrap_admin_created)
+- Password never logged (sanitized by SecurityAuditLog)
+
+TDD : 12 GREEN + 27 SEC-1 regression = 39 total. Build clean.
+
 ### Ticket SEC-1 — Operational Security & Access Control (2026-04-19)
 
 Production-grade security layer. Backend-enforced, zero-trust.

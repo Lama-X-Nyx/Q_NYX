@@ -84,7 +84,7 @@ def set_system_state(state: str) -> None:
 # Security (SEC-1)
 # =========================================================================
 
-_user_store = UserStore(create_default_admin=True)
+_user_store = UserStore(create_default_admin=False)
 _security_log = SecurityAuditLog()
 _rate_limiter = RateLimiter(max_requests=30, window_seconds=60)
 _env_config = EnvironmentConfig(env=os.environ.get('NYX_ENV', 'paper'))
@@ -132,6 +132,22 @@ def login(body: LoginRequest) -> Dict[str, Any]:
         'role': user['role'],
         'environment': _env_config.env,
     }
+
+
+@app.post('/api/auth/bootstrap')
+def bootstrap(body: LoginRequest) -> Dict[str, Any]:
+    if not _rate_limiter.allow('bootstrap'):
+        raise HTTPException(status_code=429, detail='Too many attempts')
+    result = _user_store.bootstrap(body.username, body.password, audit_log=_security_log)
+    if not result['success']:
+        raise HTTPException(status_code=403, detail=result.get('reason', 'already initialized'))
+    token = create_token(user_id=body.username, role='admin')
+    return {'token': token, 'user_id': body.username, 'role': 'admin', 'environment': _env_config.env}
+
+
+@app.get('/api/auth/needs-bootstrap')
+def needs_bootstrap() -> Dict[str, bool]:
+    return {'needs_bootstrap': _user_store.needs_bootstrap()}
 
 
 @app.post('/api/auth/logout')

@@ -89,12 +89,34 @@ class UserStore:
         if create_default_admin:
             self.add_user('admin', 'admin', 'admin')
 
+    def user_count(self) -> int:
+        return len(self._users)
+
+    def needs_bootstrap(self) -> bool:
+        return self.user_count() == 0
+
     def add_user(self, username: str, password: str, role: str) -> None:
         self._users[username] = {
             'username': username,
             'password_hash': hash_password(password),
             'role': role,
         }
+
+    def bootstrap(
+        self,
+        username: str,
+        password: str,
+        audit_log: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        if self.user_count() > 0:
+            if audit_log:
+                audit_log.record('bootstrap_rejected', user_id=username, success=False,
+                                 resource='already_initialized')
+            return {'success': False, 'reason': 'users_already_exist'}
+        self.add_user(username, password, 'admin')
+        if audit_log:
+            audit_log.record('bootstrap_admin_created', user_id=username, success=True)
+        return {'success': True, 'username': username, 'role': 'admin'}
 
     def authenticate(self, username: str, password: str) -> Optional[Dict[str, str]]:
         user = self._users.get(username)

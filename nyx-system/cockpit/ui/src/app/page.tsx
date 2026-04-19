@@ -105,7 +105,7 @@ const PAPER_STATE_LABELS: Record<string, string> = {
   paper_critical_blocked: 'CRITICAL BLOCK',
 };
 
-function LoginScreen({ onLogin }: { onLogin: (token: string, role: string, env: string) => void }) {
+function AuthScreen({ onLogin, isBootstrap }: { onLogin: (token: string, role: string, env: string) => void; isBootstrap: boolean }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -115,11 +115,19 @@ function LoginScreen({ onLogin }: { onLogin: (token: string, role: string, env: 
     setLoading(true);
     setError('');
     try {
-      const r = await apiLogin(username, password);
+      const endpoint = isBootstrap ? '/api/auth/bootstrap' : '/api/auth/login';
+      const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8100';
+      const res = await fetch(`${API}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      if (!res.ok) throw new Error('Failed');
+      const r = await res.json();
       setAuthToken(r.token);
       onLogin(r.token, r.role, r.environment);
     } catch {
-      setError('Invalid credentials');
+      setError(isBootstrap ? 'Bootstrap failed' : 'Invalid credentials');
     } finally {
       setLoading(false);
     }
@@ -128,12 +136,19 @@ function LoginScreen({ onLogin }: { onLogin: (token: string, role: string, env: 
     <div className="min-h-screen flex items-center justify-center bg-gray-950">
       <form onSubmit={handleSubmit} className="bg-gray-900 border border-gray-800 rounded-lg p-8 w-96 space-y-4">
         <h1 className="text-2xl font-bold text-center">NYX<span className="text-blue-400">.</span>cockpit</h1>
-        <p className="text-xs text-center text-gray-500">Operator Login</p>
+        {isBootstrap ? (
+          <>
+            <p className="text-xs text-center text-yellow-400 font-bold">FIRST-TIME SETUP</p>
+            <p className="text-xs text-center text-gray-500">Create your admin account. This can only be done once.</p>
+          </>
+        ) : (
+          <p className="text-xs text-center text-gray-500">Operator Login</p>
+        )}
         {error && <div className="text-sm text-red-400 text-center">{error}</div>}
         <input type="text" placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm" autoFocus />
         <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm" />
-        <button type="submit" disabled={loading} className="w-full py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm font-medium disabled:opacity-50">
-          {loading ? 'Connecting...' : 'Login'}
+        <button type="submit" disabled={loading} className={`w-full py-2 rounded text-sm font-medium disabled:opacity-50 ${isBootstrap ? 'bg-yellow-600 hover:bg-yellow-500' : 'bg-blue-600 hover:bg-blue-500'}`}>
+          {loading ? 'Processing...' : isBootstrap ? 'Create Admin Account' : 'Login'}
         </button>
       </form>
     </div>
@@ -144,12 +159,18 @@ export default function App() {
   const [authed, setAuthed] = useState(false);
   const [role, setRole] = useState('');
   const [env, setEnv] = useState('paper');
+  const [needsBootstrap, setNeedsBootstrap] = useState<boolean | null>(null);
   useEffect(() => {
     const t = getAuthToken();
-    if (t) { setAuthed(true); }
+    if (t) { setAuthed(true); return; }
+    const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8100';
+    fetch(`${API}/api/auth/needs-bootstrap`).then(r => r.json()).then(d => {
+      setNeedsBootstrap(d.needs_bootstrap ?? false);
+    }).catch(() => setNeedsBootstrap(false));
   }, []);
   if (!authed) {
-    return <LoginScreen onLogin={(token, r, e) => { setAuthed(true); setRole(r); setEnv(e); }} />;
+    if (needsBootstrap === null) return <div className="min-h-screen flex items-center justify-center bg-gray-950 text-gray-500">Connecting...</div>;
+    return <AuthScreen isBootstrap={needsBootstrap} onLogin={(token, r, e) => { setAuthed(true); setRole(r); setEnv(e); setNeedsBootstrap(false); }} />;
   }
   return <Dashboard userRole={role} environment={env} onLogout={() => { clearAuth(); setAuthed(false); }} />;
 }

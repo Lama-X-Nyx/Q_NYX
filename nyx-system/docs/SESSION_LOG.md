@@ -1735,3 +1735,19 @@ CLAUDE.md lu. Backend souverain. Frontend non-trusté.
 - Token-bearing requests (sessionStorage)
 
 ### Tests : 27+19 = 46/46 GREEN. Build OK.
+
+---
+
+## 2026-04-19 — Ticket SEC-1.1 (First-Time Admin Bootstrap)
+
+### Rule 7 ✓
+CLAUDE.md lu. Extension SEC-1. Zero default credentials.
+
+### Livré
+- `UserStore.bootstrap()` — one-shot admin creation, auto-disable
+- `POST /api/auth/bootstrap` — rate-limited, 403 if already init
+- `GET /api/auth/needs-bootstrap` — frontend gate
+- Frontend : détecte bootstrap vs login, affiche FIRST-TIME SETUP
+- No default admin (create_default_admin=False)
+
+### Tests : 12+27 = 39/39 GREEN. Build OK.
