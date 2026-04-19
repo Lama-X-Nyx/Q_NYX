@@ -1629,3 +1629,30 @@ CLAUDE.md lu. Extension additive. API v1 préservée.
 - Backward-compatible: v1 code fonctionne inchangé
 
 ### Tests : 23/23 GREEN + 37 regression (T46+T33)
+
+---
+
+## 2026-04-19 — Ticket UI-1 (NYX Operator Cockpit)
+
+### Rule 7 ✓
+CLAUDE.md lu. Frontend read-only. Backend truth only.
+
+### Livré
+**Backend** : FastAPI (cockpit/api/server.py)
+- 10 REST endpoints + 1 WebSocket /ws/live
+- Wired to NYXRuntime, OMS, Portfolio, ExecutionMonitor, AuditStore
+
+**Frontend** : Next.js + Tailwind (cockpit/ui/)
+- Global status bar
+- Asset selector (BTC/ETH/SOL)
+- Decision pipeline (7-step visual avec pass/block/skip)
+- Orders & fills table
+- Equity curve
+- Execution health (health bar + multiplier gauge + flags)
+- Live vs research comparison
+- System metrics
+- Systemic degradation alert
+
+**Launcher** : `python cockpit/run_cockpit.py --with-ui`
+
+### Build : Next.js compile OK, FastAPI routes OK

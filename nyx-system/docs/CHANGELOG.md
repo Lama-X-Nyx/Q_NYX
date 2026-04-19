@@ -2,6 +2,34 @@
 
 ## [Unreleased] — branch `claude/run-pyright-system-qroCy`
 
+### Ticket UI-1 — NYX Operator Cockpit (2026-04-19)
+
+Full operator dashboard for monitoring NYX paper trading.
+
+**Backend** (`cockpit/api/server.py`):
+- FastAPI + WebSocket server (port 8100)
+- 10 REST endpoints: /api/state, /api/portfolio, /api/orders,
+  /api/health, /api/metrics/{sym}, /api/heartbeat/{sym},
+  /api/decision/{sym}, /api/runs, /api/runs/{id}, /api/audit/{sym}
+- 1 WebSocket: /ws/live (runtime, health, portfolio channels)
+- Reads from NYXRuntime, OMS, Portfolio, ExecutionMonitor, AuditStore
+- `register_runtime()` / `register_execution_monitor()` to wire
+
+**Frontend** (`cockpit/ui/` — Next.js + Tailwind):
+- Global status bar (system state, mode, WS connection, execution state)
+- Asset selector (BTC/ETH/SOL) with per-asset mini status
+- Decision pipeline panel (7-step: GBM → Jesse → Fractal → Dependency
+  → Allocator → Exec Monitor → Risk → OMS, with pass/block/skip states)
+- Orders & fills table (filterable, color-coded status)
+- Equity curve (live bar chart)
+- Execution health panel (per-asset health bar, multiplier gauge,
+  fill/miss/fee metrics, flags with severity colors)
+- Live vs research comparison (expected vs actual fill/miss rates)
+- System metrics panel
+- Systemic degradation alert
+
+**Launcher:** `python cockpit/run_cockpit.py [--with-ui]`
+
 ### Ticket 46.1 — Execution Monitor v1 Hardening (2026-04-18)
 
 Fixes 3 production-safety issues in T46:

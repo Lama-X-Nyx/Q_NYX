@@ -70,3 +70,5 @@ dashboard/.env
 htmlcov/
 .pytest_cache/
 state/
+cockpit/ui/node_modules/
+cockpit/ui/.next/
